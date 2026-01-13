@@ -1,9 +1,12 @@
 import { exec } from 'child_process';
+import { existsSync, readFileSync, writeFileSync, appendFileSync } from 'fs';
+import { join } from 'path';
 import { loadState, saveState, type Phase, PHASE_INFO } from './state/phase.js';
 import { hasApiKey, ensureApiKey } from './config.js';
 import { logEvent } from './events.js';
 import { analyzeProject, type ProjectAnalysis } from './analyzer.js';
 import { getActivitySummary, loadTracker, updateTracker } from './tracker.js';
+import { getJournalEntries } from './tools/journal.js';
 
 // ANSI codes
 const ESC = '\x1b';
@@ -26,6 +29,50 @@ const PHASE_COLORS: Record<string, string> = {
   GROW: magenta,
 };
 
+// The Midas rules to add to .cursorrules
+const MIDAS_CURSORRULES = `
+# Golden Code Methodology (via Midas MCP)
+
+## Workflow Rules
+1. **Before any code changes**: Call \`midas_analyze\` to understand current phase
+2. **After important discussions**: Call \`midas_journal_save\` to preserve context
+3. **When stuck**: Call \`midas_tornado\` for Research + Logs + Tests cycle
+4. **When output doesn't fit**: Call \`midas_horizon\` to expand context
+5. **When retrying failed prompts**: Call \`midas_oneshot\` to construct better retry
+
+## Session Start
+At the start of each new chat session, call \`midas_journal_list\` to load context from previous sessions.
+`;
+
+// Session starter prompt
+function getSessionStarterPrompt(projectPath: string): string {
+  const journalEntries = getJournalEntries({ projectPath, limit: 3 });
+  const hasJournal = journalEntries.length > 0;
+  
+  if (hasJournal) {
+    return `Before we begin, please call midas_journal_list to load context from my previous ${journalEntries.length} journal entries, then call midas_analyze to understand where we are in the project.`;
+  }
+  return `Before we begin, please call midas_analyze to understand where we are in the project and what to do next.`;
+}
+
+// Check if .cursorrules has Midas content
+function hasMidasRules(projectPath: string): boolean {
+  const rulesPath = join(projectPath, '.cursorrules');
+  if (!existsSync(rulesPath)) return false;
+  const content = readFileSync(rulesPath, 'utf-8');
+  return content.includes('midas_analyze') || content.includes('Golden Code');
+}
+
+// Add Midas rules to .cursorrules
+function addMidasRules(projectPath: string): void {
+  const rulesPath = join(projectPath, '.cursorrules');
+  if (existsSync(rulesPath)) {
+    appendFileSync(rulesPath, '\n' + MIDAS_CURSORRULES);
+  } else {
+    writeFileSync(rulesPath, MIDAS_CURSORRULES.trim());
+  }
+}
+
 interface TUIState {
   analysis: ProjectAnalysis | null;
   isAnalyzing: boolean;
@@ -33,6 +80,9 @@ interface TUIState {
   recentToolCalls: string[];
   message: string;
   hasApiKey: boolean;
+  hasMidasRules: boolean;
+  showingSessionStart: boolean;
+  sessionStarterPrompt: string;
 }
 
 function copyToClipboard(text: string): Promise<void> {
@@ -105,8 +155,37 @@ function drawUI(state: TUIState, _projectPath: string): string {
   
   // Header
   lines.push(`${cyan}╔${hLine}╗${reset}`);
-  lines.push(row(`${bold}${white}MIDAS${reset} ${dim}- Golden Code Coach${reset}              ${state.hasApiKey ? `${green}●${reset} AI` : `${dim}○${reset} --`}`, I));
+  const statusIcons = `${state.hasApiKey ? `${green}●${reset}AI` : `${dim}○${reset}--`} ${state.hasMidasRules ? `${green}●${reset}Rules` : `${yellow}○${reset}Rules`}`;
+  lines.push(row(`${bold}${white}MIDAS${reset} ${dim}- Golden Code Coach${reset}            ${statusIcons}`, I));
   lines.push(`${cyan}╠${hLine}╣${reset}`);
+  
+  // Show session starter prompt first
+  if (state.showingSessionStart) {
+    lines.push(emptyRow());
+    lines.push(row(`${bold}${yellow}★ NEW SESSION${reset}`, 14));
+    lines.push(emptyRow());
+    lines.push(row(`${dim}Paste this in your new Cursor chat:${reset}`, 36));
+    lines.push(`${cyan}║${reset}  ${dim}┌${hLineLight}┐${reset}${cyan}║${reset}`);
+    
+    const promptWrapped = wrapText(state.sessionStarterPrompt, I - 4);
+    for (const pLine of promptWrapped) {
+      lines.push(`${cyan}║${reset}  ${dim}│${reset} ${pad(pLine, I - 4)}${dim}│${reset}${cyan}║${reset}`);
+    }
+    
+    lines.push(`${cyan}║${reset}  ${dim}└${hLineLight}┘${reset}${cyan}║${reset}`);
+    lines.push(emptyRow());
+    
+    if (!state.hasMidasRules) {
+      lines.push(row(`${yellow}!${reset} No Midas rules in .cursorrules`, 32));
+      lines.push(row(`${dim}Press ${bold}[a]${reset}${dim} to add Golden Code rules${reset}`, 35));
+      lines.push(emptyRow());
+    }
+    
+    lines.push(`${cyan}╠${hLine}╣${reset}`);
+    lines.push(row(`${dim}[c]${reset} Copy starter  ${dim}[s]${reset} Skip  ${dim}[a]${reset} Add rules  ${dim}[q]${reset} Quit`, 50));
+    lines.push(`${cyan}╚${hLine}╝${reset}`);
+    return lines.join('\n');
+  }
 
   if (state.isAnalyzing) {
     lines.push(emptyRow());
@@ -233,6 +312,9 @@ export async function runInteractive(): Promise<void> {
     recentToolCalls: [],
     message: '',
     hasApiKey: hasApiKey(),
+    hasMidasRules: hasMidasRules(projectPath),
+    showingSessionStart: true, // Start with session starter prompt
+    sessionStarterPrompt: getSessionStarterPrompt(projectPath),
   };
 
   const render = () => {
@@ -280,10 +362,8 @@ export async function runInteractive(): Promise<void> {
 
   render();
 
-  // Auto-analyze on start if API key exists
-  if (tuiState.hasApiKey) {
-    await runAnalysis();
-  }
+  // Don't auto-analyze - show session starter first
+  // User can press [s] to skip and trigger analysis
 
   // Watch for activity updates (poll tracker every 5s)
   const activityInterval = setInterval(() => {
@@ -302,6 +382,43 @@ export async function runInteractive(): Promise<void> {
       console.log(`\n  ${cyan}Midas${reset} signing off. Happy vibecoding!\n`);
       clearInterval(activityInterval);
       process.exit(0);
+    }
+
+    // Session start screen handling
+    if (tuiState.showingSessionStart) {
+      if (key === 'c') {
+        try {
+          await copyToClipboard(tuiState.sessionStarterPrompt);
+          tuiState.message = `${green}✓${reset} Session starter copied! Paste it in your new Cursor chat.`;
+        } catch {
+          tuiState.message = `${yellow}!${reset} Could not copy.`;
+        }
+        render();
+        return;
+      }
+      
+      if (key === 's') {
+        tuiState.showingSessionStart = false;
+        render();
+        if (tuiState.hasApiKey) {
+          await runAnalysis();
+        }
+        return;
+      }
+      
+      if (key === 'a') {
+        if (!tuiState.hasMidasRules) {
+          addMidasRules(projectPath);
+          tuiState.hasMidasRules = true;
+          tuiState.message = `${green}✓${reset} Added Golden Code rules to .cursorrules`;
+        } else {
+          tuiState.message = `${dim}Already has Midas rules${reset}`;
+        }
+        render();
+        return;
+      }
+      
+      return; // Ignore other keys on session start screen
     }
 
     if (key === 'c') {
