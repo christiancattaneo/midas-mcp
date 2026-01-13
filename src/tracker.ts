@@ -24,6 +24,7 @@ export interface GitActivity {
   lastCommitTime?: number;
   uncommittedChanges: number;
   branch: string;
+  recentCommits?: string[];  // Last 10 commit messages for phase detection
 }
 
 export interface ToolCall {
@@ -889,7 +890,14 @@ export function getGitActivity(projectPath: string): GitActivity | null {
       uncommittedChanges = status.split('\n').filter(Boolean).length;
     } catch {}
     
-    return { branch, lastCommit, lastCommitMessage, lastCommitTime, uncommittedChanges };
+    // Get recent commits for phase detection (version bumps, publish, deploy, etc.)
+    let recentCommits: string[] = [];
+    try {
+      const commits = execSync('git log -10 --format=%s', { cwd: safePath, encoding: 'utf-8' });
+      recentCommits = commits.split('\n').filter(Boolean);
+    } catch {}
+    
+    return { branch, lastCommit, lastCommitMessage, lastCommitTime, uncommittedChanges, recentCommits };
   } catch (error) {
     logger.error('Failed to get git activity', error);
     return null;

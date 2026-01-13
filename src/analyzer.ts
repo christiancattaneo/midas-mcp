@@ -174,13 +174,24 @@ function getActivityContext(projectPath: string): string {
       }
     }
     
-    // Git activity
+    // Git activity (CRITICAL for phase detection)
     if (tracker.gitActivity) {
       lines.push('\n## Git Activity:');
       lines.push(`- Branch: ${tracker.gitActivity.branch}`);
       lines.push(`- Uncommitted changes: ${tracker.gitActivity.uncommittedChanges}`);
-      if (tracker.gitActivity.lastCommitMessage) {
-        lines.push(`- Last commit: "${tracker.gitActivity.lastCommitMessage}"`);
+      if (tracker.gitActivity.recentCommits && tracker.gitActivity.recentCommits.length > 0) {
+        lines.push('- Recent commits (newest first):');
+        for (const commit of tracker.gitActivity.recentCommits.slice(0, 10)) {
+          lines.push(`  * ${commit}`);
+        }
+        // Phase hints from commits
+        const commitText = tracker.gitActivity.recentCommits.join(' ').toLowerCase();
+        if (commitText.includes('publish') || commitText.includes('release') || commitText.includes('deploy')) {
+          lines.push('  → PHASE SIGNAL: publish/release/deploy commits detected → likely SHIP or GROW phase');
+        }
+        if (commitText.includes('bump version') || commitText.match(/v?\d+\.\d+\.\d+/)) {
+          lines.push('  → PHASE SIGNAL: version bump detected → likely SHIP or GROW phase');
+        }
       }
     }
     
@@ -391,6 +402,7 @@ Purpose: Learn from production and improve.
 4. ERRORS FIRST: If gates are failing, the next action MUST fix them
 5. AUTO-ADVANCE: The AI has midas_advance_phase and midas_verify tools - NEVER suggest "advance me to X phase". The AI advances phases itself.
 6. ACTIONABLE PROMPTS: Suggest specific work to DO, not phase management commands
+7. PHASE FROM GIT: If commits show "bump version", "publish", "release", or "deploy" → project is in SHIP or GROW phase, NOT BUILD!
 
 ## Response Format:
 Respond ONLY with valid JSON matching this schema:
