@@ -201,20 +201,70 @@ export function extractKeyPoints(text: string, maxPoints: number = 5): string[] 
 }
 
 /**
- * Summarize journal entries to titles + key decisions
+ * Hierarchical summarization - more detail for recent, less for old
+ * Level 1 (most recent): Title + 3 key points
+ * Level 2 (recent): Title + 1 key point  
+ * Level 3 (older): Just title
  */
 export function summarizeJournalEntries(entries: Array<{ title: string; conversation: string; timestamp: string }>): string {
   if (entries.length === 0) return 'No journal entries.';
   
   const lines: string[] = [];
-  for (const entry of entries.slice(0, 5)) {
+  
+  for (let i = 0; i < entries.length && i < 7; i++) {
+    const entry = entries[i];
     const date = entry.timestamp.slice(0, 10);
-    const keyPoints = extractKeyPoints(entry.conversation, 2);
-    lines.push(`- ${date}: ${entry.title}`);
-    keyPoints.forEach(p => lines.push(`  > ${p.slice(0, 80)}`));
+    
+    if (i === 0) {
+      // Most recent: full detail
+      const keyPoints = extractKeyPoints(entry.conversation, 3);
+      lines.push(`- ${date}: ${entry.title}`);
+      keyPoints.forEach(p => lines.push(`  > ${p.slice(0, 100)}`));
+    } else if (i < 3) {
+      // Recent: title + 1 key point
+      const keyPoints = extractKeyPoints(entry.conversation, 1);
+      lines.push(`- ${date}: ${entry.title}`);
+      if (keyPoints.length > 0) {
+        lines.push(`  > ${keyPoints[0].slice(0, 80)}`);
+      }
+    } else {
+      // Older: just title
+      lines.push(`- ${date}: ${entry.title}`);
+    }
   }
   
   return lines.join('\n');
+}
+
+/**
+ * Get code snippets from recently modified files
+ */
+export function getCodeSnippets(projectPath: string, maxFiles: number = 3, maxLinesPerFile: number = 20): string {
+  const tracker = loadTracker(projectPath);
+  const snippets: string[] = [];
+  
+  const codeExtensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs'];
+  const recentCodeFiles = tracker.recentFiles
+    .filter(f => codeExtensions.some(ext => f.path.endsWith(ext)))
+    .slice(0, maxFiles);
+  
+  for (const file of recentCodeFiles) {
+    try {
+      const fullPath = join(projectPath, file.path);
+      if (!existsSync(fullPath)) continue;
+      
+      const content = readFileSync(fullPath, 'utf-8');
+      const lines = content.split('\n');
+      
+      // Get first N lines (usually imports + key code)
+      const snippet = lines.slice(0, maxLinesPerFile).join('\n');
+      snippets.push(`--- ${file.path} ---\n${snippet}`);
+    } catch {
+      // Skip files we can't read
+    }
+  }
+  
+  return snippets.join('\n\n');
 }
 
 // ============================================================================
@@ -235,7 +285,14 @@ export function buildCompressedContext(
   } = {}
 ): CompressedContext {
   const safePath = sanitizePath(projectPath);
-  const maxTokens = options.maxTokens || 4000;
+  
+  // Dynamic budget: increase when errors present
+  const errors = getUnresolvedErrors(safePath);
+  const hasErrors = errors.length > 0;
+  const baseTokens = options.maxTokens || 4000;
+  // Give 50% more budget when debugging errors
+  const maxTokens = hasErrors ? Math.floor(baseTokens * 1.5) : baseTokens;
+  const includeCode = options.includeCode ?? true; // Default to including code
   
   const layers: ContextLayer[] = [];
   let totalTokens = 0;
@@ -300,12 +357,30 @@ export function buildCompressedContext(
     });
   }
   
+  // Layer 4b: Code snippets (if enabled and budget allows)
+  if (includeCode && tracker.recentFiles.length > 0) {
+    const snippets = getCodeSnippets(safePath, 3, 15);
+    if (snippets.length > 0) {
+      const snippetTokens = estimateTokens(snippets);
+      // Only include if it fits in 20% of budget
+      if (snippetTokens < maxTokens * 0.2) {
+        layers.push({
+          name: 'code_snippets',
+          priority: 'medium',
+          position: 'middle',
+          content: `Recent code:\n${snippets}`,
+          tokens: snippetTokens + 20,
+        });
+      }
+    }
+  }
+  
   // ─────────────────────────────────────────────────────────────────────────
   // END: Recent context (high attention, full detail)
   // ─────────────────────────────────────────────────────────────────────────
   
   // Layer 5: Unresolved errors (FULL - critical for debugging)
-  const errors = getUnresolvedErrors(safePath);
+  // Note: 'errors' already loaded at top for dynamic budget calculation
   if (errors.length > 0) {
     const errorContent = errors.slice(0, 3).map(e => {
       const attempts = e.fixAttempts.length > 0 

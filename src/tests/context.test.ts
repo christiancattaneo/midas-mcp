@@ -130,8 +130,8 @@ Then we fixed the error.`;
       }));
       
       const summary = summarizeJournalEntries(entries);
-      // Should not include all 10
-      assert.strictEqual(summary.includes('Entry 6'), false);
+      // Should not include all 10 (hierarchical summarization includes up to 7)
+      assert.strictEqual(summary.includes('Entry 7'), false);
     });
   });
 
