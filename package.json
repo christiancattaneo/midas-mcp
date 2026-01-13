@@ -1,0 +1,42 @@
+{
+  "name": "midas-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for Elite Vibecoding - everything you vibecode turns to gold",
+  "main": "dist/index.js",
+  "bin": {
+    "midas-mcp": "./dist/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc && cp -r docs dist/",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "vibecoding",
+    "cursor",
+    "ai-assistant",
+    "developer-tools"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "README.md"
+  ]
+}
