@@ -516,9 +516,124 @@ export function markAnalysisComplete(projectPath: string): void {
 // SMART PROMPT SUGGESTION
 // ============================================================================
 
+// ============================================================================
+// COACHING EXPLANATIONS
+// ============================================================================
+
+/**
+ * Educational explanations for each suggestion type
+ * These teach the user WHY this is the right next step
+ */
+const COACHING = {
+  buildFailing: {
+    short: 'Build is failing - must fix before continuing',
+    explain: `Your code won't compile. In Golden Code, we never proceed with broken builds because:
+1. You can't run tests on code that doesn't compile
+2. Errors compound - fixing later is harder
+3. Every minute coding on a broken base is wasted
+Fix compilation errors first, always.`,
+  },
+  
+  testsFailing: {
+    short: 'Tests are failing - fix before new features',
+    explain: `Failing tests mean your safety net has holes. The Golden Code rule:
+1. Never add features with failing tests
+2. A test failure is a gift - it caught a bug before users did
+3. Fix tests immediately while context is fresh
+The longer you wait, the harder it gets to remember what broke.`,
+  },
+  
+  stuckOnError: {
+    short: 'Same error multiple times - time for Tornado',
+    explain: `You've tried fixing this ${'{attempts}'} times without success. Random fixes won't work.
+The Tornado cycle breaks the loop:
+1. RESEARCH - Search docs, StackOverflow, GitHub issues for this exact error
+2. LOGS - Add console.log/debugger around the problem to see actual values
+3. TESTS - Write a minimal test case that reproduces the bug
+This systematic approach works when guessing doesn't.`,
+  },
+  
+  lintErrors: {
+    short: 'Linter errors present',
+    explain: `Linting catches bugs before they become runtime errors:
+- Unused variables often indicate logic mistakes
+- Type errors prevent crashes
+- Style consistency makes code readable for future you
+Fix these now - they take seconds but prevent hours of debugging later.`,
+  },
+  
+  unresolvedError: {
+    short: 'Unresolved error from earlier session',
+    explain: `You left off with an error. Continuing without fixing it means:
+- The bug is still there
+- You'll hit it again (probably at a worse time)
+- Context you had is fading
+Address it now while it's still fresh in the codebase.`,
+  },
+  
+  verifyChanges: {
+    short: 'No verification run recently',
+    explain: `You've made changes but haven't verified them. Golden Code principle:
+- Verify early, verify often
+- The longer between checks, the harder to find what broke
+- A passing build gives confidence to continue
+Run build + tests now to catch issues while changes are small.`,
+  },
+  
+  allGatesPass: {
+    short: 'All gates pass - ready to advance',
+    explain: `Build passes, tests pass, lint passes. This is the green light.
+- Your code is verified working
+- It's safe to commit and move forward
+- You've earned the right to add new features
+Consider committing this checkpoint before starting the next task.`,
+  },
+  
+  phaseDefault: (phase: string, step: string) => ({
+    short: `Continuing ${phase}:${step}`,
+    explain: `You're in the ${phase} phase, ${step} step.
+${getPhaseExplanation(phase, step)}
+Focus on completing this step before moving to the next.`,
+  }),
+};
+
+function getPhaseExplanation(phase: string, step: string): string {
+  const explanations: Record<string, Record<string, string>> = {
+    EAGLE_SIGHT: {
+      IDEA: 'Define the core problem, who it affects, and why now is the right time to solve it.',
+      RESEARCH: 'Study what exists. What works? What fails? Where are the gaps?',
+      BRAINLIFT: 'Document your unique insights - what do you know that others don\'t?',
+      PRD: 'Write clear requirements. Vague requirements lead to vague implementations.',
+      GAMEPLAN: 'Break the build into ordered tasks. Each task should be completable in one session.',
+    },
+    BUILD: {
+      RULES: 'Read project constraints first. Building without knowing the rules wastes time.',
+      INDEX: 'Understand the codebase structure before diving in. Where does what live?',
+      READ: 'Read the specific files you\'ll touch. Understand before you modify.',
+      RESEARCH: 'Look up docs for APIs you\'ll use. Don\'t guess at library behavior.',
+      IMPLEMENT: 'Write code with tests. Test-first catches bugs before they compound.',
+      TEST: 'Run all tests. Green means safe. Red means stop and fix.',
+      DEBUG: 'Use the Tornado cycle: Research + Logs + Tests when stuck.',
+    },
+    SHIP: {
+      REVIEW: 'Review for security, performance, and edge cases before shipping.',
+      DEPLOY: 'Deploy with proper CI/CD. Manual deploys are error-prone.',
+      MONITOR: 'Set up logs and alerts. You can\'t fix what you can\'t see.',
+    },
+    GROW: {
+      FEEDBACK: 'Collect real user feedback. Your assumptions need validation.',
+      ANALYZE: 'Study the data. Where do users struggle? What do they love?',
+      ITERATE: 'Plan the next cycle based on evidence, not guesses. Back to Eagle Sight.',
+    },
+  };
+  
+  return explanations[phase]?.[step] || 'Continue with the current step.';
+}
+
 export function getSmartPromptSuggestion(projectPath: string): {
   prompt: string;
   reason: string;
+  explanation: string;
   priority: 'critical' | 'high' | 'normal' | 'low';
   context?: string;
 } {
@@ -531,7 +646,8 @@ export function getSmartPromptSuggestion(projectPath: string): {
   if (gates.compiles === false) {
     return {
       prompt: `Fix the TypeScript compilation errors:\n${gates.compileError || 'Run npm run build to see errors'}`,
-      reason: 'Build is failing - must fix before continuing',
+      reason: COACHING.buildFailing.short,
+      explanation: COACHING.buildFailing.explain,
       priority: 'critical',
       context: gates.compileError,
     };
@@ -541,7 +657,8 @@ export function getSmartPromptSuggestion(projectPath: string): {
   if (gates.testsPass === false) {
     return {
       prompt: `Fix the failing tests (${gates.failedTests || 'some'} failures):\n${gates.testError || 'Run npm test to see failures'}`,
-      reason: 'Tests are failing',
+      reason: COACHING.testsFailing.short,
+      explanation: COACHING.testsFailing.explain,
       priority: 'high',
       context: gates.testError,
     };
@@ -553,7 +670,8 @@ export function getSmartPromptSuggestion(projectPath: string): {
     const triedApproaches = stuck.fixAttempts.filter(a => !a.worked).map(a => a.approach);
     return {
       prompt: `Stuck on error (tried ${stuck.fixAttempts.length}x). Tornado time:\n1. Research: "${stuck.error.slice(0, 50)}"\n2. Add logging around the issue\n3. Write a minimal test case\n\nAlready tried: ${triedApproaches.join(', ')}`,
-      reason: `Same error seen ${stuck.fixAttempts.length} times`,
+      reason: COACHING.stuckOnError.short,
+      explanation: COACHING.stuckOnError.explain.replace('{attempts}', String(stuck.fixAttempts.length)),
       priority: 'high',
       context: stuck.error,
     };
@@ -563,7 +681,8 @@ export function getSmartPromptSuggestion(projectPath: string): {
   if (gates.lintsPass === false) {
     return {
       prompt: `Fix ${gates.lintErrors || 'the'} linter errors, then run lint again.`,
-      reason: 'Linter errors present',
+      reason: COACHING.lintErrors.short,
+      explanation: COACHING.lintErrors.explain,
       priority: 'normal',
     };
   }
@@ -573,7 +692,8 @@ export function getSmartPromptSuggestion(projectPath: string): {
     const recent = unresolvedErrors[0];
     return {
       prompt: `Address this error${recent.file ? ` in ${recent.file}` : ''}:\n${recent.error}`,
-      reason: 'Unresolved error from earlier',
+      reason: COACHING.unresolvedError.short,
+      explanation: COACHING.unresolvedError.explain,
       priority: 'normal',
       context: recent.error,
     };
@@ -584,7 +704,8 @@ export function getSmartPromptSuggestion(projectPath: string): {
   if (gatesStatus.stale && tracker.currentTask?.phase === 'implement') {
     return {
       prompt: 'Verify changes: run build and tests to check everything still works.',
-      reason: 'No verification run recently',
+      reason: COACHING.verifyChanges.short,
+      explanation: COACHING.verifyChanges.explain,
       priority: 'normal',
     };
   }
@@ -593,15 +714,22 @@ export function getSmartPromptSuggestion(projectPath: string): {
   if (gatesStatus.allPass) {
     return {
       prompt: 'All gates pass. Ready to advance to the next step.',
-      reason: 'Build, tests, and lint all passing',
+      reason: COACHING.allGatesPass.short,
+      explanation: COACHING.allGatesPass.explain,
       priority: 'low',
     };
   }
   
   // Default: Continue with current phase
+  const phase = tracker.inferredPhase;
+  const phaseStr = phase.phase;
+  const stepStr = 'step' in phase ? phase.step : 'IDLE';
+  const coaching = COACHING.phaseDefault(phaseStr, stepStr);
+  
   return {
     prompt: getPhaseBasedPrompt(tracker.inferredPhase, tracker.currentTask),
-    reason: 'Continuing current phase',
+    reason: coaching.short,
+    explanation: coaching.explain,
     priority: 'normal',
   };
 }

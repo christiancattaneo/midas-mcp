@@ -425,6 +425,7 @@ export async function quickAnalyze(projectPath: string): Promise<{
   suggestedPrompt: string;
   priority: 'critical' | 'high' | 'normal' | 'low';
   reason: string;
+  explanation: string;
 }> {
   const safePath = sanitizePath(projectPath);
   
@@ -442,5 +443,6 @@ export async function quickAnalyze(projectPath: string): Promise<{
     suggestedPrompt: suggestion.prompt,
     priority: suggestion.priority,
     reason: suggestion.reason,
+    explanation: suggestion.explanation,
   };
 }
