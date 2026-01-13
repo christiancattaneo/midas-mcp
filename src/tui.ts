@@ -1,9 +1,20 @@
-import { createInterface } from 'readline';
 import { watch, existsSync } from 'fs';
 import { join } from 'path';
+import { exec } from 'child_process';
 import { loadState, saveState, type Phase, type EagleSightStep, type BuildStep } from './state/phase.js';
 import { checkDocs } from './tools/docs.js';
-import { exec } from 'child_process';
+import { loadConfig, hasApiKey, ensureApiKey, getApiKey } from './config.js';
+import { logEvent, watchEvents, getRecentEvents } from './events.js';
+import { 
+  isCursorAvailable, 
+  watchConversations, 
+  getLatestConversation,
+  extractMidasToolCalls,
+  getConversationSummary,
+  type CursorConversation,
+  type ChatMessage 
+} from './cursor.js';
+import { analyzeCodebase, generateSmartPrompt } from './ai.js';
 
 // ANSI codes
 const ESC = '\x1b';
@@ -14,13 +25,12 @@ const green = `${ESC}[32m`;
 const yellow = `${ESC}[33m`;
 const blue = `${ESC}[34m`;
 const cyan = `${ESC}[36m`;
+const magenta = `${ESC}[35m`;
 const white = `${ESC}[37m`;
-const bgBlue = `${ESC}[44m`;
 const clearScreen = `${ESC}[2J${ESC}[H`;
 
 // Prompts for each step
 const STEP_PROMPTS: Record<string, { action: string; prompt: string }> = {
-  // Eagle Sight
   'EAGLE_SIGHT:IDEA': {
     action: 'Define your core idea',
     prompt: `I'm starting a new project. Help me clarify:
@@ -33,129 +43,74 @@ Ask me clarifying questions before we proceed.`,
   'EAGLE_SIGHT:RESEARCH': {
     action: 'Research the landscape',
     prompt: `Research the landscape for my project idea.
-Find:
-1. Existing solutions
-2. What they do well
-3. What they miss
-4. Technical approaches used
-
+Find existing solutions, what they do well, what they miss.
 Summarize findings.`,
   },
   'EAGLE_SIGHT:BRAINLIFT': {
     action: 'Fill out docs/brainlift.md',
     prompt: `Review my brainlift.md and help me strengthen it.
-Ask me questions to extract:
-1. Contrarian insights I have
-2. Domain knowledge AI lacks
-3. Hard-won lessons from experience
-4. Current context you might miss`,
+Ask me questions to extract my unique insights and domain knowledge.`,
   },
   'EAGLE_SIGHT:PRD': {
     action: 'Fill out docs/prd.md',
     prompt: `Review my PRD and help me improve it.
-Check for:
-1. Clear goals
-2. Explicit non-goals
-3. Complete user stories
-4. Technical requirements
-5. Success metrics
-
-Ask clarifying questions.`,
+Check for clear goals, non-goals, user stories, and requirements.`,
   },
   'EAGLE_SIGHT:GAMEPLAN': {
     action: 'Fill out docs/gameplan.md',
     prompt: `Review my gameplan and help me refine it.
-Verify:
-1. Tech stack justified
-2. Phases are logical
-3. Tasks are specific
-4. Risks identified
-
-Suggest improvements.`,
+Verify tech stack, phases, tasks, and risk mitigation.`,
   },
-  // Build
   'BUILD:RULES_LOADED': {
     action: 'Load user rules',
     prompt: `Read and understand user rules.
-Research each for complete understanding.
-Ask me any clarifying questions.
-Make todos of all tasks.
-Don't start yet.`,
+Ask clarifying questions. Make todos. Don't start yet.`,
   },
   'BUILD:CODEBASE_INDEXED': {
     action: 'Index the codebase',
-    prompt: `Index this codebase structure.
-Understand the architecture.
-Note key files and patterns.
-Summarize what you find.`,
+    prompt: `Index this codebase. Understand the architecture.
+Note key files and patterns. Summarize what you find.`,
   },
   'BUILD:FILES_READ': {
     action: 'Read relevant files',
     prompt: `Read the files relevant to my current task.
-Understand the implementation details.
-Note patterns to follow.
-Identify integration points.`,
+Note patterns to follow and integration points.`,
   },
   'BUILD:RESEARCHING': {
     action: 'Research docs and APIs',
-    prompt: `Research the documentation for the libraries/APIs I'm using.
-Find:
-1. Best practices
-2. Common pitfalls
-3. Code examples
-4. Security considerations`,
+    prompt: `Research documentation for the libraries/APIs I'm using.
+Find best practices, pitfalls, and examples.`,
   },
   'BUILD:IMPLEMENTING': {
     action: 'Write code with tests',
-    prompt: `Continue todos, do each comprehensively.
-Write the test file FIRST.
-Then implement to make tests pass.
-Each function should do ONE thing.
-Run tests after each file.`,
+    prompt: `Continue todos. Write test file FIRST.
+Then implement to make tests pass. Run tests after each file.`,
   },
   'BUILD:TESTING': {
     action: 'Run and fix tests',
-    prompt: `Run all tests.
-Fix any failures.
-Add edge case tests.
-Verify no regressions.
+    prompt: `Run all tests. Fix failures. Add edge case tests.
 Commit when green.`,
   },
   'BUILD:DEBUGGING': {
     action: 'Debug with Tornado cycle',
-    prompt: `I'm stuck on a bug. Help me with the Tornado cycle:
-1. RESEARCH: Look up relevant docs
-2. LOGS: Add strategic console.logs
-3. TESTS: Write test to reproduce
-
-Let's start with research.`,
+    prompt: `I'm stuck on a bug. Help with Tornado cycle:
+1. RESEARCH docs  2. Add LOGS  3. Write TESTS
+Start with research.`,
   },
-  // Idle/Shipped
   'IDLE': {
     action: 'Start a new project',
     prompt: `I want to start a new project.
-Help me through Eagle Sight:
-1. Clarify my idea
-2. Research landscape
-3. Document my brainlift
-4. Write the PRD
-5. Create the gameplan`,
+Help me through Eagle Sight: Idea → Research → Brainlift → PRD → Gameplan`,
   },
   'SHIPPED': {
     action: 'Run production audit',
-    prompt: `My project is shipped. Run a production readiness audit.
-Check all 12 ingredients:
-1-4: Core (Frontend, Backend, Database, Auth)
-5-7: Power (APIs, State, Design)
-8-10: Protection (Testing, Security, Errors)
-11-12: Mastery (Git, Deployment)`,
+    prompt: `Project shipped. Run production readiness audit.
+Check all 12 ingredients.`,
   },
 };
 
 function getPhaseKey(phase: Phase): string {
-  if (phase.phase === 'IDLE' || phase.phase === 'SHIPPED') {
-    return phase.phase;
-  }
+  if (phase.phase === 'IDLE' || phase.phase === 'SHIPPED') return phase.phase;
   return `${phase.phase}:${phase.step}`;
 }
 
@@ -176,18 +131,50 @@ function copyToClipboard(text: string): Promise<void> {
   });
 }
 
-function drawUI(phase: Phase, projectPath: string): string {
+function truncate(str: string, len: number): string {
+  if (str.length <= len) return str;
+  return str.slice(0, len - 3) + '...';
+}
+
+interface TUIState {
+  phase: Phase;
+  message: string;
+  cursorConnected: boolean;
+  lastChatSummary: string;
+  recentToolCalls: string[];
+  smartPrompt: string | null;
+  hasApiKey: boolean;
+  isAnalyzing: boolean;
+}
+
+function drawUI(state: TUIState, projectPath: string): string {
+  const { phase, cursorConnected, lastChatSummary, recentToolCalls, smartPrompt, hasApiKey: hasKey } = state;
   const lines: string[] = [];
-  const width = 54;
+  const width = 60;
   
   const hLine = '═'.repeat(width - 2);
   const hLineLight = '─'.repeat(width - 4);
   
+  // Header
   lines.push(`${cyan}╔${hLine}╗${reset}`);
-  lines.push(`${cyan}║${reset}  ${bold}${white}MIDAS${reset} ${dim}- Elite Vibecoding Coach${reset}${' '.repeat(width - 36)}${cyan}║${reset}`);
+  const statusIcon = cursorConnected ? `${green}●${reset}` : `${dim}○${reset}`;
+  const aiIcon = hasKey ? `${magenta}AI${reset}` : `${dim}--${reset}`;
+  lines.push(`${cyan}║${reset}  ${bold}${white}MIDAS${reset} ${dim}- Elite Vibecoding Coach${reset}    ${statusIcon} Cursor  ${aiIcon}  ${cyan}║${reset}`);
   lines.push(`${cyan}╠${hLine}╣${reset}`);
+
+  // Cursor chat activity
+  if (cursorConnected && lastChatSummary) {
+    lines.push(`${cyan}║${reset}  ${dim}Last chat:${reset} ${truncate(lastChatSummary, width - 16)}${' '.repeat(Math.max(0, width - 16 - Math.min(lastChatSummary.length, width - 16)))}${cyan}║${reset}`);
+    if (recentToolCalls.length > 0) {
+      const tools = recentToolCalls.slice(0, 3).join(', ');
+      lines.push(`${cyan}║${reset}  ${dim}Tools used:${reset} ${magenta}${truncate(tools, width - 17)}${reset}${' '.repeat(Math.max(0, width - 17 - Math.min(tools.length, width - 17)))}${cyan}║${reset}`);
+    }
+    lines.push(`${cyan}╠${hLine}╣${reset}`);
+  }
+
   lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
 
+  // Phase display
   if (phase.phase === 'IDLE') {
     lines.push(`${cyan}║${reset}  ${dim}No project initialized${reset}${' '.repeat(width - 27)}${cyan}║${reset}`);
     lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
@@ -202,19 +189,16 @@ function drawUI(phase: Phase, projectPath: string): string {
     
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
-      let icon: string, label: string;
+      let line: string;
       if (i < currentIdx) {
-        icon = `${green}✓${reset}`;
-        label = `${dim}${step}${reset}`;
+        line = `  ${green}✓${reset} ${dim}${step}${reset}`;
       } else if (i === currentIdx) {
-        icon = `${yellow}→${reset}`;
-        label = `${bold}${step}${reset} ${dim}(current)${reset}`;
+        line = `  ${yellow}→${reset} ${bold}${step}${reset} ${dim}(current)${reset}`;
       } else {
-        icon = `${dim}○${reset}`;
-        label = `${dim}${step}${reset}`;
+        line = `  ${dim}○ ${step}${reset}`;
       }
-      const padding = width - 8 - step.length - (i === currentIdx ? 10 : 0);
-      lines.push(`${cyan}║${reset}  ${icon} ${label}${' '.repeat(Math.max(0, padding))}${cyan}║${reset}`);
+      const padding = width - 6 - step.length - (i === currentIdx ? 10 : 0);
+      lines.push(`${cyan}║${reset}${line}${' '.repeat(Math.max(0, padding))}${cyan}║${reset}`);
     }
   } else if (phase.phase === 'BUILD') {
     const steps: BuildStep[] = ['RULES_LOADED', 'CODEBASE_INDEXED', 'FILES_READ', 'RESEARCHING', 'IMPLEMENTING', 'TESTING', 'DEBUGGING'];
@@ -236,22 +220,19 @@ function drawUI(phase: Phase, projectPath: string): string {
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
       const label = labels[step];
-      let icon: string, text: string;
+      let line: string;
       if (i < currentIdx) {
-        icon = `${green}✓${reset}`;
-        text = `${dim}${label}${reset}`;
+        line = `  ${green}✓${reset} ${dim}${label}${reset}`;
       } else if (i === currentIdx) {
-        icon = `${blue}→${reset}`;
-        text = `${bold}${label}${reset} ${dim}(current)${reset}`;
+        line = `  ${blue}→${reset} ${bold}${label}${reset} ${dim}(current)${reset}`;
       } else {
-        icon = `${dim}○${reset}`;
-        text = `${dim}${label}${reset}`;
+        line = `  ${dim}○ ${label}${reset}`;
       }
-      const padding = width - 8 - label.length - (i === currentIdx ? 10 : 0);
-      lines.push(`${cyan}║${reset}  ${icon} ${text}${' '.repeat(Math.max(0, padding))}${cyan}║${reset}`);
+      const padding = width - 6 - label.length - (i === currentIdx ? 10 : 0);
+      lines.push(`${cyan}║${reset}${line}${' '.repeat(Math.max(0, padding))}${cyan}║${reset}`);
     }
   } else if (phase.phase === 'SHIPPED') {
-    lines.push(`${cyan}║${reset}  ${green}${bold}SHIPPED${reset}  ${progressBar(1, 1)}${' '.repeat(width - 40)}${cyan}║${reset}`);
+    lines.push(`${cyan}║${reset}  ${green}${bold}SHIPPED${reset}  ${progressBar(1, 1)}${' '.repeat(width - 38)}${cyan}║${reset}`);
     lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
     lines.push(`${cyan}║${reset}  ${green}✓${reset} Project complete!${' '.repeat(width - 23)}${cyan}║${reset}`);
   }
@@ -259,30 +240,36 @@ function drawUI(phase: Phase, projectPath: string): string {
   lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
   lines.push(`${cyan}╠${hLine}╣${reset}`);
   
-  // Get current prompt
+  // Get prompt
   const key = getPhaseKey(phase);
   const stepData = STEP_PROMPTS[key] || { action: 'Continue', prompt: 'What would you like to do?' };
+  const promptToShow = smartPrompt || stepData.prompt;
   
   lines.push(`${cyan}║${reset}  ${bold}NEXT:${reset} ${stepData.action}${' '.repeat(Math.max(0, width - 10 - stepData.action.length))}${cyan}║${reset}`);
+  
+  if (smartPrompt) {
+    lines.push(`${cyan}║${reset}  ${magenta}✨ AI-generated prompt${reset}${' '.repeat(width - 27)}${cyan}║${reset}`);
+  }
+  
   lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
   lines.push(`${cyan}║${reset}  ${dim}Paste this in Cursor:${reset}${' '.repeat(width - 26)}${cyan}║${reset}`);
   lines.push(`${cyan}║${reset}  ${dim}┌${hLineLight}┐${reset}  ${cyan}║${reset}`);
   
   // Wrap prompt text
-  const promptLines = stepData.prompt.split('\n');
-  for (const pLine of promptLines.slice(0, 4)) {
+  const promptLines = promptToShow.split('\n');
+  for (const pLine of promptLines.slice(0, 5)) {
     const truncated = pLine.slice(0, width - 10);
     const padding = width - 8 - truncated.length;
     lines.push(`${cyan}║${reset}  ${dim}│${reset} ${truncated}${' '.repeat(Math.max(0, padding))}${dim}│${reset}  ${cyan}║${reset}`);
   }
-  if (promptLines.length > 4) {
+  if (promptLines.length > 5) {
     lines.push(`${cyan}║${reset}  ${dim}│ ...${' '.repeat(width - 13)}│${reset}  ${cyan}║${reset}`);
   }
   
   lines.push(`${cyan}║${reset}  ${dim}└${hLineLight}┘${reset}  ${cyan}║${reset}`);
   lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
   lines.push(`${cyan}╠${hLine}╣${reset}`);
-  lines.push(`${cyan}║${reset}  ${dim}[c]${reset} Copy prompt  ${dim}[n]${reset} Next step  ${dim}[b]${reset} Back  ${dim}[q]${reset} Quit  ${cyan}║${reset}`);
+  lines.push(`${cyan}║${reset}  ${dim}[c]${reset} Copy  ${dim}[n]${reset} Next  ${dim}[b]${reset} Back  ${dim}[a]${reset} AI prompt  ${dim}[q]${reset} Quit  ${cyan}║${reset}`);
   lines.push(`${cyan}╚${hLine}╝${reset}`);
 
   return lines.join('\n');
@@ -313,6 +300,7 @@ function advancePhase(projectPath: string): Phase {
   }
 
   saveState(projectPath, state);
+  logEvent(projectPath, { type: 'phase_changed', phase: state.current.phase, step: 'step' in state.current ? state.current.step : undefined });
   return state.current;
 }
 
@@ -345,78 +333,137 @@ function goBackPhase(projectPath: string): Phase {
 export async function runInteractive(): Promise<void> {
   const projectPath = process.cwd();
   
-  // Set up raw mode for single keypress
+  // Check for API key on first run
+  await ensureApiKey();
+  
+  // Set up raw mode
   if (process.stdin.isTTY) {
     process.stdin.setRawMode(true);
   }
   process.stdin.resume();
   process.stdin.setEncoding('utf8');
 
-  let state = loadState(projectPath);
-  let phase = state.current;
-  let message = '';
+  const stateData = loadState(projectPath);
+  
+  const tuiState: TUIState = {
+    phase: stateData.current,
+    message: '',
+    cursorConnected: isCursorAvailable(),
+    lastChatSummary: '',
+    recentToolCalls: [],
+    smartPrompt: null,
+    hasApiKey: hasApiKey(),
+    isAnalyzing: false,
+  };
 
   const render = () => {
     console.log(clearScreen);
-    console.log(drawUI(phase, projectPath));
-    if (message) {
-      console.log(`\n  ${message}`);
-      message = '';
+    console.log(drawUI(tuiState, projectPath));
+    if (tuiState.message) {
+      console.log(`\n  ${tuiState.message}`);
+      tuiState.message = '';
     }
   };
 
   render();
+
+  // Watch Cursor conversations
+  let stopWatchingCursor: (() => void) | null = null;
+  if (tuiState.cursorConnected) {
+    stopWatchingCursor = watchConversations((conv) => {
+      tuiState.lastChatSummary = getConversationSummary(conv);
+      tuiState.recentToolCalls = extractMidasToolCalls(conv.messages);
+      
+      // Log midas tool usage
+      for (const tool of tuiState.recentToolCalls) {
+        logEvent(projectPath, { type: 'tool_called', tool });
+      }
+      
+      render();
+    });
+  }
 
   // Watch for docs changes
   const docsPath = join(projectPath, 'docs');
   let watcher: ReturnType<typeof watch> | null = null;
   if (existsSync(docsPath)) {
     watcher = watch(docsPath, { recursive: true }, () => {
-      // Re-check docs completeness
       const docs = checkDocs({ projectPath });
-      if (docs.ready && phase.phase === 'EAGLE_SIGHT') {
-        message = `${green}✓${reset} Docs complete! Press [n] to start BUILD.`;
+      if (docs.ready && tuiState.phase.phase === 'EAGLE_SIGHT') {
+        tuiState.message = `${green}✓${reset} Docs complete! Press [n] to start BUILD.`;
         render();
       }
     });
   }
 
   process.stdin.on('data', async (key: string) => {
-    if (key === 'q' || key === '\u0003') { // q or Ctrl+C
+    if (key === 'q' || key === '\u0003') {
       console.log(clearScreen);
       console.log(`\n  ${cyan}Midas${reset} signing off. Happy vibecoding!\n`);
       watcher?.close();
+      stopWatchingCursor?.();
       process.exit(0);
     }
 
     if (key === 'c') {
-      const stepKey = getPhaseKey(phase);
-      const prompt = STEP_PROMPTS[stepKey]?.prompt || '';
+      const stepKey = getPhaseKey(tuiState.phase);
+      const prompt = tuiState.smartPrompt || STEP_PROMPTS[stepKey]?.prompt || '';
       try {
         await copyToClipboard(prompt);
-        message = `${green}✓${reset} Prompt copied to clipboard!`;
+        tuiState.message = `${green}✓${reset} Prompt copied to clipboard!`;
+        logEvent(projectPath, { type: 'prompt_copied', message: prompt.slice(0, 100) });
       } catch {
-        message = `${yellow}!${reset} Could not copy. Manually copy the prompt above.`;
+        tuiState.message = `${yellow}!${reset} Could not copy. Manually copy the prompt.`;
       }
       render();
     }
 
     if (key === 'n') {
-      phase = advancePhase(projectPath);
-      message = `${green}→${reset} Advanced to next step`;
+      tuiState.phase = advancePhase(projectPath);
+      tuiState.smartPrompt = null;
+      tuiState.message = `${green}→${reset} Advanced to next step`;
       render();
     }
 
     if (key === 'b') {
-      phase = goBackPhase(projectPath);
-      message = `${yellow}←${reset} Went back one step`;
+      tuiState.phase = goBackPhase(projectPath);
+      tuiState.smartPrompt = null;
+      tuiState.message = `${yellow}←${reset} Went back one step`;
+      render();
+    }
+
+    if (key === 'a') {
+      if (!tuiState.hasApiKey) {
+        tuiState.message = `${yellow}!${reset} No API key. Add to ~/.midas/config.json`;
+        render();
+        return;
+      }
+      
+      tuiState.message = `${magenta}⟳${reset} Generating AI prompt...`;
+      tuiState.isAnalyzing = true;
+      render();
+      
+      try {
+        const phaseStr = tuiState.phase.phase;
+        const stepStr = 'step' in tuiState.phase ? tuiState.phase.step : '';
+        const smart = await generateSmartPrompt(projectPath, phaseStr, stepStr);
+        if (smart) {
+          tuiState.smartPrompt = smart;
+          tuiState.message = `${green}✓${reset} AI prompt generated! Press [c] to copy.`;
+        } else {
+          tuiState.message = `${yellow}!${reset} Could not generate. Using default prompt.`;
+        }
+      } catch (err) {
+        tuiState.message = `${yellow}!${reset} AI error. Using default prompt.`;
+      }
+      tuiState.isAnalyzing = false;
       render();
     }
 
     if (key === 'r') {
-      state = loadState(projectPath);
-      phase = state.current;
-      message = `${blue}↻${reset} Refreshed`;
+      const stateData = loadState(projectPath);
+      tuiState.phase = stateData.current;
+      tuiState.message = `${blue}↻${reset} Refreshed`;
       render();
     }
   });
