@@ -205,7 +205,7 @@ Respond ONLY with valid JSON:
 
   try {
     const response = await callClaude(prompt, 
-      'You are Midas, an elite vibecoding coach. Analyze projects and determine their exact phase in the development lifecycle. Be specific and actionable. Respond only with valid JSON.'
+      'You are Midas, a Golden Code coach. Analyze projects and determine their exact phase in the development lifecycle. Be specific and actionable. Respond only with valid JSON.'
     );
     
     // Parse JSON from response

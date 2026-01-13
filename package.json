@@ -1,7 +1,7 @@
 {
   "name": "midas-mcp",
   "version": "1.5.0",
-  "description": "MCP server for Elite Vibecoding - everything you vibecode turns to gold",
+  "description": "MCP server for Golden Code methodology - everything you vibecode turns to gold",
   "main": "dist/index.js",
   "bin": {
     "midas-mcp": "./dist/index.js"

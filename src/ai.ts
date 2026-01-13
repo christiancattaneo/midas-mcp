@@ -19,7 +19,7 @@ async function callClaude(prompt: string, systemPrompt?: string): Promise<string
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
-      system: systemPrompt || 'You are Midas, an elite vibecoding coach. Be concise and actionable.',
+      system: systemPrompt || 'You are Midas, a Golden Code coach. Be concise and actionable.',
       messages: [{ role: 'user', content: prompt }],
     }),
   });
@@ -185,10 +185,10 @@ The prompt should:
 1. Be specific to THIS codebase
 2. Reference actual files/patterns if known
 3. Be immediately actionable
-4. Follow the Elite Vibecoding methodology
+4. Follow the Golden Code methodology
 
 Respond with just the prompt text, no explanation.`,
-      'You are Midas, an elite vibecoding coach. Generate prompts that are specific, actionable, and context-aware.'
+      'You are Midas, a Golden Code coach. Generate prompts that are specific, actionable, and context-aware.'
     );
 
     return response.trim();

@@ -2,7 +2,7 @@
 
 **Everything you vibecode turns to gold.**
 
-An MCP server that brings the Elite Vibecoding methodology into Cursor as an interactive coach. Guides users through the two-phase process, provides expert prompts, and audits projects against the 12 ingredients of production readiness.
+An MCP server that brings the Golden Code methodology into Cursor as an interactive coach. Guides users through the two-phase process, provides expert prompts, and audits projects against the 12 ingredients of production readiness.
 
 ## Installation
 

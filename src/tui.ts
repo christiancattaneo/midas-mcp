@@ -111,7 +111,7 @@ function drawUI(state: TUIState, _projectPath: string): string {
   
   // Header
   lines.push(`${cyan}╔${hLine}╗${reset}`);
-  lines.push(row(`${bold}${white}MIDAS${reset} ${dim}- Elite Vibecoding Coach${reset}              ${state.cursorConnected ? `${green}●${reset}` : `${dim}○${reset}`} Cursor  ${state.hasApiKey ? `${magenta}AI${reset}` : `${dim}--${reset}`}`, I));
+  lines.push(row(`${bold}${white}MIDAS${reset} ${dim}- Golden Code Coach${reset}              ${state.cursorConnected ? `${green}●${reset}` : `${dim}○${reset}`} Cursor  ${state.hasApiKey ? `${magenta}AI${reset}` : `${dim}--${reset}`}`, I));
   lines.push(`${cyan}╠${hLine}╣${reset}`);
 
   if (state.isAnalyzing) {

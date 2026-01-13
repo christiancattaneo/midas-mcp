@@ -1,4 +1,4 @@
-# Elite Vibecoding Methodology
+# Golden Code Methodology
 
 The complete methodology that Midas teaches and enforces.
 
