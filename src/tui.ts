@@ -1,20 +1,14 @@
-import { watch, existsSync } from 'fs';
-import { join } from 'path';
 import { exec } from 'child_process';
 import { loadState, saveState, type Phase, type EagleSightStep, type BuildStep } from './state/phase.js';
-import { checkDocs } from './tools/docs.js';
-import { loadConfig, hasApiKey, ensureApiKey, getApiKey } from './config.js';
-import { logEvent, watchEvents, getRecentEvents } from './events.js';
+import { hasApiKey, ensureApiKey } from './config.js';
+import { logEvent } from './events.js';
 import { 
   isCursorAvailable, 
   watchConversations, 
-  getLatestConversation,
-  extractMidasToolCalls,
   getConversationSummary,
-  type CursorConversation,
-  type ChatMessage 
+  extractMidasToolCalls,
 } from './cursor.js';
-import { analyzeCodebase, generateSmartPrompt } from './ai.js';
+import { analyzeProject, type ProjectAnalysis } from './analyzer.js';
 
 // ANSI codes
 const ESC = '\x1b';
@@ -27,91 +21,17 @@ const blue = `${ESC}[34m`;
 const cyan = `${ESC}[36m`;
 const magenta = `${ESC}[35m`;
 const white = `${ESC}[37m`;
+const red = `${ESC}[31m`;
 const clearScreen = `${ESC}[2J${ESC}[H`;
 
-// Prompts for each step
-const STEP_PROMPTS: Record<string, { action: string; prompt: string }> = {
-  'EAGLE_SIGHT:IDEA': {
-    action: 'Define your core idea',
-    prompt: `I'm starting a new project. Help me clarify:
-1. What problem am I solving?
-2. Who is it for?
-3. Why now?
-
-Ask me clarifying questions before we proceed.`,
-  },
-  'EAGLE_SIGHT:RESEARCH': {
-    action: 'Research the landscape',
-    prompt: `Research the landscape for my project idea.
-Find existing solutions, what they do well, what they miss.
-Summarize findings.`,
-  },
-  'EAGLE_SIGHT:BRAINLIFT': {
-    action: 'Fill out docs/brainlift.md',
-    prompt: `Review my brainlift.md and help me strengthen it.
-Ask me questions to extract my unique insights and domain knowledge.`,
-  },
-  'EAGLE_SIGHT:PRD': {
-    action: 'Fill out docs/prd.md',
-    prompt: `Review my PRD and help me improve it.
-Check for clear goals, non-goals, user stories, and requirements.`,
-  },
-  'EAGLE_SIGHT:GAMEPLAN': {
-    action: 'Fill out docs/gameplan.md',
-    prompt: `Review my gameplan and help me refine it.
-Verify tech stack, phases, tasks, and risk mitigation.`,
-  },
-  'BUILD:RULES_LOADED': {
-    action: 'Load user rules',
-    prompt: `Read and understand user rules.
-Ask clarifying questions. Make todos. Don't start yet.`,
-  },
-  'BUILD:CODEBASE_INDEXED': {
-    action: 'Index the codebase',
-    prompt: `Index this codebase. Understand the architecture.
-Note key files and patterns. Summarize what you find.`,
-  },
-  'BUILD:FILES_READ': {
-    action: 'Read relevant files',
-    prompt: `Read the files relevant to my current task.
-Note patterns to follow and integration points.`,
-  },
-  'BUILD:RESEARCHING': {
-    action: 'Research docs and APIs',
-    prompt: `Research documentation for the libraries/APIs I'm using.
-Find best practices, pitfalls, and examples.`,
-  },
-  'BUILD:IMPLEMENTING': {
-    action: 'Write code with tests',
-    prompt: `Continue todos. Write test file FIRST.
-Then implement to make tests pass. Run tests after each file.`,
-  },
-  'BUILD:TESTING': {
-    action: 'Run and fix tests',
-    prompt: `Run all tests. Fix failures. Add edge case tests.
-Commit when green.`,
-  },
-  'BUILD:DEBUGGING': {
-    action: 'Debug with Tornado cycle',
-    prompt: `I'm stuck on a bug. Help with Tornado cycle:
-1. RESEARCH docs  2. Add LOGS  3. Write TESTS
-Start with research.`,
-  },
-  'IDLE': {
-    action: 'Start a new project',
-    prompt: `I want to start a new project.
-Help me through Eagle Sight: Idea → Research → Brainlift → PRD → Gameplan`,
-  },
-  'SHIPPED': {
-    action: 'Run production audit',
-    prompt: `Project shipped. Run production readiness audit.
-Check all 12 ingredients.`,
-  },
-};
-
-function getPhaseKey(phase: Phase): string {
-  if (phase.phase === 'IDLE' || phase.phase === 'SHIPPED') return phase.phase;
-  return `${phase.phase}:${phase.step}`;
+interface TUIState {
+  analysis: ProjectAnalysis | null;
+  isAnalyzing: boolean;
+  cursorConnected: boolean;
+  lastChatSummary: string;
+  recentToolCalls: string[];
+  message: string;
+  hasApiKey: boolean;
 }
 
 function progressBar(current: number, total: number, width = 20): string {
@@ -136,198 +56,130 @@ function truncate(str: string, len: number): string {
   return str.slice(0, len - 3) + '...';
 }
 
-interface TUIState {
-  phase: Phase;
-  message: string;
-  cursorConnected: boolean;
-  lastChatSummary: string;
-  recentToolCalls: string[];
-  smartPrompt: string | null;
-  hasApiKey: boolean;
-  isAnalyzing: boolean;
+function wrapText(text: string, width: number): string[] {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let current = '';
+  
+  for (const word of words) {
+    if (current.length + word.length + 1 <= width) {
+      current += (current ? ' ' : '') + word;
+    } else {
+      if (current) lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
 }
 
 function drawUI(state: TUIState, projectPath: string): string {
-  const { phase, cursorConnected, lastChatSummary, recentToolCalls, smartPrompt, hasApiKey: hasKey } = state;
   const lines: string[] = [];
-  const width = 60;
+  const width = 64;
+  const innerWidth = width - 4;
   
   const hLine = '═'.repeat(width - 2);
-  const hLineLight = '─'.repeat(width - 4);
+  const hLineLight = '─'.repeat(innerWidth);
   
   // Header
   lines.push(`${cyan}╔${hLine}╗${reset}`);
-  const statusIcon = cursorConnected ? `${green}●${reset}` : `${dim}○${reset}`;
-  const aiIcon = hasKey ? `${magenta}AI${reset}` : `${dim}--${reset}`;
-  lines.push(`${cyan}║${reset}  ${bold}${white}MIDAS${reset} ${dim}- Elite Vibecoding Coach${reset}    ${statusIcon} Cursor  ${aiIcon}  ${cyan}║${reset}`);
+  const statusIcon = state.cursorConnected ? `${green}●${reset}` : `${dim}○${reset}`;
+  const aiIcon = state.hasApiKey ? `${magenta}AI${reset}` : `${red}--${reset}`;
+  lines.push(`${cyan}║${reset}  ${bold}${white}MIDAS${reset} ${dim}- Elite Vibecoding Coach${reset}      ${statusIcon} Cursor  ${aiIcon}   ${cyan}║${reset}`);
   lines.push(`${cyan}╠${hLine}╣${reset}`);
 
-  // Cursor chat activity
-  if (cursorConnected && lastChatSummary) {
-    lines.push(`${cyan}║${reset}  ${dim}Last chat:${reset} ${truncate(lastChatSummary, width - 16)}${' '.repeat(Math.max(0, width - 16 - Math.min(lastChatSummary.length, width - 16)))}${cyan}║${reset}`);
-    if (recentToolCalls.length > 0) {
-      const tools = recentToolCalls.slice(0, 3).join(', ');
-      lines.push(`${cyan}║${reset}  ${dim}Tools used:${reset} ${magenta}${truncate(tools, width - 17)}${reset}${' '.repeat(Math.max(0, width - 17 - Math.min(tools.length, width - 17)))}${cyan}║${reset}`);
-    }
+  if (state.isAnalyzing) {
+    lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
+    lines.push(`${cyan}║${reset}  ${magenta}⟳${reset} ${bold}Analyzing project...${reset}${' '.repeat(width - 28)}${cyan}║${reset}`);
+    lines.push(`${cyan}║${reset}  ${dim}Reading codebase, chat history, docs...${reset}${' '.repeat(width - 46)}${cyan}║${reset}`);
+    lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
+    lines.push(`${cyan}╚${hLine}╝${reset}`);
+    return lines.join('\n');
+  }
+
+  if (!state.analysis) {
+    lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
+    lines.push(`${cyan}║${reset}  ${yellow}!${reset} No analysis yet. Press [r] to analyze.${' '.repeat(width - 47)}${cyan}║${reset}`);
+    lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
     lines.push(`${cyan}╠${hLine}╣${reset}`);
+    lines.push(`${cyan}║${reset}  ${dim}[r]${reset} Analyze  ${dim}[q]${reset} Quit${' '.repeat(width - 28)}${cyan}║${reset}`);
+    lines.push(`${cyan}╚${hLine}╝${reset}`);
+    return lines.join('\n');
   }
 
+  const a = state.analysis;
+
+  // Project summary
+  lines.push(`${cyan}║${reset}  ${bold}${truncate(a.summary, innerWidth)}${reset}${' '.repeat(Math.max(0, innerWidth - a.summary.length))}${cyan}║${reset}`);
+  if (a.techStack.length > 0) {
+    const stack = a.techStack.slice(0, 4).join(' · ');
+    lines.push(`${cyan}║${reset}  ${dim}${truncate(stack, innerWidth)}${reset}${' '.repeat(Math.max(0, innerWidth - stack.length))}${cyan}║${reset}`);
+  }
   lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
 
-  // Phase display
-  if (phase.phase === 'IDLE') {
-    lines.push(`${cyan}║${reset}  ${dim}No project initialized${reset}${' '.repeat(width - 27)}${cyan}║${reset}`);
-    lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
-    lines.push(`${cyan}║${reset}  Run: ${yellow}npx midas-mcp init <name>${reset}${' '.repeat(width - 35)}${cyan}║${reset}`);
-  } else if (phase.phase === 'EAGLE_SIGHT') {
-    const steps: EagleSightStep[] = ['IDEA', 'RESEARCH', 'BRAINLIFT', 'PRD', 'GAMEPLAN'];
-    const currentIdx = steps.indexOf(phase.step);
-    const progress = currentIdx + 1;
-    
-    lines.push(`${cyan}║${reset}  ${yellow}${bold}EAGLE SIGHT${reset}  ${progressBar(progress, 5)}  ${progress}/5${' '.repeat(width - 44)}${cyan}║${reset}`);
-    lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
-    
-    for (let i = 0; i < steps.length; i++) {
-      const step = steps[i];
-      let line: string;
-      if (i < currentIdx) {
-        line = `  ${green}✓${reset} ${dim}${step}${reset}`;
-      } else if (i === currentIdx) {
-        line = `  ${yellow}→${reset} ${bold}${step}${reset} ${dim}(current)${reset}`;
-      } else {
-        line = `  ${dim}○ ${step}${reset}`;
-      }
-      const padding = width - 6 - step.length - (i === currentIdx ? 10 : 0);
-      lines.push(`${cyan}║${reset}${line}${' '.repeat(Math.max(0, padding))}${cyan}║${reset}`);
+  // Cursor chat context
+  if (state.cursorConnected && state.lastChatSummary && state.lastChatSummary !== 'Empty conversation') {
+    lines.push(`${cyan}║${reset}  ${dim}Chat:${reset} ${truncate(state.lastChatSummary, innerWidth - 7)}${' '.repeat(Math.max(0, innerWidth - 7 - Math.min(state.lastChatSummary.length, innerWidth - 7)))}${cyan}║${reset}`);
+    if (state.recentToolCalls.length > 0) {
+      const tools = state.recentToolCalls.slice(0, 3).join(', ');
+      lines.push(`${cyan}║${reset}  ${dim}Tools:${reset} ${magenta}${truncate(tools, innerWidth - 8)}${reset}${' '.repeat(Math.max(0, innerWidth - 8 - Math.min(tools.length, innerWidth - 8)))}${cyan}║${reset}`);
     }
-  } else if (phase.phase === 'BUILD') {
-    const steps: BuildStep[] = ['RULES_LOADED', 'CODEBASE_INDEXED', 'FILES_READ', 'RESEARCHING', 'IMPLEMENTING', 'TESTING', 'DEBUGGING'];
-    const labels: Record<BuildStep, string> = {
-      RULES_LOADED: 'Load Rules',
-      CODEBASE_INDEXED: 'Index Codebase',
-      FILES_READ: 'Read Files',
-      RESEARCHING: 'Research',
-      IMPLEMENTING: 'Implement',
-      TESTING: 'Test',
-      DEBUGGING: 'Debug',
-    };
-    const currentIdx = steps.indexOf(phase.step);
-    const progress = currentIdx + 1;
-    
-    lines.push(`${cyan}║${reset}  ${blue}${bold}BUILD${reset}  ${progressBar(progress, 7)}  ${progress}/7${' '.repeat(width - 38)}${cyan}║${reset}`);
     lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
-    
-    for (let i = 0; i < steps.length; i++) {
-      const step = steps[i];
-      const label = labels[step];
-      let line: string;
-      if (i < currentIdx) {
-        line = `  ${green}✓${reset} ${dim}${label}${reset}`;
-      } else if (i === currentIdx) {
-        line = `  ${blue}→${reset} ${bold}${label}${reset} ${dim}(current)${reset}`;
-      } else {
-        line = `  ${dim}○ ${label}${reset}`;
-      }
-      const padding = width - 6 - label.length - (i === currentIdx ? 10 : 0);
-      lines.push(`${cyan}║${reset}${line}${' '.repeat(Math.max(0, padding))}${cyan}║${reset}`);
+  }
+
+  lines.push(`${cyan}╠${hLine}╣${reset}`);
+
+  // Current phase with confidence
+  const phase = a.currentPhase;
+  const confColor = a.confidence >= 70 ? green : a.confidence >= 40 ? yellow : red;
+  lines.push(`${cyan}║${reset}  ${bold}PHASE:${reset} ${phaseLabel(phase)}  ${confColor}${a.confidence}% confidence${reset}${' '.repeat(Math.max(0, width - 40 - phaseLabel(phase).length))}${cyan}║${reset}`);
+  lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
+
+  // What's done
+  if (a.whatsDone.length > 0) {
+    lines.push(`${cyan}║${reset}  ${dim}Completed:${reset}${' '.repeat(innerWidth - 10)}${cyan}║${reset}`);
+    for (const done of a.whatsDone.slice(0, 4)) {
+      lines.push(`${cyan}║${reset}  ${green}✓${reset} ${dim}${truncate(done, innerWidth - 4)}${reset}${' '.repeat(Math.max(0, innerWidth - 4 - Math.min(done.length, innerWidth - 4)))}${cyan}║${reset}`);
     }
-  } else if (phase.phase === 'SHIPPED') {
-    lines.push(`${cyan}║${reset}  ${green}${bold}SHIPPED${reset}  ${progressBar(1, 1)}${' '.repeat(width - 38)}${cyan}║${reset}`);
     lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
-    lines.push(`${cyan}║${reset}  ${green}✓${reset} Project complete!${' '.repeat(width - 23)}${cyan}║${reset}`);
+  }
+
+  lines.push(`${cyan}╠${hLine}╣${reset}`);
+
+  // What's next
+  lines.push(`${cyan}║${reset}  ${bold}${yellow}NEXT:${reset} ${truncate(a.whatsNext, innerWidth - 7)}${' '.repeat(Math.max(0, innerWidth - 7 - Math.min(a.whatsNext.length, innerWidth - 7)))}${cyan}║${reset}`);
+  lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
+
+  // Suggested prompt
+  if (a.suggestedPrompt) {
+    lines.push(`${cyan}║${reset}  ${dim}Paste this in Cursor:${reset}${' '.repeat(innerWidth - 21)}${cyan}║${reset}`);
+    lines.push(`${cyan}║${reset}  ${dim}┌${hLineLight}┐${reset}${cyan}║${reset}`);
+    
+    const promptLines = a.suggestedPrompt.split('\n').slice(0, 6);
+    for (const pLine of promptLines) {
+      const truncated = truncate(pLine, innerWidth - 4);
+      lines.push(`${cyan}║${reset}  ${dim}│${reset} ${truncated}${' '.repeat(Math.max(0, innerWidth - 4 - truncated.length))}${dim}│${reset}${cyan}║${reset}`);
+    }
+    if (a.suggestedPrompt.split('\n').length > 6) {
+      lines.push(`${cyan}║${reset}  ${dim}│ ...${' '.repeat(innerWidth - 8)}│${reset}${cyan}║${reset}`);
+    }
+    
+    lines.push(`${cyan}║${reset}  ${dim}└${hLineLight}┘${reset}${cyan}║${reset}`);
   }
 
   lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
   lines.push(`${cyan}╠${hLine}╣${reset}`);
-  
-  // Get prompt
-  const key = getPhaseKey(phase);
-  const stepData = STEP_PROMPTS[key] || { action: 'Continue', prompt: 'What would you like to do?' };
-  const promptToShow = smartPrompt || stepData.prompt;
-  
-  lines.push(`${cyan}║${reset}  ${bold}NEXT:${reset} ${stepData.action}${' '.repeat(Math.max(0, width - 10 - stepData.action.length))}${cyan}║${reset}`);
-  
-  if (smartPrompt) {
-    lines.push(`${cyan}║${reset}  ${magenta}✨ AI-generated prompt${reset}${' '.repeat(width - 27)}${cyan}║${reset}`);
-  }
-  
-  lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
-  lines.push(`${cyan}║${reset}  ${dim}Paste this in Cursor:${reset}${' '.repeat(width - 26)}${cyan}║${reset}`);
-  lines.push(`${cyan}║${reset}  ${dim}┌${hLineLight}┐${reset}  ${cyan}║${reset}`);
-  
-  // Wrap prompt text
-  const promptLines = promptToShow.split('\n');
-  for (const pLine of promptLines.slice(0, 5)) {
-    const truncated = pLine.slice(0, width - 10);
-    const padding = width - 8 - truncated.length;
-    lines.push(`${cyan}║${reset}  ${dim}│${reset} ${truncated}${' '.repeat(Math.max(0, padding))}${dim}│${reset}  ${cyan}║${reset}`);
-  }
-  if (promptLines.length > 5) {
-    lines.push(`${cyan}║${reset}  ${dim}│ ...${' '.repeat(width - 13)}│${reset}  ${cyan}║${reset}`);
-  }
-  
-  lines.push(`${cyan}║${reset}  ${dim}└${hLineLight}┘${reset}  ${cyan}║${reset}`);
-  lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
-  lines.push(`${cyan}╠${hLine}╣${reset}`);
-  lines.push(`${cyan}║${reset}  ${dim}[c]${reset} Copy  ${dim}[n]${reset} Next  ${dim}[b]${reset} Back  ${dim}[a]${reset} AI prompt  ${dim}[q]${reset} Quit  ${cyan}║${reset}`);
+  lines.push(`${cyan}║${reset}  ${dim}[c]${reset} Copy prompt  ${dim}[r]${reset} Re-analyze  ${dim}[q]${reset} Quit${' '.repeat(width - 49)}${cyan}║${reset}`);
   lines.push(`${cyan}╚${hLine}╝${reset}`);
 
   return lines.join('\n');
 }
 
-function advancePhase(projectPath: string): Phase {
-  const state = loadState(projectPath);
-  const phase = state.current;
-
-  if (phase.phase === 'IDLE') {
-    state.current = { phase: 'EAGLE_SIGHT', step: 'IDEA' };
-  } else if (phase.phase === 'EAGLE_SIGHT') {
-    const steps: EagleSightStep[] = ['IDEA', 'RESEARCH', 'BRAINLIFT', 'PRD', 'GAMEPLAN'];
-    const idx = steps.indexOf(phase.step);
-    if (idx < steps.length - 1) {
-      state.current = { phase: 'EAGLE_SIGHT', step: steps[idx + 1] };
-    } else {
-      state.current = { phase: 'BUILD', step: 'RULES_LOADED' };
-    }
-  } else if (phase.phase === 'BUILD') {
-    const steps: BuildStep[] = ['RULES_LOADED', 'CODEBASE_INDEXED', 'FILES_READ', 'RESEARCHING', 'IMPLEMENTING', 'TESTING', 'DEBUGGING'];
-    const idx = steps.indexOf(phase.step);
-    if (idx < steps.length - 1) {
-      state.current = { phase: 'BUILD', step: steps[idx + 1] };
-    } else {
-      state.current = { phase: 'SHIPPED' };
-    }
-  }
-
-  saveState(projectPath, state);
-  logEvent(projectPath, { type: 'phase_changed', phase: state.current.phase, step: 'step' in state.current ? state.current.step : undefined });
-  return state.current;
-}
-
-function goBackPhase(projectPath: string): Phase {
-  const state = loadState(projectPath);
-  const phase = state.current;
-
-  if (phase.phase === 'EAGLE_SIGHT') {
-    const steps: EagleSightStep[] = ['IDEA', 'RESEARCH', 'BRAINLIFT', 'PRD', 'GAMEPLAN'];
-    const idx = steps.indexOf(phase.step);
-    if (idx > 0) {
-      state.current = { phase: 'EAGLE_SIGHT', step: steps[idx - 1] };
-    }
-  } else if (phase.phase === 'BUILD') {
-    const steps: BuildStep[] = ['RULES_LOADED', 'CODEBASE_INDEXED', 'FILES_READ', 'RESEARCHING', 'IMPLEMENTING', 'TESTING', 'DEBUGGING'];
-    const idx = steps.indexOf(phase.step);
-    if (idx > 0) {
-      state.current = { phase: 'BUILD', step: steps[idx - 1] };
-    } else {
-      state.current = { phase: 'EAGLE_SIGHT', step: 'GAMEPLAN' };
-    }
-  } else if (phase.phase === 'SHIPPED') {
-    state.current = { phase: 'BUILD', step: 'DEBUGGING' };
-  }
-
-  saveState(projectPath, state);
-  return state.current;
+function phaseLabel(phase: Phase): string {
+  if (phase.phase === 'IDLE') return 'Not started';
+  if (phase.phase === 'SHIPPED') return 'Shipped';
+  if (phase.phase === 'EAGLE_SIGHT') return `Eagle Sight → ${phase.step}`;
+  return `Build → ${phase.step}`;
 }
 
 export async function runInteractive(): Promise<void> {
@@ -343,17 +195,14 @@ export async function runInteractive(): Promise<void> {
   process.stdin.resume();
   process.stdin.setEncoding('utf8');
 
-  const stateData = loadState(projectPath);
-  
   const tuiState: TUIState = {
-    phase: stateData.current,
-    message: '',
+    analysis: null,
+    isAnalyzing: false,
     cursorConnected: isCursorAvailable(),
     lastChatSummary: '',
     recentToolCalls: [],
-    smartPrompt: null,
+    message: '',
     hasApiKey: hasApiKey(),
-    isAnalyzing: false,
   };
 
   const render = () => {
@@ -365,7 +214,46 @@ export async function runInteractive(): Promise<void> {
     }
   };
 
+  const runAnalysis = async () => {
+    if (!tuiState.hasApiKey) {
+      tuiState.message = `${red}!${reset} No API key. Add to ~/.midas/config.json`;
+      render();
+      return;
+    }
+    
+    tuiState.isAnalyzing = true;
+    render();
+    
+    try {
+      tuiState.analysis = await analyzeProject(projectPath);
+      
+      // Save phase to state
+      if (tuiState.analysis.currentPhase) {
+        const state = loadState(projectPath);
+        state.current = tuiState.analysis.currentPhase;
+        saveState(projectPath, state);
+      }
+      
+      logEvent(projectPath, { 
+        type: 'ai_suggestion', 
+        message: tuiState.analysis.summary,
+        data: { phase: tuiState.analysis.currentPhase }
+      });
+      
+    } catch (error) {
+      tuiState.message = `${red}!${reset} Analysis failed. Check API key.`;
+    }
+    
+    tuiState.isAnalyzing = false;
+    render();
+  };
+
   render();
+
+  // Auto-analyze on start if API key exists
+  if (tuiState.hasApiKey) {
+    await runAnalysis();
+  }
 
   // Watch Cursor conversations
   let stopWatchingCursor: (() => void) | null = null;
@@ -373,26 +261,7 @@ export async function runInteractive(): Promise<void> {
     stopWatchingCursor = watchConversations((conv) => {
       tuiState.lastChatSummary = getConversationSummary(conv);
       tuiState.recentToolCalls = extractMidasToolCalls(conv.messages);
-      
-      // Log midas tool usage
-      for (const tool of tuiState.recentToolCalls) {
-        logEvent(projectPath, { type: 'tool_called', tool });
-      }
-      
       render();
-    });
-  }
-
-  // Watch for docs changes
-  const docsPath = join(projectPath, 'docs');
-  let watcher: ReturnType<typeof watch> | null = null;
-  if (existsSync(docsPath)) {
-    watcher = watch(docsPath, { recursive: true }, () => {
-      const docs = checkDocs({ projectPath });
-      if (docs.ready && tuiState.phase.phase === 'EAGLE_SIGHT') {
-        tuiState.message = `${green}✓${reset} Docs complete! Press [n] to start BUILD.`;
-        render();
-      }
     });
   }
 
@@ -400,71 +269,27 @@ export async function runInteractive(): Promise<void> {
     if (key === 'q' || key === '\u0003') {
       console.log(clearScreen);
       console.log(`\n  ${cyan}Midas${reset} signing off. Happy vibecoding!\n`);
-      watcher?.close();
       stopWatchingCursor?.();
       process.exit(0);
     }
 
     if (key === 'c') {
-      const stepKey = getPhaseKey(tuiState.phase);
-      const prompt = tuiState.smartPrompt || STEP_PROMPTS[stepKey]?.prompt || '';
-      try {
-        await copyToClipboard(prompt);
-        tuiState.message = `${green}✓${reset} Prompt copied to clipboard!`;
-        logEvent(projectPath, { type: 'prompt_copied', message: prompt.slice(0, 100) });
-      } catch {
-        tuiState.message = `${yellow}!${reset} Could not copy. Manually copy the prompt.`;
-      }
-      render();
-    }
-
-    if (key === 'n') {
-      tuiState.phase = advancePhase(projectPath);
-      tuiState.smartPrompt = null;
-      tuiState.message = `${green}→${reset} Advanced to next step`;
-      render();
-    }
-
-    if (key === 'b') {
-      tuiState.phase = goBackPhase(projectPath);
-      tuiState.smartPrompt = null;
-      tuiState.message = `${yellow}←${reset} Went back one step`;
-      render();
-    }
-
-    if (key === 'a') {
-      if (!tuiState.hasApiKey) {
-        tuiState.message = `${yellow}!${reset} No API key. Add to ~/.midas/config.json`;
-        render();
-        return;
-      }
-      
-      tuiState.message = `${magenta}⟳${reset} Generating AI prompt...`;
-      tuiState.isAnalyzing = true;
-      render();
-      
-      try {
-        const phaseStr = tuiState.phase.phase;
-        const stepStr = 'step' in tuiState.phase ? tuiState.phase.step : '';
-        const smart = await generateSmartPrompt(projectPath, phaseStr, stepStr);
-        if (smart) {
-          tuiState.smartPrompt = smart;
-          tuiState.message = `${green}✓${reset} AI prompt generated! Press [c] to copy.`;
-        } else {
-          tuiState.message = `${yellow}!${reset} Could not generate. Using default prompt.`;
+      if (tuiState.analysis?.suggestedPrompt) {
+        try {
+          await copyToClipboard(tuiState.analysis.suggestedPrompt);
+          tuiState.message = `${green}✓${reset} Prompt copied to clipboard!`;
+          logEvent(projectPath, { type: 'prompt_copied', message: tuiState.analysis.suggestedPrompt.slice(0, 100) });
+        } catch {
+          tuiState.message = `${yellow}!${reset} Could not copy.`;
         }
-      } catch (err) {
-        tuiState.message = `${yellow}!${reset} AI error. Using default prompt.`;
+      } else {
+        tuiState.message = `${yellow}!${reset} No prompt to copy.`;
       }
-      tuiState.isAnalyzing = false;
       render();
     }
 
     if (key === 'r') {
-      const stateData = loadState(projectPath);
-      tuiState.phase = stateData.current;
-      tuiState.message = `${blue}↻${reset} Refreshed`;
-      render();
+      await runAnalysis();
     }
   });
 }
