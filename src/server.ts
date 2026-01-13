@@ -26,6 +26,7 @@ import {
 import { registerAllPrompts } from './prompts/index.js';
 import { registerAllResources } from './resources/index.js';
 import { logger } from './logger.js';
+import { trackToolCall } from './tracker.js';
 
 export function createServer(): McpServer {
   logger.info('Creating Midas MCP server');
@@ -39,6 +40,11 @@ export function createServer(): McpServer {
   const wrapTool = <T, R>(name: string, fn: (args: T) => R) => {
     return async (args: T) => {
       logger.tool(name, args as Record<string, unknown>);
+      // Track tool call for activity monitoring
+      try {
+        trackToolCall(process.cwd(), name, args as Record<string, unknown>);
+      } catch {}
+      
       try {
         const result = fn(args);
         logger.debug(`Tool ${name} completed`);
@@ -115,6 +121,11 @@ export function createServer(): McpServer {
   const wrapAsyncTool = <T, R>(name: string, fn: (args: T) => Promise<R>) => {
     return async (args: T) => {
       logger.tool(name, args as Record<string, unknown>);
+      // Track tool call for activity monitoring
+      try {
+        trackToolCall(process.cwd(), name, args as Record<string, unknown>);
+      } catch {}
+      
       try {
         const result = await fn(args);
         logger.debug(`Tool ${name} completed`);

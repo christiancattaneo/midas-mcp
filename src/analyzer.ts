@@ -1,8 +1,8 @@
 import { getApiKey } from './config.js';
-import { getRecentConversationIds, getConversation } from './cursor.js';
 import { readdirSync, readFileSync, existsSync } from 'fs';
 import { join, extname } from 'path';
 import type { Phase, EagleSightStep, BuildStep, ShipStep, GrowStep } from './state/phase.js';
+import { updateTracker, getActivitySummary } from './tracker.js';
 
 async function callClaude(prompt: string, systemPrompt: string): Promise<string> {
   const apiKey = getApiKey();
@@ -60,24 +60,48 @@ function readFile(path: string, maxLines = 30): string {
   }
 }
 
-function getRecentChatHistory(limit = 30): string {
-  const ids = getRecentConversationIds(3);
-  const messages: string[] = [];
-  
-  for (const id of ids) {
-    const conv = getConversation(id);
-    if (!conv) continue;
+function getActivityContext(projectPath: string): string {
+  try {
+    const tracker = updateTracker(projectPath);
+    const lines: string[] = [];
     
-    for (const msg of conv.messages.slice(-15)) {
-      const role = msg.type === 'user' ? 'USER' : 'ASSISTANT';
-      const text = msg.text.slice(0, 500);
-      messages.push(`${role}: ${text}`);
-      if (messages.length >= limit) break;
+    // Recent file activity
+    if (tracker.recentFiles.length > 0) {
+      lines.push('## Recent File Activity:');
+      for (const f of tracker.recentFiles.slice(0, 10)) {
+        const ago = Math.round((Date.now() - f.lastModified) / 60000);
+        lines.push(`- ${f.path} (${ago}min ago)`);
+      }
     }
-    if (messages.length >= limit) break;
+    
+    // Git activity
+    if (tracker.gitActivity) {
+      lines.push('\n## Git Activity:');
+      lines.push(`- Branch: ${tracker.gitActivity.branch}`);
+      lines.push(`- Uncommitted changes: ${tracker.gitActivity.uncommittedChanges}`);
+      if (tracker.gitActivity.lastCommitMessage) {
+        lines.push(`- Last commit: "${tracker.gitActivity.lastCommitMessage}"`);
+      }
+    }
+    
+    // Recent tool calls
+    if (tracker.recentToolCalls.length > 0) {
+      lines.push('\n## Recent Midas Tool Calls:');
+      for (const t of tracker.recentToolCalls.slice(0, 5)) {
+        const ago = Math.round((Date.now() - t.timestamp) / 60000);
+        lines.push(`- ${t.tool} (${ago}min ago)`);
+      }
+    }
+    
+    // Completion signals
+    lines.push('\n## Completion Signals:');
+    lines.push(`- Tests exist: ${tracker.completionSignals.testsExist ? 'yes' : 'no'}`);
+    lines.push(`- Docs complete: ${tracker.completionSignals.docsComplete ? 'yes' : 'no'}`);
+    
+    return lines.join('\n');
+  } catch {
+    return 'No activity data available';
   }
-  
-  return messages.join('\n\n');
 }
 
 export interface ProjectAnalysis {
@@ -122,8 +146,8 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
   const hasCI = existsSync(join(projectPath, '.github', 'workflows'));
   const hasTests = files.some(f => f.includes('.test.') || f.includes('.spec.') || f.includes('__tests__'));
   
-  // Get chat history
-  const chatHistory = getRecentChatHistory();
+  // Get activity context (replaces broken chat history)
+  const activityContext = getActivityContext(projectPath);
   
   // Sample some code files
   const codeSamples = files.slice(0, 5).map(f => {
@@ -151,8 +175,8 @@ ${gameplanContent ? `Preview:\n${gameplanContent.slice(0, 400)}` : ''}
 - Dockerfile/compose: ${hasDockerfile ? 'yes' : 'no'}
 - CI/CD (.github/workflows): ${hasCI ? 'yes' : 'no'}
 
-## Recent Chat History:
-${chatHistory || 'No recent chat history'}
+## Recent Activity:
+${activityContext}
 
 ## Code Samples:
 ${codeSamples || 'No code files yet'}

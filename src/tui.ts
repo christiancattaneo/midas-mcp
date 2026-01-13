@@ -2,13 +2,8 @@ import { exec } from 'child_process';
 import { loadState, saveState, type Phase, PHASE_INFO } from './state/phase.js';
 import { hasApiKey, ensureApiKey } from './config.js';
 import { logEvent } from './events.js';
-import { 
-  isCursorAvailable, 
-  watchConversations, 
-  getConversationSummary,
-  extractMidasToolCalls,
-} from './cursor.js';
 import { analyzeProject, type ProjectAnalysis } from './analyzer.js';
+import { getActivitySummary, loadTracker, updateTracker } from './tracker.js';
 
 // ANSI codes
 const ESC = '\x1b';
@@ -34,8 +29,7 @@ const PHASE_COLORS: Record<string, string> = {
 interface TUIState {
   analysis: ProjectAnalysis | null;
   isAnalyzing: boolean;
-  cursorConnected: boolean;
-  lastChatSummary: string;
+  activitySummary: string;
   recentToolCalls: string[];
   message: string;
   hasApiKey: boolean;
@@ -111,7 +105,7 @@ function drawUI(state: TUIState, _projectPath: string): string {
   
   // Header
   lines.push(`${cyan}╔${hLine}╗${reset}`);
-  lines.push(row(`${bold}${white}MIDAS${reset} ${dim}- Golden Code Coach${reset}              ${state.cursorConnected ? `${green}●${reset}` : `${dim}○${reset}`} Cursor  ${state.hasApiKey ? `${magenta}AI${reset}` : `${dim}--${reset}`}`, I));
+  lines.push(row(`${bold}${white}MIDAS${reset} ${dim}- Golden Code Coach${reset}              ${state.hasApiKey ? `${green}●${reset} AI` : `${dim}○${reset} --`}`, I));
   lines.push(`${cyan}╠${hLine}╣${reset}`);
 
   if (state.isAnalyzing) {
@@ -235,8 +229,7 @@ export async function runInteractive(): Promise<void> {
   const tuiState: TUIState = {
     analysis: null,
     isAnalyzing: false,
-    cursorConnected: isCursorAvailable(),
-    lastChatSummary: '',
+    activitySummary: getActivitySummary(projectPath),
     recentToolCalls: [],
     message: '',
     hasApiKey: hasApiKey(),
@@ -292,21 +285,22 @@ export async function runInteractive(): Promise<void> {
     await runAnalysis();
   }
 
-  // Watch Cursor conversations
-  let stopWatchingCursor: (() => void) | null = null;
-  if (tuiState.cursorConnected) {
-    stopWatchingCursor = watchConversations((conv) => {
-      tuiState.lastChatSummary = getConversationSummary(conv);
-      tuiState.recentToolCalls = extractMidasToolCalls(conv.messages);
+  // Watch for activity updates (poll tracker every 5s)
+  const activityInterval = setInterval(() => {
+    const newSummary = getActivitySummary(projectPath);
+    if (newSummary !== tuiState.activitySummary) {
+      tuiState.activitySummary = newSummary;
+      const tracker = loadTracker(projectPath);
+      tuiState.recentToolCalls = tracker.recentToolCalls.slice(0, 5).map(t => t.tool);
       render();
-    });
-  }
+    }
+  }, 5000);
 
   process.stdin.on('data', async (key: string) => {
     if (key === 'q' || key === '\u0003') {
       console.log(clearScreen);
       console.log(`\n  ${cyan}Midas${reset} signing off. Happy vibecoding!\n`);
-      stopWatchingCursor?.();
+      clearInterval(activityInterval);
       process.exit(0);
     }
 
