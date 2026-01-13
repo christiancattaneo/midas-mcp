@@ -561,8 +561,7 @@ export async function runInteractive(): Promise<void> {
       process.stdout.write(exitAltScreen);
       
       console.log(`\n  ${cyan}━━━ Paste AI Response ━━━${reset}`);
-      console.log(`  ${dim}Paste the exchange below. When done, type ${bold}END${reset}${dim} on a new line and press Enter.${reset}\n`);
-      console.log(`  ${dim}Format: First paste your prompt, then the AI response.${reset}\n`);
+      console.log(`  ${dim}Paste the response, then press Enter twice to submit.${reset}\n`);
       
       if (process.stdin.isTTY) {
         process.stdin.setRawMode(false);
@@ -574,54 +573,74 @@ export async function runInteractive(): Promise<void> {
       });
       
       const lines: string[] = [];
-      console.log(`  ${dim}--- Start pasting (type END when done) ---${reset}\n`);
+      let emptyLineCount = 0;
+      
+      const finishInput = () => {
+        rl.close();
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
+        }
+        process.stdout.write(enterAltScreen);
+        
+        // Remove trailing empty lines
+        while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
+          lines.pop();
+        }
+        
+        const fullText = lines.join('\n');
+        if (fullText.trim().length < 10) {
+          resolve(null);
+          return;
+        }
+        
+        // Try to split into user prompt and AI response
+        const splitPatterns = [
+          /\n(?:assistant|ai|claude|cursor):\s*/i,
+          /\n(?:response|answer):\s*/i,
+          /\n---+\n/,
+        ];
+        
+        let userPrompt = '';
+        let aiResponse = fullText;
+        
+        for (const pattern of splitPatterns) {
+          const match = fullText.match(pattern);
+          if (match && match.index) {
+            userPrompt = fullText.slice(0, match.index).trim();
+            aiResponse = fullText.slice(match.index + match[0].length).trim();
+            break;
+          }
+        }
+        
+        // If no split found, treat first 20% as prompt
+        if (!userPrompt && fullText.length > 100) {
+          const splitPoint = Math.min(500, Math.floor(fullText.length * 0.2));
+          userPrompt = fullText.slice(0, splitPoint).trim();
+          aiResponse = fullText.slice(splitPoint).trim();
+        }
+        
+        resolve({ userPrompt, aiResponse });
+      };
       
       rl.on('line', (line) => {
-        if (line.trim().toUpperCase() === 'END') {
-          rl.close();
-          if (process.stdin.isTTY) {
-            process.stdin.setRawMode(true);
-          }
-          // Re-enter alternate screen
-          process.stdout.write(enterAltScreen);
-          
-          const fullText = lines.join('\n');
-          if (fullText.trim().length < 10) {
-            resolve(null);
+        // Check for double Enter (two empty lines in a row)
+        if (line.trim() === '') {
+          emptyLineCount++;
+          if (emptyLineCount >= 2 && lines.length > 0) {
+            finishInput();
             return;
           }
-          
-          // Try to split into user prompt and AI response
-          // Look for common patterns
-          const splitPatterns = [
-            /\n(?:assistant|ai|claude|cursor):\s*/i,
-            /\n(?:response|answer):\s*/i,
-            /\n---+\n/,
-          ];
-          
-          let userPrompt = '';
-          let aiResponse = fullText;
-          
-          for (const pattern of splitPatterns) {
-            const match = fullText.match(pattern);
-            if (match && match.index) {
-              userPrompt = fullText.slice(0, match.index).trim();
-              aiResponse = fullText.slice(match.index + match[0].length).trim();
-              break;
-            }
-          }
-          
-          // If no split found, treat first 20% as prompt
-          if (!userPrompt && fullText.length > 100) {
-            const splitPoint = Math.min(500, Math.floor(fullText.length * 0.2));
-            userPrompt = fullText.slice(0, splitPoint).trim();
-            aiResponse = fullText.slice(splitPoint).trim();
-          }
-          
-          resolve({ userPrompt, aiResponse });
         } else {
-          lines.push(line);
+          emptyLineCount = 0;
         }
+        
+        // Also support "END" for those who prefer explicit termination
+        if (line.trim().toUpperCase() === 'END' && lines.length > 0) {
+          finishInput();
+          return;
+        }
+        
+        lines.push(line);
       });
       
       rl.on('close', () => {
