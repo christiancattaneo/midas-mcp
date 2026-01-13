@@ -344,6 +344,8 @@ Purpose: Learn from production and improve.
 2. TORNADO DEBUGGING: If stuck on same error 3+ times, use Research + Logs + Tests
 3. ONE TASK PER PROMPT: Each suggested prompt should be specific and actionable
 4. ERRORS FIRST: If gates are failing, the next action MUST fix them
+5. AUTO-ADVANCE: The AI has midas_advance_phase and midas_verify tools - NEVER suggest "advance me to X phase". The AI advances phases itself.
+6. ACTIONABLE PROMPTS: Suggest specific work to DO, not phase management commands
 
 ## Response Format:
 Respond ONLY with valid JSON matching this schema:

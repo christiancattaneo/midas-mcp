@@ -69,6 +69,12 @@ const MIDAS_USER_RULES = `# Golden Code Methodology (via Midas MCP)
 1. Call \`midas_suggest_prompt\` to get phase-appropriate guidance
 2. Follow the Golden Code methodology for current phase
 
+### Phase Transitions - YOU handle these automatically:
+- When a phase is complete, call \`midas_advance_phase\` to move forward
+- Use \`midas_verify\` to check gates (build, test, lint) before advancing
+- If gates fail, fix the issues before advancing
+- Never ask the user to "advance me" - YOU have the tools to do it
+
 ## When Things Go Wrong:
 - Stuck/confused: Call \`midas_tornado\` for Research + Logs + Tests cycle
 - Output doesn't fit: Call \`midas_horizon\` to expand context
