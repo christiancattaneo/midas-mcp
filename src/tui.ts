@@ -246,7 +246,7 @@ function drawUI(state: TUIState, _projectPath: string): string {
     lines.push(emptyRow());
     
     lines.push(`${cyan}╠${hLine}╣${reset}`);
-    lines.push(row(`${dim}[c]${reset} Copy starter  ${dim}[u]${reset} Copy User Rules  ${dim}[s]${reset} Proceed  ${dim}[q]${reset} Quit`));
+    lines.push(row(`${dim}[c]${reset} Copy starter  ${dim}[u]${reset} Copy User Rules  ${dim}[p]${reset} Proceed  ${dim}[q]${reset} Quit`));
     lines.push(`${cyan}╚${hLine}╝${reset}`);
     return lines.join('\n');
   }
@@ -547,7 +547,7 @@ export async function runInteractive(): Promise<void> {
   render();
 
   // Don't auto-analyze - show session starter first
-  // User can press [s] to proceed and trigger analysis
+  // User can press [p] to proceed and trigger analysis
 
   // Watch for activity updates (poll tracker every 5s)
   const activityInterval = setInterval(() => {
@@ -618,7 +618,7 @@ export async function runInteractive(): Promise<void> {
         return;
       }
       
-      if (key === 's') {
+      if (key === 'p') {
         tuiState.showingSessionStart = false;
         render();
         if (tuiState.hasApiKey) {
