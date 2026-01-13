@@ -22,6 +22,12 @@ import {
   suggestPromptSchema,
   advancePhase,
   advancePhaseSchema,
+  saveToJournal,
+  saveJournalSchema,
+  getJournalEntries,
+  getJournalSchema,
+  searchJournal,
+  searchJournalSchema,
 } from './tools/index.js';
 import { registerAllPrompts } from './prompts/index.js';
 import { registerAllResources } from './resources/index.js';
@@ -163,6 +169,28 @@ export function createServer(): McpServer {
     wrapTool('midas_advance_phase', advancePhase)
   );
 
+  // Journal tools - save full conversations for future context
+  server.tool(
+    'midas_journal_save',
+    'Save a full conversation to the project journal. Use this after important discussions, decisions, or implementations to preserve context for future sessions.',
+    saveJournalSchema.shape,
+    wrapTool('midas_journal_save', saveToJournal)
+  );
+
+  server.tool(
+    'midas_journal_list',
+    'Get recent journal entries to understand project history and past decisions',
+    getJournalSchema.shape,
+    wrapTool('midas_journal_list', getJournalEntries)
+  );
+
+  server.tool(
+    'midas_journal_search',
+    'Search journal entries for specific topics, decisions, or implementations',
+    searchJournalSchema.shape,
+    wrapTool('midas_journal_search', searchJournal)
+  );
+
   // Register prompts
   registerAllPrompts(server);
   logger.debug('Registered prompts');
@@ -171,6 +199,6 @@ export function createServer(): McpServer {
   registerAllResources(server);
   logger.debug('Registered resources');
 
-  logger.info('Midas MCP server ready', { tools: 11, prompts: 17, resources: 5 });
+  logger.info('Midas MCP server ready', { tools: 14, prompts: 17, resources: 5 });
   return server;
 }

@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, existsSync } from 'fs';
 import { join, extname } from 'path';
 import type { Phase, EagleSightStep, BuildStep, ShipStep, GrowStep } from './state/phase.js';
 import { updateTracker, getActivitySummary } from './tracker.js';
+import { getJournalEntries } from './tools/journal.js';
 
 async function callClaude(prompt: string, systemPrompt: string): Promise<string> {
   const apiKey = getApiKey();
@@ -149,6 +150,12 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
   // Get activity context (replaces broken chat history)
   const activityContext = getActivityContext(projectPath);
   
+  // Get journal entries for conversation history
+  const journalEntries = getJournalEntries({ projectPath, limit: 5 });
+  const journalContext = journalEntries.length > 0 
+    ? journalEntries.map(e => `### ${e.title} (${e.timestamp.slice(0, 10)})\n${e.conversation.slice(0, 500)}...`).join('\n\n')
+    : 'No journal entries yet';
+  
   // Sample some code files
   const codeSamples = files.slice(0, 5).map(f => {
     const content = readFile(f, 20);
@@ -177,6 +184,9 @@ ${gameplanContent ? `Preview:\n${gameplanContent.slice(0, 400)}` : ''}
 
 ## Recent Activity:
 ${activityContext}
+
+## Journal (Past Conversations):
+${journalContext}
 
 ## Code Samples:
 ${codeSamples || 'No code files yet'}

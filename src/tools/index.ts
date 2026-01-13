@@ -32,3 +32,13 @@ export {
   advancePhase,
   advancePhaseSchema,
 } from './analyze.js';
+
+// Journal tools - save full conversations for context
+export {
+  saveToJournal,
+  saveJournalSchema,
+  getJournalEntries,
+  getJournalSchema,
+  searchJournal,
+  searchJournalSchema,
+} from './journal.js';
