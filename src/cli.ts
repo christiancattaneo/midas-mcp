@@ -109,11 +109,11 @@ export function showStatus(): void {
   steps.forEach((step, i) => {
     const label = config.labels?.[step] || step;
     if (i < currentIdx) {
-      console.log(`  ${green}✓${reset} ${dim}${label}${reset}`);
+      console.log(`  ${green}[x]${reset} ${dim}${label}${reset}`);
     } else if (i === currentIdx) {
       console.log(`  ${config.color}→${reset} ${bold}${label}${reset} ${dim}(current)${reset}`);
     } else {
-      console.log(`  ${dim}○ ${label}${reset}`);
+      console.log(`  ${dim}[ ] ${label}${reset}`);
     }
   });
 
@@ -129,7 +129,7 @@ export function runInit(projectName: string): void {
   const result = startProject({ projectName, projectPath: process.cwd() });
 
   console.log('');
-  console.log(box(`${green}${bold}✓ Project Initialized${reset}`));
+  console.log(box(`${green}${bold}Project Initialized${reset}`));
   console.log('');
   console.log(`  ${bold}${projectName}${reset} is ready for Eagle Sight.\n`);
   console.log('  Created:');
@@ -161,7 +161,7 @@ export function runAudit(): void {
       const score = result.scores[item];
       const num = item.split('-')[0];
       const name = item.split('-').slice(1).join(' ');
-      const icon = score.exists ? `${green}✓${reset}` : `${dim}○${reset}`;
+      const icon = score.exists ? `${green}[x]${reset}` : `${dim}[ ]${reset}`;
       const label = score.exists ? name : `${dim}${name}${reset}`;
       console.log(`    ${icon} ${num}. ${label}`);
     }
@@ -193,14 +193,14 @@ export function runDocsCheck(): void {
 
   for (const doc of docs) {
     if (!doc.status.exists) {
-      console.log(`  ${dim}○${reset} ${dim}${doc.name}${reset} - not found`);
+      console.log(`  ${dim}[ ]${reset} ${dim}${doc.name}${reset} - not found`);
     } else if (!doc.status.complete) {
       console.log(`  ${yellow}◐${reset} ${doc.name} - incomplete`);
       for (const issue of doc.status.issues) {
         console.log(`      ${dim}${issue}${reset}`);
       }
     } else {
-      console.log(`  ${green}✓${reset} ${doc.name}`);
+      console.log(`  ${green}[x]${reset} ${doc.name}`);
     }
   }
 

@@ -92,7 +92,7 @@ export async function promptForApiKey(): Promise<string | undefined> {
         const config = loadConfig();
         config.anthropicApiKey = key;
         saveConfig(config);
-        console.log('\n  ✓ API key saved to ~/.midas/config.json\n');
+        console.log('\n  OK - API key saved to ~/.midas/config.json\n');
         resolve(key);
       } else if (key) {
         console.log('\n  ⚠ Invalid key format. Skipping.\n');

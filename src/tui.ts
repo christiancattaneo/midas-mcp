@@ -162,15 +162,15 @@ function drawUI(state: TUIState, _projectPath: string): string {
   
   // Header
   lines.push(`${cyan}╔${hLine}╗${reset}`);
-  const streakStr = state.sessionStreak > 0 ? `${yellow}🔥${state.sessionStreak}${reset}` : '';
-  const statusIcons = `${streakStr} ${state.hasApiKey ? `${green}●${reset}AI` : `${dim}○${reset}--`}`;
+  const streakStr = state.sessionStreak > 0 ? `${yellow}${state.sessionStreak}d streak${reset}` : '';
+  const statusIcons = `${streakStr} ${state.hasApiKey ? `${green}[ok]${reset}AI` : `${dim}[--]${reset}`}`;
   lines.push(row(`${bold}${white}MIDAS${reset} ${dim}- Golden Code Coach${reset}           ${statusIcons}`, I));
   lines.push(`${cyan}╠${hLine}╣${reset}`);
   
   // Show session starter prompt first
   if (state.showingSessionStart) {
     lines.push(emptyRow());
-    lines.push(row(`${bold}${yellow}★ NEW SESSION${reset}`, 14));
+    lines.push(row(`${bold}${yellow}NEW SESSION${reset}`, 12));
     lines.push(emptyRow());
     lines.push(row(`${dim}Paste this in your new Cursor chat:${reset}`, 36));
     lines.push(`${cyan}║${reset}  ${dim}┌${hLineLight}┐${reset}${cyan}║${reset}`);
@@ -194,7 +194,7 @@ function drawUI(state: TUIState, _projectPath: string): string {
 
   if (state.isAnalyzing) {
     lines.push(emptyRow());
-    lines.push(row(`${magenta}⟳${reset} ${bold}Analyzing project...${reset}`, 23));
+    lines.push(row(`${magenta}...${reset} ${bold}Analyzing project${reset}`, 22));
     lines.push(row(`${dim}Reading codebase, chat history, docs...${reset}`, 40));
     lines.push(emptyRow());
     lines.push(`${cyan}╚${hLine}╝${reset}`);
@@ -237,11 +237,11 @@ function drawUI(state: TUIState, _projectPath: string): string {
     const color = PHASE_COLORS[p];
     const sep = i < phases.length - 1 ? '  ' : '';
     if (i < currentPhaseIdx) {
-      phaseBarText += `${green}✓${reset} ${dim}${info.name}${reset}${sep}`;
+      phaseBarText += `${green}[x]${reset} ${dim}${info.name}${reset}${sep}`;
     } else if (i === currentPhaseIdx) {
-      phaseBarText += `${color}●${reset} ${bold}${info.name}${reset}${sep}`;
+      phaseBarText += `${color}[>]${reset} ${bold}${info.name}${reset}${sep}`;
     } else {
-      phaseBarText += `${dim}○ ${info.name}${reset}${sep}`;
+      phaseBarText += `${dim}[ ] ${info.name}${reset}${sep}`;
     }
     phaseBarLen += 2 + info.name.length + sep.length;
   }
@@ -259,7 +259,7 @@ function drawUI(state: TUIState, _projectPath: string): string {
     lines.push(row(`${dim}Completed:${reset}`, 10));
     for (const done of a.whatsDone.slice(0, 4)) {
       const t = done.length > I - 4 ? done.slice(0, I - 7) + '...' : done;
-      lines.push(row(`${green}✓${reset} ${dim}${t}${reset}`, 2 + t.length));
+      lines.push(row(`${green}[x]${reset} ${dim}${t}${reset}`, 4 + t.length));
     }
     lines.push(emptyRow());
   }
@@ -294,7 +294,7 @@ function drawUI(state: TUIState, _projectPath: string): string {
     lines.push(emptyRow());
     lines.push(row(`${dim}Recent MCP Activity:${reset}`, 20));
     for (const evt of state.recentEvents.slice(-3)) {
-      const icon = evt.type === 'tool_called' ? `${green}⚡${reset}` : `${dim}○${reset}`;
+      const icon = evt.type === 'tool_called' ? `${green}>${reset}` : `${dim}-${reset}`;
       const label = evt.tool || evt.type;
       const time = new Date(evt.timestamp).toLocaleTimeString().slice(0, 5);
       lines.push(row(`${icon} ${label} ${dim}(${time})${reset}`, 3 + label.length + 2 + time.length + 2));
@@ -408,7 +408,7 @@ export async function runInteractive(): Promise<void> {
     const toolEvents = newEvents.filter(e => e.type === 'tool_called');
     if (toolEvents.length > 0) {
       const lastTool = toolEvents[toolEvents.length - 1];
-      tuiState.message = `${green}⚡${reset} Cursor called ${bold}${lastTool.tool}${reset}`;
+      tuiState.message = `${green}>${reset} Cursor called ${bold}${lastTool.tool}${reset}`;
       
       // Auto-refresh analysis after certain tools
       const refreshTools = ['midas_journal_save', 'midas_set_phase', 'midas_advance_phase'];
@@ -438,7 +438,7 @@ export async function runInteractive(): Promise<void> {
       if (key === 'c') {
         try {
           await copyToClipboard(tuiState.sessionStarterPrompt);
-          tuiState.message = `${green}✓${reset} Session starter copied! Paste it in your new Cursor chat.`;
+          tuiState.message = `${green}OK${reset} Session starter copied! Paste it in your new Cursor chat.`;
         } catch {
           tuiState.message = `${yellow}!${reset} Could not copy.`;
         }
@@ -458,7 +458,7 @@ export async function runInteractive(): Promise<void> {
       if (key === 'u') {
         try {
           await copyUserRules();
-          tuiState.message = `${green}✓${reset} User Rules copied! Paste in Cursor Settings → Rules for AI`;
+          tuiState.message = `${green}OK${reset} User Rules copied! Paste in Cursor Settings -> Rules for AI`;
         } catch {
           tuiState.message = `${yellow}!${reset} Could not copy.`;
         }
@@ -473,7 +473,7 @@ export async function runInteractive(): Promise<void> {
       if (tuiState.analysis?.suggestedPrompt) {
         try {
           await copyToClipboard(tuiState.analysis.suggestedPrompt);
-          tuiState.message = `${green}✓${reset} Prompt copied to clipboard!`;
+          tuiState.message = `${green}OK${reset} Prompt copied to clipboard!`;
           logEvent(projectPath, { type: 'prompt_copied', message: tuiState.analysis.suggestedPrompt.slice(0, 100) });
           recordPromptCopied(projectPath, tuiState.sessionId);
         } catch {
