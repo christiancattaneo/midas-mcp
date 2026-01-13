@@ -33,6 +33,7 @@ import { registerAllPrompts } from './prompts/index.js';
 import { registerAllResources } from './resources/index.js';
 import { logger } from './logger.js';
 import { trackToolCall } from './tracker.js';
+import { logEvent } from './events.js';
 
 export function createServer(): McpServer {
   logger.info('Creating Midas MCP server');
@@ -45,10 +46,13 @@ export function createServer(): McpServer {
   // Register tools with logging wrapper
   const wrapTool = <T, R>(name: string, fn: (args: T) => R) => {
     return async (args: T) => {
+      const projectPath = process.cwd();
       logger.tool(name, args as Record<string, unknown>);
-      // Track tool call for activity monitoring
+      
+      // Track tool call for activity monitoring AND event log (for TUI sync)
       try {
-        trackToolCall(process.cwd(), name, args as Record<string, unknown>);
+        trackToolCall(projectPath, name, args as Record<string, unknown>);
+        logEvent(projectPath, { type: 'tool_called', tool: name, data: args as Record<string, unknown> });
       } catch {}
       
       try {
@@ -126,10 +130,13 @@ export function createServer(): McpServer {
   // Async tool wrapper for analyze (which is async)
   const wrapAsyncTool = <T, R>(name: string, fn: (args: T) => Promise<R>) => {
     return async (args: T) => {
+      const projectPath = process.cwd();
       logger.tool(name, args as Record<string, unknown>);
-      // Track tool call for activity monitoring
+      
+      // Track tool call for activity monitoring AND event log (for TUI sync)
       try {
-        trackToolCall(process.cwd(), name, args as Record<string, unknown>);
+        trackToolCall(projectPath, name, args as Record<string, unknown>);
+        logEvent(projectPath, { type: 'tool_called', tool: name, data: args as Record<string, unknown> });
       } catch {}
       
       try {

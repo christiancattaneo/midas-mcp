@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync, appendFileSync } from 'fs';
 import { join } from 'path';
 import { loadState, saveState, type Phase, PHASE_INFO } from './state/phase.js';
 import { hasApiKey, ensureApiKey } from './config.js';
-import { logEvent } from './events.js';
+import { logEvent, watchEvents, type MidasEvent } from './events.js';
 import { analyzeProject, type ProjectAnalysis } from './analyzer.js';
 import { getActivitySummary, loadTracker, updateTracker } from './tracker.js';
 import { getJournalEntries } from './tools/journal.js';
@@ -78,6 +78,7 @@ interface TUIState {
   isAnalyzing: boolean;
   activitySummary: string;
   recentToolCalls: string[];
+  recentEvents: MidasEvent[];
   message: string;
   hasApiKey: boolean;
   hasMidasRules: boolean;
@@ -284,6 +285,18 @@ function drawUI(state: TUIState, _projectPath: string): string {
     lines.push(`${cyan}║${reset}  ${dim}└${hLineLight}┘${reset}${cyan}║${reset}`);
   }
 
+  // Show recent MCP events (real-time from Cursor)
+  if (state.recentEvents.length > 0) {
+    lines.push(emptyRow());
+    lines.push(row(`${dim}Recent MCP Activity:${reset}`, 20));
+    for (const evt of state.recentEvents.slice(-3)) {
+      const icon = evt.type === 'tool_called' ? `${green}⚡${reset}` : `${dim}○${reset}`;
+      const label = evt.tool || evt.type;
+      const time = new Date(evt.timestamp).toLocaleTimeString().slice(0, 5);
+      lines.push(row(`${icon} ${label} ${dim}(${time})${reset}`, 3 + label.length + 2 + time.length + 2));
+    }
+  }
+
   lines.push(emptyRow());
   lines.push(`${cyan}╠${hLine}╣${reset}`);
   lines.push(row(`${dim}[c]${reset} Copy prompt  ${dim}[r]${reset} Re-analyze  ${dim}[q]${reset} Quit`, 43));
@@ -310,6 +323,7 @@ export async function runInteractive(): Promise<void> {
     isAnalyzing: false,
     activitySummary: getActivitySummary(projectPath),
     recentToolCalls: [],
+    recentEvents: [],
     message: '',
     hasApiKey: hasApiKey(),
     hasMidasRules: hasMidasRules(projectPath),
@@ -376,11 +390,32 @@ export async function runInteractive(): Promise<void> {
     }
   }, 5000);
 
+  // REAL-TIME: Watch for MCP events (tool calls from Cursor)
+  const stopWatchingEvents = watchEvents(projectPath, (newEvents) => {
+    tuiState.recentEvents = [...tuiState.recentEvents, ...newEvents].slice(-10);
+    
+    // Show notification for tool calls
+    const toolEvents = newEvents.filter(e => e.type === 'tool_called');
+    if (toolEvents.length > 0) {
+      const lastTool = toolEvents[toolEvents.length - 1];
+      tuiState.message = `${green}⚡${reset} Cursor called ${bold}${lastTool.tool}${reset}`;
+      
+      // Auto-refresh analysis after certain tools
+      const refreshTools = ['midas_journal_save', 'midas_set_phase', 'midas_advance_phase'];
+      if (refreshTools.includes(lastTool.tool || '')) {
+        runAnalysis();
+      } else {
+        render();
+      }
+    }
+  });
+
   process.stdin.on('data', async (key: string) => {
     if (key === 'q' || key === '\u0003') {
       console.log(clearScreen);
       console.log(`\n  ${cyan}Midas${reset} signing off. Happy vibecoding!\n`);
       clearInterval(activityInterval);
+      stopWatchingEvents();
       process.exit(0);
     }
 
