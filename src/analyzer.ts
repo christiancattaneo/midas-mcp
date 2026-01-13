@@ -28,28 +28,36 @@ import { buildCompressedContext, contextToString, estimateTokens } from './conte
 async function callClaude(
   prompt: string, 
   systemPrompt: string, 
-  options: { useCache?: boolean; maxTokens?: number } = {}
+  options: { useCache?: boolean; maxTokens?: number; useThinking?: boolean } = {}
 ): Promise<string> {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error('No API key');
 
   const useCache = options.useCache ?? true;
-  const maxTokens = options.maxTokens ?? 2048;
+  const maxTokens = options.maxTokens ?? 16000;
+  const useThinking = options.useThinking ?? true;
 
-  // Build request body
+  // Build request body with Claude 4.5 Opus + extended thinking
   const body: Record<string, unknown> = {
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-opus-4-20250514',
     max_tokens: maxTokens,
     messages: [{ role: 'user', content: prompt }],
   };
 
-  // Use prompt caching if enabled and system prompt is large enough
-  // Caching requires minimum 1024 tokens to be effective
-  if (useCache && estimateTokens(systemPrompt) >= 256) {
+  // Enable extended thinking for deeper analysis
+  if (useThinking) {
+    body.thinking = {
+      type: 'enabled',
+      budget_tokens: Math.min(10000, Math.floor(maxTokens * 0.6)),
+    };
+    // Note: Extended thinking doesn't support system prompt caching
+    body.system = systemPrompt;
+  } else if (useCache && estimateTokens(systemPrompt) >= 256) {
+    // Use prompt caching if enabled and system prompt is large enough
     body.system = [{
       type: 'text',
       text: systemPrompt,
-      cache_control: { type: 'ephemeral' },  // Cache this system prompt
+      cache_control: { type: 'ephemeral' },
     }];
   } else {
     body.system = systemPrompt;
@@ -71,7 +79,7 @@ async function callClaude(
   }
 
   const data = await response.json() as { 
-    content: Array<{ text: string }>;
+    content: Array<{ type: string; text?: string; thinking?: string }>;
     usage?: { 
       input_tokens?: number;
       output_tokens?: number;
@@ -80,7 +88,7 @@ async function callClaude(
     };
   };
   
-  // Log cache usage for monitoring
+  // Log usage for monitoring
   if (data.usage) {
     const usage = data.usage;
     if (usage.cache_read_input_tokens && usage.cache_read_input_tokens > 0) {
@@ -98,14 +106,18 @@ async function callClaude(
         total_input: usage.input_tokens,
       });
     } else {
-      logger.debug('No cache activity', { 
+      logger.debug('Claude usage', { 
         input_tokens: usage.input_tokens,
         output_tokens: usage.output_tokens,
+        model: 'claude-opus-4',
+        thinking: useThinking,
       });
     }
   }
   
-  return data.content[0]?.text || '';
+  // Extract text content (skip thinking blocks when extended thinking is enabled)
+  const textBlocks = data.content.filter(block => block.type === 'text');
+  return textBlocks[0]?.text || '';
 }
 
 function scanFiles(dir: string, maxFiles = 30): string[] {

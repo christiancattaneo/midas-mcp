@@ -2,12 +2,15 @@ import { getApiKey } from './config.js';
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join, extname } from 'path';
 
-// Simple HTTP client for Anthropic API (no external dependency)
+// Claude 4.5 Opus with extended thinking for deep analysis
 async function callClaude(prompt: string, systemPrompt?: string): Promise<string> {
   const apiKey = getApiKey();
   if (!apiKey) {
     throw new Error('No API key configured');
   }
+
+  const maxTokens = 16000;
+  const thinkingBudget = 10000;
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -17,8 +20,12 @@ async function callClaude(prompt: string, systemPrompt?: string): Promise<string
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
+      model: 'claude-opus-4-20250514',
+      max_tokens: maxTokens,
+      thinking: {
+        type: 'enabled',
+        budget_tokens: thinkingBudget,
+      },
       system: systemPrompt || 'You are Midas, a Golden Code coach. Be concise and actionable.',
       messages: [{ role: 'user', content: prompt }],
     }),
@@ -29,8 +36,14 @@ async function callClaude(prompt: string, systemPrompt?: string): Promise<string
     throw new Error(`API error: ${response.status} - ${error}`);
   }
 
-  const data = await response.json() as { content: Array<{ text: string }> };
-  return data.content[0]?.text || '';
+  // Extended thinking response has thinking blocks + text blocks
+  const data = await response.json() as { 
+    content: Array<{ type: string; text?: string; thinking?: string }> 
+  };
+  
+  // Extract text content (skip thinking blocks)
+  const textBlocks = data.content.filter(block => block.type === 'text');
+  return textBlocks[0]?.text || '';
 }
 
 // Scan codebase for context
