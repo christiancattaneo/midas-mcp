@@ -1,5 +1,5 @@
 import { exec } from 'child_process';
-import { existsSync, readFileSync, writeFileSync, appendFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { loadState, saveState, type Phase, PHASE_INFO } from './state/phase.js';
 import { hasApiKey, ensureApiKey } from './config.js';
@@ -29,9 +29,8 @@ const PHASE_COLORS: Record<string, string> = {
   GROW: magenta,
 };
 
-// The Midas rules to add to .cursorrules
-const MIDAS_CURSORRULES = `
-# Golden Code Methodology (via Midas MCP)
+// The Midas User Rules content (for Cursor Settings → Rules for AI)
+const MIDAS_USER_RULES = `# Golden Code Methodology (via Midas MCP)
 
 ## AUTOMATIC BEHAVIOR - Do these without being asked:
 
@@ -41,21 +40,25 @@ const MIDAS_CURSORRULES = `
 3. Follow the suggested approach from the analysis
 
 ### After EVERY significant code change:
-1. Call \`midas_journal_save\` with title describing what was done
-2. Include the full conversation in the journal entry
+1. Git commit with descriptive message before AND after major changes
+2. Call \`midas_journal_save\` with title describing what was done
+3. Include the full conversation in the journal entry
 
 ### Before EVERY implementation:
 1. Call \`midas_suggest_prompt\` to get phase-appropriate guidance
 2. Follow the Golden Code methodology for current phase
 
 ## When Things Go Wrong:
-- **Stuck/confused**: Call \`midas_tornado\` for Research + Logs + Tests cycle
-- **Output doesn't fit**: Call \`midas_horizon\` to expand context
-- **Retry after error**: Call \`midas_oneshot\` to construct better retry
+- Stuck/confused: Call \`midas_tornado\` for Research + Logs + Tests cycle
+- Output doesn't fit: Call \`midas_horizon\` to expand context
+- Retry after error: Call \`midas_oneshot\` to construct better retry
+
+## Git Discipline:
+- Commit BEFORE starting any significant change (checkpoint)
+- Commit AFTER completing each logical unit of work
 
 ## The 7-Step BUILD Cycle:
 RULES → INDEX → READ → RESEARCH → IMPLEMENT → TEST → DEBUG
-Always complete earlier steps before jumping to implementation.
 `;
 
 // Session starter prompt
@@ -69,22 +72,9 @@ function getSessionStarterPrompt(projectPath: string): string {
   return `Before we begin, please call midas_analyze to understand where we are in the project and what to do next.`;
 }
 
-// Check if .cursorrules has Midas content
-function hasMidasRules(projectPath: string): boolean {
-  const rulesPath = join(projectPath, '.cursorrules');
-  if (!existsSync(rulesPath)) return false;
-  const content = readFileSync(rulesPath, 'utf-8');
-  return content.includes('midas_analyze') || content.includes('Golden Code');
-}
-
-// Add Midas rules to .cursorrules
-function addMidasRules(projectPath: string): void {
-  const rulesPath = join(projectPath, '.cursorrules');
-  if (existsSync(rulesPath)) {
-    appendFileSync(rulesPath, '\n' + MIDAS_CURSORRULES);
-  } else {
-    writeFileSync(rulesPath, MIDAS_CURSORRULES.trim());
-  }
+// Copy User Rules to clipboard for pasting into Cursor Settings
+function copyUserRules(): Promise<void> {
+  return copyToClipboard(MIDAS_USER_RULES);
 }
 
 interface TUIState {
@@ -95,7 +85,6 @@ interface TUIState {
   recentEvents: MidasEvent[];
   message: string;
   hasApiKey: boolean;
-  hasMidasRules: boolean;
   showingSessionStart: boolean;
   sessionStarterPrompt: string;
 }
@@ -170,8 +159,8 @@ function drawUI(state: TUIState, _projectPath: string): string {
   
   // Header
   lines.push(`${cyan}╔${hLine}╗${reset}`);
-  const statusIcons = `${state.hasApiKey ? `${green}●${reset}AI` : `${dim}○${reset}--`} ${state.hasMidasRules ? `${green}●${reset}Rules` : `${yellow}○${reset}Rules`}`;
-  lines.push(row(`${bold}${white}MIDAS${reset} ${dim}- Golden Code Coach${reset}            ${statusIcons}`, I));
+  const statusIcons = `${state.hasApiKey ? `${green}●${reset} AI Ready` : `${dim}○${reset} No API Key`}`;
+  lines.push(row(`${bold}${white}MIDAS${reset} ${dim}- Golden Code Coach${reset}         ${statusIcons}`, I));
   lines.push(`${cyan}╠${hLine}╣${reset}`);
   
   // Show session starter prompt first
@@ -189,15 +178,12 @@ function drawUI(state: TUIState, _projectPath: string): string {
     
     lines.push(`${cyan}║${reset}  ${dim}└${hLineLight}┘${reset}${cyan}║${reset}`);
     lines.push(emptyRow());
-    
-    if (!state.hasMidasRules) {
-      lines.push(row(`${yellow}!${reset} No Midas rules in .cursorrules`, 32));
-      lines.push(row(`${dim}Press ${bold}[a]${reset}${dim} to add Golden Code rules${reset}`, 35));
-      lines.push(emptyRow());
-    }
+    lines.push(row(`${dim}TIP: Add User Rules in Cursor Settings for auto-behavior${reset}`, 57));
+    lines.push(row(`${dim}Press ${bold}[u]${reset}${dim} to copy User Rules to clipboard${reset}`, 42));
+    lines.push(emptyRow());
     
     lines.push(`${cyan}╠${hLine}╣${reset}`);
-    lines.push(row(`${dim}[c]${reset} Copy starter  ${dim}[s]${reset} Skip  ${dim}[a]${reset} Add rules  ${dim}[q]${reset} Quit`, 50));
+    lines.push(row(`${dim}[c]${reset} Copy starter  ${dim}[u]${reset} Copy User Rules  ${dim}[s]${reset} Skip  ${dim}[q]${reset} Quit`, 54));
     lines.push(`${cyan}╚${hLine}╝${reset}`);
     return lines.join('\n');
   }
@@ -340,7 +326,6 @@ export async function runInteractive(): Promise<void> {
     recentEvents: [],
     message: '',
     hasApiKey: hasApiKey(),
-    hasMidasRules: hasMidasRules(projectPath),
     showingSessionStart: true, // Start with session starter prompt
     sessionStarterPrompt: getSessionStarterPrompt(projectPath),
   };
@@ -455,13 +440,12 @@ export async function runInteractive(): Promise<void> {
         return;
       }
       
-      if (key === 'a') {
-        if (!tuiState.hasMidasRules) {
-          addMidasRules(projectPath);
-          tuiState.hasMidasRules = true;
-          tuiState.message = `${green}✓${reset} Added Golden Code rules to .cursorrules`;
-        } else {
-          tuiState.message = `${dim}Already has Midas rules${reset}`;
+      if (key === 'u') {
+        try {
+          await copyUserRules();
+          tuiState.message = `${green}✓${reset} User Rules copied! Paste in Cursor Settings → Rules for AI`;
+        } catch {
+          tuiState.message = `${yellow}!${reset} Could not copy.`;
         }
         render();
         return;
