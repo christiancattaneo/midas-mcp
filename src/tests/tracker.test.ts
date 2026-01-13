@@ -200,6 +200,53 @@ describe('Tracker Module', () => {
       const activity = getGitActivity(testDir);
       assert.strictEqual(activity?.uncommittedChanges, 1);
     });
+
+    it('returns recent commits for phase detection', () => {
+      execSync('git init', { cwd: testDir, stdio: 'ignore' });
+      execSync('git config user.email "test@test.com"', { cwd: testDir, stdio: 'ignore' });
+      execSync('git config user.name "Test"', { cwd: testDir, stdio: 'ignore' });
+      writeFileSync(join(testDir, 'file1.txt'), 'content');
+      execSync('git add .', { cwd: testDir, stdio: 'ignore' });
+      execSync('git commit -m "feat: initial commit"', { cwd: testDir, stdio: 'ignore' });
+      writeFileSync(join(testDir, 'file2.txt'), 'content');
+      execSync('git add .', { cwd: testDir, stdio: 'ignore' });
+      execSync('git commit -m "bump version to 1.0.0"', { cwd: testDir, stdio: 'ignore' });
+      
+      const activity = getGitActivity(testDir);
+      assert.ok(activity?.recentCommits);
+      assert.ok(activity.recentCommits.length >= 2);
+      assert.ok(activity.recentCommits[0].includes('bump version'));
+    });
+
+    it('handles empty repo with no commits', () => {
+      execSync('git init', { cwd: testDir, stdio: 'ignore' });
+      execSync('git config user.email "test@test.com"', { cwd: testDir, stdio: 'ignore' });
+      execSync('git config user.name "Test"', { cwd: testDir, stdio: 'ignore' });
+      
+      const activity = getGitActivity(testDir);
+      assert.notStrictEqual(activity, null);
+      // recentCommits should be empty array or undefined for empty repo
+      assert.ok(!activity?.recentCommits?.length || activity.recentCommits.length === 0);
+    });
+
+    it('returns up to 10 recent commits', () => {
+      execSync('git init', { cwd: testDir, stdio: 'ignore' });
+      execSync('git config user.email "test@test.com"', { cwd: testDir, stdio: 'ignore' });
+      execSync('git config user.name "Test"', { cwd: testDir, stdio: 'ignore' });
+      
+      // Create 15 commits
+      for (let i = 1; i <= 15; i++) {
+        writeFileSync(join(testDir, `file${i}.txt`), `content ${i}`);
+        execSync('git add .', { cwd: testDir, stdio: 'ignore' });
+        execSync(`git commit -m "commit ${i}"`, { cwd: testDir, stdio: 'ignore' });
+      }
+      
+      const activity = getGitActivity(testDir);
+      assert.ok(activity?.recentCommits);
+      assert.strictEqual(activity.recentCommits.length, 10);
+      // Most recent should be first
+      assert.ok(activity.recentCommits[0].includes('commit 15'));
+    });
   });
 
   describe('checkCompletionSignals', () => {
