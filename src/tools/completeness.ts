@@ -58,7 +58,7 @@ function checkTesting(projectPath: string): CategoryScore {
   let srcFiles = 0;
 
   function scan(dir: string, depth = 0): void {
-    if (depth > 4) return;
+    if (depth > 6) return;  // Deeper scan for complete visibility
     try {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
@@ -235,7 +235,7 @@ function checkSecurity(projectPath: string): CategoryScore {
   if (existsSync(srcDir)) {
     try {
       const files = readdirSync(srcDir);
-      for (const f of files.slice(0, 10)) {
+      for (const f of files.slice(0, 50)) {  // Check more files
         try {
           const content = readFileSync(join(srcDir, f), 'utf-8');
           if (content.includes('rate-limit') || content.includes('rateLimit') ||
@@ -306,7 +306,7 @@ function checkDocumentation(projectPath: string): CategoryScore {
     try {
       const files = readdirSync(srcDir).filter(f => f.endsWith('.ts'));
       let jsdocCount = 0;
-      for (const f of files.slice(0, 5)) {
+      for (const f of files.slice(0, 30)) {  // Check more files
         const content = readFileSync(join(srcDir, f), 'utf-8');
         if (content.includes('/**') || content.includes('* @')) {
           jsdocCount++;
@@ -354,7 +354,7 @@ function checkMonitoring(projectPath: string): CategoryScore {
   if (existsSync(srcDir)) {
     try {
       const files = readdirSync(srcDir);
-      for (const f of files.slice(0, 10)) {
+      for (const f of files.slice(0, 50)) {  // Check more files for observability
         try {
           const content = readFileSync(join(srcDir, f), 'utf-8');
           if (content.includes('logger') || content.includes('winston') || content.includes('pino')) {

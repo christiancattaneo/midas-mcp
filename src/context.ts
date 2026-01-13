@@ -237,16 +237,21 @@ export function summarizeJournalEntries(entries: Array<{ title: string; conversa
 }
 
 /**
- * Get code snippets from recently modified files
+ * Get code snippets from recently modified files.
+ * Read substantially more context for accurate analysis.
  */
-export function getCodeSnippets(projectPath: string, maxFiles: number = 3, maxLinesPerFile: number = 20): string {
+export function getCodeSnippets(projectPath: string, maxFiles: number = 15, maxLinesPerFile: number = 100): string {
   const tracker = loadTracker(projectPath);
   const snippets: string[] = [];
   
-  const codeExtensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs'];
-  const recentCodeFiles = tracker.recentFiles
-    .filter(f => codeExtensions.some(ext => f.path.endsWith(ext)))
-    .slice(0, maxFiles);
+  const codeExtensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.swift'];
+  
+  // Prioritize test files and key entry points
+  const allCodeFiles = tracker.recentFiles.filter(f => codeExtensions.some(ext => f.path.endsWith(ext)));
+  const priorityPatterns = ['.test.', '.spec.', 'index.', 'main.', 'app.', 'server.'];
+  const priorityFiles = allCodeFiles.filter(f => priorityPatterns.some(p => f.path.includes(p)));
+  const otherFiles = allCodeFiles.filter(f => !priorityPatterns.some(p => f.path.includes(p)));
+  const recentCodeFiles = [...priorityFiles, ...otherFiles].slice(0, maxFiles);
   
   for (const file of recentCodeFiles) {
     try {
@@ -256,8 +261,15 @@ export function getCodeSnippets(projectPath: string, maxFiles: number = 3, maxLi
       const content = readFileSync(fullPath, 'utf-8');
       const lines = content.split('\n');
       
-      // Get first N lines (usually imports + key code)
-      const snippet = lines.slice(0, maxLinesPerFile).join('\n');
+      // For large files, take beginning + end (important context at both ends)
+      let snippet: string;
+      if (lines.length <= maxLinesPerFile) {
+        snippet = content;
+      } else {
+        const head = lines.slice(0, Math.floor(maxLinesPerFile * 0.7));
+        const tail = lines.slice(-Math.floor(maxLinesPerFile * 0.3));
+        snippet = [...head, '\n// ... middle truncated ...\n', ...tail].join('\n');
+      }
       snippets.push(`--- ${file.path} ---\n${snippet}`);
     } catch {
       // Skip files we can't read
@@ -379,14 +391,15 @@ export function buildCompressedContext(
   // END: Recent context (high attention, full detail)
   // ─────────────────────────────────────────────────────────────────────────
   
-  // Layer 5: Unresolved errors (FULL - critical for debugging)
+  // Layer 5: Unresolved errors (ALL - critical for debugging)
   // Note: 'errors' already loaded at top for dynamic budget calculation
   if (errors.length > 0) {
-    const errorContent = errors.slice(0, 3).map(e => {
+    const errorContent = errors.slice(0, 10).map(e => {
       const attempts = e.fixAttempts.length > 0 
         ? ` (tried ${e.fixAttempts.length}x: ${e.fixAttempts.map(a => a.approach).join(', ')})`
         : '';
-      return `ERROR: ${e.error}${attempts}`;
+      const location = e.file ? ` [${e.file}${e.line ? `:${e.line}` : ''}]` : '';
+      return `ERROR${location}: ${e.error}${attempts}`;
     }).join('\n\n');
     
     layers.push({
@@ -398,9 +411,9 @@ export function buildCompressedContext(
     });
   }
   
-  // Layer 6: Recent tool calls
+  // Layer 6: Recent tool calls (more context for understanding workflow)
   if (tracker.recentToolCalls.length > 0) {
-    const toolContent = tracker.recentToolCalls.slice(0, 5).map(t => {
+    const toolContent = tracker.recentToolCalls.slice(0, 15).map(t => {
       const ago = Math.round((Date.now() - t.timestamp) / 60000);
       return `${t.tool} (${ago}m ago)`;
     }).join('\n');

@@ -120,7 +120,7 @@ export function indexJournalEntries(projectPath: string): number {
       id: `journal-${entry.id}`,
       type: 'journal',
       source: entry.id,
-      content: entry.conversation.slice(0, 1000),  // Limit content size
+      content: entry.conversation.slice(0, 4000),  // More content for better search
       timestamp: new Date(entry.timestamp).getTime(),
       keywords,
     });
@@ -136,22 +136,22 @@ export function indexJournalEntries(projectPath: string): number {
 }
 
 /**
- * Index code files for search
+ * Index code files for search - no artificial limits
  */
-export function indexCodeFiles(projectPath: string, maxFiles: number = 50): number {
+export function indexCodeFiles(projectPath: string, maxFiles: number = 500): number {
   const safePath = sanitizePath(projectPath);
   const index = loadIndex(safePath);
   
   // Remove old code chunks
   index.chunks = index.chunks.filter(c => c.type !== 'code');
   
-  const extensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.swift', '.md'];
-  const ignore = ['node_modules', '.git', 'dist', 'build', '.next', '__pycache__', '.midas'];
+  const extensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.swift', '.md', '.json', '.yaml', '.yml'];
+  const ignore = ['node_modules', '.git', 'dist', 'build', '.next', '__pycache__', '.midas', 'coverage'];
   
   let indexed = 0;
   
   function scanDir(dir: string, depth = 0): void {
-    if (depth > 3 || indexed >= maxFiles) return;
+    if (depth > 6 || indexed >= maxFiles) return;
     try {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         if (indexed >= maxFiles) break;
@@ -162,7 +162,7 @@ export function indexCodeFiles(projectPath: string, maxFiles: number = 50): numb
           scanDir(path, depth + 1);
         } else if (extensions.some(ext => entry.name.endsWith(ext))) {
           try {
-            const content = readFileSync(path, 'utf-8').slice(0, 2000);
+            const content = readFileSync(path, 'utf-8').slice(0, 8000);  // More content for search
             const keywords = extractKeywords(content);
             const relativePath = path.replace(safePath + '/', '');
             
@@ -170,7 +170,7 @@ export function indexCodeFiles(projectPath: string, maxFiles: number = 50): numb
               id: `code-${relativePath}`,
               type: 'code',
               source: relativePath,
-              content: content.slice(0, 500),
+              content: content.slice(0, 2000),  // Store more for context
               timestamp: Date.now(),
               keywords,
             });

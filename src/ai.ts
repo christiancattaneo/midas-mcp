@@ -4,20 +4,22 @@ import { getActiveProvider } from './config.js';
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join, extname } from 'path';
 
-// Scan codebase for context
-function scanCodebase(projectPath: string, maxFiles = 20): string[] {
+/**
+ * Scan codebase for ALL source files - no artificial limits.
+ * Complete visibility is essential for accurate analysis.
+ */
+function scanCodebase(projectPath: string): string[] {
   const files: string[] = [];
-  const importantExtensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.swift'];
-  const ignoreDirs = ['node_modules', '.git', 'dist', 'build', '.next', '__pycache__'];
+  const importantExtensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.swift', '.md', '.json', '.yaml', '.yml'];
+  const ignoreDirs = ['node_modules', '.git', 'dist', 'build', '.next', '__pycache__', '.midas', 'coverage'];
 
   function scan(dir: string, depth = 0): void {
-    if (depth > 3 || files.length >= maxFiles) return;
+    if (depth > 6) return; // Reasonable depth for most project structures
 
     try {
       const entries = readdirSync(dir, { withFileTypes: true });
       
       for (const entry of entries) {
-        if (files.length >= maxFiles) break;
         if (entry.name.startsWith('.')) continue;
         if (ignoreDirs.includes(entry.name)) continue;
 
@@ -41,11 +43,19 @@ function scanCodebase(projectPath: string, maxFiles = 20): string[] {
   return files;
 }
 
-function getFileContent(filePath: string, maxLines = 50): string {
+/**
+ * Read file content with smart truncation for very large files.
+ */
+function getFileContent(filePath: string, maxLines = 300): string {
   try {
     const content = readFileSync(filePath, 'utf-8');
-    const lines = content.split('\n').slice(0, maxLines);
-    return lines.join('\n');
+    const lines = content.split('\n');
+    if (lines.length <= maxLines) return content;
+    
+    // For large files, take beginning + end (important context at both ends)
+    const head = lines.slice(0, Math.floor(maxLines * 0.7));
+    const tail = lines.slice(-Math.floor(maxLines * 0.3));
+    return [...head, '\n// ... middle truncated ...\n', ...tail].join('\n');
   } catch {
     return '';
   }
@@ -88,10 +98,17 @@ export async function analyzeCodebase(projectPath: string): Promise<CodebaseCont
     };
   }
 
-  // Build context for AI
+  // Build context for AI - prioritize key files
   const fileList = files.map(f => f.replace(projectPath, '')).join('\n');
-  const sampleContent = files.slice(0, 5).map(f => {
-    const content = getFileContent(f);
+  
+  // Prioritize tests, main entry, and config files
+  const priorityPatterns = ['.test.', '.spec.', 'index.', 'main.', 'app.', 'server.', 'config.'];
+  const priorityFiles = files.filter(f => priorityPatterns.some(p => f.includes(p))).slice(0, 10);
+  const otherFiles = files.filter(f => !priorityPatterns.some(p => f.includes(p))).slice(0, 10);
+  const sampleFiles = [...priorityFiles, ...otherFiles].slice(0, 15);
+  
+  const sampleContent = sampleFiles.map(f => {
+    const content = getFileContent(f, 100);
     return `--- ${f.replace(projectPath, '')} ---\n${content}`;
   }).join('\n\n');
 

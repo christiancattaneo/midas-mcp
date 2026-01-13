@@ -829,10 +829,11 @@ export function maybeAutoAdvance(projectPath: string): { advanced: boolean; from
 export function scanRecentFiles(projectPath: string, since?: number): FileActivity[] {
   const cutoff = since || Date.now() - 3600000;
   const files: FileActivity[] = [];
-  const ignore = ['node_modules', '.git', 'dist', 'build', '.next', '__pycache__', '.midas'];
+  const ignore = ['node_modules', '.git', 'dist', 'build', '.next', '__pycache__', '.midas', 'coverage'];
   
   function scan(dir: string, depth = 0): void {
-    if (depth > 4 || files.length >= 100) return;
+    // Increased limits for better project visibility
+    if (depth > 6 || files.length >= 500) return;
     try {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         if (entry.name.startsWith('.') || ignore.includes(entry.name)) continue;
