@@ -24,9 +24,12 @@ export type ShipStep =
   | 'MONITOR';
 
 export type GrowStep =
-  | 'FEEDBACK'
-  | 'ANALYZE'
-  | 'ITERATE';
+  | 'MONITOR'      // Track error rates, performance, engagement
+  | 'COLLECT'      // Gather user feedback, bug reports, reviews
+  | 'TRIAGE'       // Prioritize by impact/effort
+  | 'RETROSPECT'   // What worked, what didn't
+  | 'PLAN_NEXT'    // Define next iteration scope
+  | 'LOOP';        // Return to PLAN with new context
 
 export type Phase =
   | { phase: 'IDLE' }
@@ -140,12 +143,15 @@ export const PHASE_INFO = {
   },
   GROW: {
     name: 'Grow',
-    description: 'Learn and iterate',
+    description: 'Learn from production and iterate',
     color: 'magenta',
     steps: {
-      FEEDBACK: { name: 'Feedback', action: 'Collect user feedback', prompt: 'User interviews, support tickets, reviews' },
-      ANALYZE: { name: 'Analyze', action: 'Study the data', prompt: 'Metrics, behavior patterns, retention' },
-      ITERATE: { name: 'Iterate', action: 'Plan next cycle', prompt: 'Prioritize, plan, return to Plan phase' },
+      MONITOR: { name: 'Monitor', action: 'Track production health', prompt: 'Error rates, latency, uptime, resource usage' },
+      COLLECT: { name: 'Collect', action: 'Gather feedback', prompt: 'User reviews, bug reports, feature requests, analytics' },
+      TRIAGE: { name: 'Triage', action: 'Prioritize issues', prompt: 'Impact vs effort matrix, quick wins, critical bugs' },
+      RETROSPECT: { name: 'Retrospect', action: 'Review the cycle', prompt: 'What worked? What broke? What surprised us?' },
+      PLAN_NEXT: { name: 'Plan Next', action: 'Scope next iteration', prompt: 'Define hypothesis, success metrics, scope boundaries' },
+      LOOP: { name: 'Loop', action: 'Return to Plan', prompt: 'Carry context forward, update brainlift, start new cycle' },
     },
   },
 };
@@ -191,9 +197,12 @@ export function getNextPhase(current: Phase): Phase {
     { phase: 'SHIP', step: 'REVIEW' },
     { phase: 'SHIP', step: 'DEPLOY' },
     { phase: 'SHIP', step: 'MONITOR' },
-    { phase: 'GROW', step: 'FEEDBACK' },
-    { phase: 'GROW', step: 'ANALYZE' },
-    { phase: 'GROW', step: 'ITERATE' },
+    { phase: 'GROW', step: 'MONITOR' },
+    { phase: 'GROW', step: 'COLLECT' },
+    { phase: 'GROW', step: 'TRIAGE' },
+    { phase: 'GROW', step: 'RETROSPECT' },
+    { phase: 'GROW', step: 'PLAN_NEXT' },
+    { phase: 'GROW', step: 'LOOP' },
   ];
 
   if (current.phase === 'IDLE') {
@@ -236,9 +245,12 @@ export function getPrevPhase(current: Phase): Phase {
     { phase: 'SHIP', step: 'REVIEW' },
     { phase: 'SHIP', step: 'DEPLOY' },
     { phase: 'SHIP', step: 'MONITOR' },
-    { phase: 'GROW', step: 'FEEDBACK' },
-    { phase: 'GROW', step: 'ANALYZE' },
-    { phase: 'GROW', step: 'ITERATE' },
+    { phase: 'GROW', step: 'MONITOR' },
+    { phase: 'GROW', step: 'COLLECT' },
+    { phase: 'GROW', step: 'TRIAGE' },
+    { phase: 'GROW', step: 'RETROSPECT' },
+    { phase: 'GROW', step: 'PLAN_NEXT' },
+    { phase: 'GROW', step: 'LOOP' },
   ];
 
   if (current.phase === 'IDLE') return { phase: 'IDLE' };

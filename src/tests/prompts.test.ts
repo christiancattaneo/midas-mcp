@@ -143,28 +143,28 @@ describe('Prompt Generation System', () => {
   });
 
   describe('GROW prompts', () => {
-    it('FEEDBACK step analyzes user input', () => {
-      setPhase(testDir, { phase: 'GROW', step: 'FEEDBACK' });
+    it('COLLECT step gathers user feedback', () => {
+      setPhase(testDir, { phase: 'GROW', step: 'COLLECT' });
       const result = suggestPrompt({ projectPath: testDir });
       
-      assert.strictEqual(result.prompt.includes('feedback'), true);
-      assert.strictEqual(result.prompt.includes('patterns'), true);
+      assert.strictEqual(result.prompt.toLowerCase().includes('feedback'), true);
+      assert.strictEqual(result.prompt.toLowerCase().includes('reviews') || result.prompt.toLowerCase().includes('prioritize'), true);
     });
 
-    it('ANALYZE step reviews metrics', () => {
-      setPhase(testDir, { phase: 'GROW', step: 'ANALYZE' });
+    it('TRIAGE step prioritizes issues', () => {
+      setPhase(testDir, { phase: 'GROW', step: 'TRIAGE' });
       const result = suggestPrompt({ projectPath: testDir });
       
-      assert.strictEqual(result.prompt.includes('metrics'), true);
-      assert.strictEqual(result.prompt.includes('bottleneck'), true);
+      assert.strictEqual(result.prompt.toLowerCase().includes('impact'), true);
+      assert.strictEqual(result.prompt.toLowerCase().includes('effort'), true);
     });
 
-    it('ITERATE step plans next cycle', () => {
-      setPhase(testDir, { phase: 'GROW', step: 'ITERATE' });
+    it('LOOP step returns to PLAN', () => {
+      setPhase(testDir, { phase: 'GROW', step: 'LOOP' });
       const result = suggestPrompt({ projectPath: testDir });
       
-      assert.strictEqual(result.prompt.includes('iteration'), true);
-      assert.strictEqual(result.prompt.includes('brainlift'), true);
+      assert.strictEqual(result.prompt.toLowerCase().includes('handoff') || result.prompt.toLowerCase().includes('context'), true);
+      assert.strictEqual(result.prompt.toLowerCase().includes('brainlift'), true);
     });
   });
 

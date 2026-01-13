@@ -28,7 +28,7 @@ import {
   getJournalSchema,
   searchJournal,
   searchJournalSchema,
-  // New verification and smart suggestion tools
+  // Verification and smart suggestion tools
   verify,
   verifySchema,
   smartSuggest,
@@ -54,6 +54,27 @@ import {
   setApiKeySchema,
   listProviders,
   listProvidersSchema,
+  // GROW phase tools
+  verifyDeploy,
+  verifyDeploySchema,
+  generateChangelog,
+  changelogSchema,
+  saveRetrospective,
+  retrospectiveSchema,
+  startNextCycle,
+  nextCycleSchema,
+  archiveCycle,
+  archiveCycleSchema,
+  getCostReport,
+  costReportSchema,
+  // Completeness model
+  checkCompleteness,
+  completenessSchema,
+  // Validation pipeline
+  validateGates,
+  validateGatesSchema,
+  enforceGatesAndAdvance,
+  enforceGatesSchema,
 } from './tools/index.js';
 import { registerAllPrompts } from './prompts/index.js';
 import { registerAllResources } from './resources/index.js';
@@ -310,6 +331,72 @@ export function createServer(): McpServer {
     wrapTool('midas_list_providers', listProviders)
   );
 
+  // GROW phase tools
+  server.tool(
+    'midas_verify_deploy',
+    'Pre-flight deployment checks: build, test, lint, security audit, git status.',
+    verifyDeploySchema.shape,
+    wrapTool('midas_verify_deploy', verifyDeploy)
+  );
+
+  server.tool(
+    'midas_changelog',
+    'Generate changelog from git commits. Groups by conventional commit type.',
+    changelogSchema.shape,
+    wrapTool('midas_changelog', generateChangelog)
+  );
+
+  server.tool(
+    'midas_retrospective',
+    'Record a sprint/cycle retrospective. Saves what worked, what didn\'t, learnings.',
+    retrospectiveSchema.shape,
+    wrapTool('midas_retrospective', saveRetrospective)
+  );
+
+  server.tool(
+    'midas_next_cycle',
+    'Start a new development cycle with hypothesis, scope, and success metrics.',
+    nextCycleSchema.shape,
+    wrapTool('midas_next_cycle', startNextCycle)
+  );
+
+  server.tool(
+    'midas_archive_cycle',
+    'Archive the current cycle to history. Preserves retrospective and metrics.',
+    archiveCycleSchema.shape,
+    wrapTool('midas_archive_cycle', archiveCycle)
+  );
+
+  server.tool(
+    'midas_cost_report',
+    'Get API cost report for the project. Shows breakdown by provider and projected costs.',
+    costReportSchema.shape,
+    wrapTool('midas_cost_report', getCostReport)
+  );
+
+  // Completeness model
+  server.tool(
+    'midas_completeness',
+    '12-category production readiness score: testing, security, docs, monitoring, CI/CD, etc.',
+    completenessSchema.shape,
+    wrapTool('midas_completeness', checkCompleteness)
+  );
+
+  // Validation pipeline
+  server.tool(
+    'midas_validate_gates',
+    'Run validation gates: compile, lint, test. Returns pass/fail for each.',
+    validateGatesSchema.shape,
+    wrapTool('midas_validate_gates', validateGates)
+  );
+
+  server.tool(
+    'midas_enforce_advance',
+    'Advance phase only if gates pass. Blocks BUILD->SHIP if tests fail.',
+    enforceGatesSchema.shape,
+    wrapTool('midas_enforce_advance', enforceGatesAndAdvance)
+  );
+
   // Register prompts
   registerAllPrompts(server);
   logger.debug('Registered prompts');
@@ -318,6 +405,6 @@ export function createServer(): McpServer {
   registerAllResources(server);
   logger.debug('Registered resources');
 
-  logger.info('Midas MCP server ready', { tools: 26, prompts: 17, resources: 5 });
+  logger.info('Midas MCP server ready', { tools: 35, prompts: 20, resources: 5 });
   return server;
 }

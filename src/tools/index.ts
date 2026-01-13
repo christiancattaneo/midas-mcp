@@ -74,3 +74,34 @@ export {
   listProviders,
   listProvidersSchema,
 } from './config.js';
+
+// GROW phase tools - deployment, retrospectives, cycles
+export {
+  verifyDeploy,
+  verifyDeploySchema,
+  generateChangelog,
+  changelogSchema,
+  saveRetrospective,
+  retrospectiveSchema,
+  startNextCycle,
+  nextCycleSchema,
+  archiveCycle,
+  archiveCycleSchema,
+  getCostReport,
+  costReportSchema,
+  recordCost,
+} from './grow.js';
+
+// Completeness model - 12-category scoring
+export {
+  checkCompleteness,
+  completenessSchema,
+} from './completeness.js';
+
+// Validation pipeline - enforce gates before phase advance
+export {
+  validateGates,
+  validateGatesSchema,
+  enforceGatesAndAdvance,
+  enforceGatesSchema,
+} from './validate.js';

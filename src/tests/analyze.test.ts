@@ -50,11 +50,11 @@ describe('Analyze Tools', () => {
     });
 
     it('returns phase-specific prompt for GROW', () => {
-      setPhase(testDir, { phase: 'GROW', step: 'FEEDBACK' });
+      setPhase(testDir, { phase: 'GROW', step: 'COLLECT' });
       const result = suggestPrompt({ projectPath: testDir });
       assert.strictEqual(result.phase, 'GROW');
-      assert.strictEqual(result.step, 'FEEDBACK');
-      assert.strictEqual(result.prompt.includes('feedback'), true);
+      assert.strictEqual(result.step, 'COLLECT');
+      assert.strictEqual(result.prompt.toLowerCase().includes('feedback'), true);
     });
 
     it('substitutes context into prompt placeholders', () => {
@@ -111,11 +111,11 @@ describe('Analyze Tools', () => {
       setPhase(testDir, { phase: 'SHIP', step: 'MONITOR' });
       const result = advancePhase({ projectPath: testDir });
       assert.strictEqual(result.current.phase, 'GROW');
-      assert.strictEqual(result.current.step, 'FEEDBACK');
+      assert.strictEqual(result.current.step, 'MONITOR');
     });
 
     it('loops from GROW back to EAGLE_SIGHT', () => {
-      setPhase(testDir, { phase: 'GROW', step: 'ITERATE' });
+      setPhase(testDir, { phase: 'GROW', step: 'LOOP' });
       const result = advancePhase({ projectPath: testDir });
       assert.strictEqual(result.current.phase, 'EAGLE_SIGHT');
       assert.strictEqual(result.current.step, 'IDEA');

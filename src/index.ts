@@ -4,6 +4,10 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { createServer } from './server.js';
 import { runCLI } from './cli.js';
 import { runInteractive } from './tui.js';
+import { initMonitoring, captureError } from './monitoring.js';
+
+// Initialize monitoring on startup (no-op if not configured)
+initMonitoring();
 
 async function startMCPServer(): Promise<void> {
   const server = createServer();
@@ -30,6 +34,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
+  captureError(error as Error, { tool: 'main' });
   console.error('Fatal error:', error);
   process.exit(1);
 });

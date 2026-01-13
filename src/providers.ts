@@ -10,6 +10,8 @@
 
 import { getActiveProvider, getProviderApiKey, type AIProvider } from './config.js';
 import { logger } from './logger.js';
+import { recordTokens, captureError } from './monitoring.js';
+import { recordCost } from './tools/grow.js';
 
 export interface ChatOptions {
   systemPrompt?: string;
@@ -185,13 +187,25 @@ async function chatAnthropic(
     }
   }
   
+  const inputTokens = data.usage?.input_tokens ?? 0;
+  const outputTokens = data.usage?.output_tokens ?? 0;
+  const cached = (data.usage?.cache_read_input_tokens ?? 0) > 0;
+  
+  // Record metrics and cost
+  recordTokens(inputTokens, outputTokens, { provider: 'anthropic', cached });
+  try {
+    recordCost(process.cwd(), 'anthropic', inputTokens, outputTokens, cached);
+  } catch {
+    // Cost tracking is optional
+  }
+  
   return {
     content,
     provider: 'anthropic',
     model: config.model,
-    inputTokens: data.usage?.input_tokens,
-    outputTokens: data.usage?.output_tokens,
-    cached: (data.usage?.cache_read_input_tokens ?? 0) > 0,
+    inputTokens,
+    outputTokens,
+    cached,
   };
 }
 
@@ -240,12 +254,23 @@ async function chatOpenAI(
     usage?: { prompt_tokens: number; completion_tokens: number };
   };
   
+  const inputTokens = data.usage?.prompt_tokens ?? 0;
+  const outputTokens = data.usage?.completion_tokens ?? 0;
+  
+  // Record metrics and cost
+  recordTokens(inputTokens, outputTokens, { provider: 'openai' });
+  try {
+    recordCost(process.cwd(), 'openai', inputTokens, outputTokens);
+  } catch {
+    // Cost tracking is optional
+  }
+  
   return {
     content: data.choices[0]?.message?.content || '',
     provider: 'openai',
     model: config.model,
-    inputTokens: data.usage?.prompt_tokens,
-    outputTokens: data.usage?.completion_tokens,
+    inputTokens,
+    outputTokens,
   };
 }
 
@@ -296,13 +321,23 @@ async function chatGoogle(
   };
   
   const content = data.candidates[0]?.content?.parts?.[0]?.text || '';
+  const inputTokens = data.usageMetadata?.promptTokenCount ?? 0;
+  const outputTokens = data.usageMetadata?.candidatesTokenCount ?? 0;
+  
+  // Record metrics and cost
+  recordTokens(inputTokens, outputTokens, { provider: 'google' });
+  try {
+    recordCost(process.cwd(), 'google', inputTokens, outputTokens);
+  } catch {
+    // Cost tracking is optional
+  }
   
   return {
     content,
     provider: 'google',
     model: config.model,
-    inputTokens: data.usageMetadata?.promptTokenCount,
-    outputTokens: data.usageMetadata?.candidatesTokenCount,
+    inputTokens,
+    outputTokens,
   };
 }
 
@@ -351,12 +386,23 @@ async function chatXAI(
     usage?: { prompt_tokens: number; completion_tokens: number };
   };
   
+  const inputTokens = data.usage?.prompt_tokens ?? 0;
+  const outputTokens = data.usage?.completion_tokens ?? 0;
+  
+  // Record metrics and cost
+  recordTokens(inputTokens, outputTokens, { provider: 'xai' });
+  try {
+    recordCost(process.cwd(), 'xai', inputTokens, outputTokens);
+  } catch {
+    // Cost tracking is optional
+  }
+  
   return {
     content: data.choices[0]?.message?.content || '',
     provider: 'xai',
     model: config.model,
-    inputTokens: data.usage?.prompt_tokens,
-    outputTokens: data.usage?.completion_tokens,
+    inputTokens,
+    outputTokens,
   };
 }
 

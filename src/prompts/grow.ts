@@ -2,10 +2,43 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 export function registerGrowPrompts(server: McpServer): void {
-  // User feedback analysis
+  // MONITOR step - Production health tracking
   server.prompt(
-    'analyze_feedback',
-    'Analyze user feedback to identify patterns and priorities',
+    'production_health',
+    'Review production health metrics and error rates',
+    { errorLogs: z.string().optional().describe('Paste recent error logs or metrics') },
+    (args) => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: `Analyze production health:
+
+${args.errorLogs ? `Recent data:\n${args.errorLogs}\n\n---` : ''}
+
+Check:
+1. **Error rates** - What's breaking? Frequency? Patterns?
+2. **Latency** - p50, p95, p99 response times
+3. **Uptime** - Any outages? Duration?
+4. **Resources** - CPU, memory, disk usage trends
+
+For each issue:
+- Severity (critical/high/medium/low)
+- Affected users/requests
+- Recommended action
+
+Output a health report with priorities.`,
+          },
+        },
+      ],
+    })
+  );
+
+  // COLLECT step - Gather feedback
+  server.prompt(
+    'collect_feedback',
+    'Analyze user feedback to identify patterns',
     { feedback: z.string().describe('User feedback to analyze (paste reviews, comments, tickets)') },
     (args) => ({
       messages: [
@@ -19,67 +52,158 @@ ${args.feedback}
 
 ---
 
-1. **Categorize** each piece of feedback:
+1. **Categorize** each piece:
    - Bug report
    - Feature request
-   - UX issue
+   - UX friction
    - Performance complaint
    - Praise
 
-2. **Identify patterns** - What themes appear multiple times?
+2. **Identify patterns** - Themes appearing multiple times
 
-3. **Prioritize** using impact vs effort matrix:
-   - Quick wins (low effort, high impact)
-   - Major projects (high effort, high impact)
-   - Nice to haves (low effort, low impact)
-   - Avoid (high effort, low impact)
+3. **Extract quotes** - Most impactful user statements
 
-4. **Recommend** top 3 actions for next iteration.`,
+4. **Sentiment** - Overall positive/negative/neutral breakdown
+
+Output a feedback summary with key insights.`,
           },
         },
       ],
     })
   );
 
-  // Metrics review
+  // TRIAGE step - Prioritize issues
   server.prompt(
-    'metrics_review',
-    'Review product metrics to identify opportunities',
-    { metrics: z.string().optional().describe('Key metrics data if available') },
+    'triage_bugs',
+    'Prioritize bugs and issues by impact and effort',
+    { issues: z.string().describe('List of bugs/issues to triage') },
     (args) => ({
       messages: [
         {
           role: 'user',
           content: {
             type: 'text',
-            text: `Review product metrics and health:
+            text: `Triage these issues:
 
-${args.metrics ? `Data:\n${args.metrics}\n\n---` : ''}
+${args.issues}
 
-Analyze (or help me set up tracking for):
+---
 
-1. **Acquisition** - How users find us
-2. **Activation** - First value moment
-3. **Retention** - Users coming back
-4. **Revenue** - Monetization health
-5. **Referral** - Viral coefficient
+For each issue, determine:
+1. **Impact** (1-5): Users affected, severity, revenue impact
+2. **Effort** (1-5): Complexity, risk, dependencies
+3. **Urgency**: Is it getting worse?
 
-For each stage:
-- What's the current state?
-- What's the bottleneck?
-- What's one experiment to try?
+Then categorize:
+- **P0 Critical**: Fix immediately (blocking users, security, data loss)
+- **P1 High**: Fix this sprint (major functionality broken)
+- **P2 Medium**: Schedule soon (degraded experience)
+- **P3 Low**: Backlog (minor annoyance)
 
-Provide specific, actionable recommendations.`,
+Output a prioritized list with recommended order.`,
           },
         },
       ],
     })
   );
 
-  // Iteration planning
+  // RETROSPECT step - Review the cycle
   server.prompt(
-    'plan_iteration',
-    'Plan the next development iteration based on learnings',
+    'sprint_retro',
+    'Conduct a sprint/cycle retrospective',
+    { 
+      accomplishments: z.string().optional().describe('What was shipped'),
+      issues: z.string().optional().describe('Problems encountered'),
+    },
+    (args) => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: `Sprint retrospective:
+
+${args.accomplishments ? `Shipped:\n${args.accomplishments}\n` : ''}
+${args.issues ? `Issues:\n${args.issues}\n` : ''}
+---
+
+Guide me through:
+
+1. **What worked well?**
+   - Processes that helped
+   - Tools that saved time
+   - Team dynamics that clicked
+
+2. **What didn't work?**
+   - Blockers we hit
+   - Time wasted on
+   - Communication gaps
+
+3. **What surprised us?**
+   - Unexpected wins
+   - Hidden complexity
+   - User behavior we didn't expect
+
+4. **Action items**
+   - One thing to START doing
+   - One thing to STOP doing
+   - One thing to CONTINUE doing
+
+Output concrete action items for next cycle.`,
+          },
+        },
+      ],
+    })
+  );
+
+  // PLAN_NEXT step - Scope next iteration
+  server.prompt(
+    'plan_next_cycle',
+    'Plan the next development cycle with clear scope',
+    { learnings: z.string().optional().describe('Key learnings from retro') },
+    (args) => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: `Plan next cycle:
+
+${args.learnings ? `Learnings:\n${args.learnings}\n\n---` : ''}
+
+Define:
+
+1. **Hypothesis**
+   - What are we testing?
+   - What do we believe will happen?
+   - How will we validate?
+
+2. **Scope**
+   - Single most important thing to build
+   - Explicit non-goals (what we WON'T do)
+   - Minimum viable version
+
+3. **Success metrics**
+   - How do we measure success?
+   - Target numbers
+   - Timeline
+
+4. **Risks**
+   - What could go wrong?
+   - Mitigation strategies
+   - Kill criteria (when to pivot)
+
+Output a one-page cycle plan.`,
+          },
+        },
+      ],
+    })
+  );
+
+  // LOOP step - Return to PLAN with context
+  server.prompt(
+    'cycle_handoff',
+    'Prepare context for next PLAN phase',
     {},
     () => ({
       messages: [
@@ -87,36 +211,38 @@ Provide specific, actionable recommendations.`,
           role: 'user',
           content: {
             type: 'text',
-            text: `Plan the next iteration:
+            text: `Prepare for next PLAN phase:
 
-1. **Retrospective**
-   - What worked well last iteration?
-   - What didn't work?
-   - What did we learn?
+Create handoff document:
 
-2. **Scope Definition**
-   - What's the single most important thing to build next?
-   - What's explicitly OUT of scope?
-   - What's the hypothesis we're testing?
+1. **Context summary**
+   - What was built this cycle
+   - Current state of the product
+   - Active users/usage metrics
 
-3. **Success Criteria**
-   - How will we know this succeeded?
-   - What metrics will we track?
-   - What's the minimum viable version?
+2. **Lessons learned**
+   - Technical decisions that worked/didn't
+   - Process improvements needed
+   - Knowledge to preserve
 
-4. **Return to Plan Phase**
-   - Update brainlift with new learnings
-   - Revise PRD for next feature
-   - Create new gameplan
+3. **Carry forward**
+   - Unresolved bugs (prioritized)
+   - Feature requests (prioritized)
+   - Technical debt to address
 
-Output a clear plan I can execute.`,
+4. **Brainlift updates**
+   - New edge knowledge gained
+   - Updated constraints
+   - Revised assumptions
+
+Output a handoff doc ready to inform the next PLAN phase.`,
           },
         },
       ],
     })
   );
 
-  // Performance optimization
+  // Performance optimization (keep existing)
   server.prompt(
     'optimize_performance',
     'Identify and fix performance bottlenecks',

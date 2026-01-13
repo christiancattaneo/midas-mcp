@@ -108,6 +108,8 @@ interface TUIState {
   hasApiKey: boolean;
   showingSessionStart: boolean;
   showingRejectionInput: boolean;
+  showingHelp: boolean;       // Show help screen
+  beginnerMode: boolean;      // Simplified display for new users
   sessionStarterPrompt: string;
   sessionId: string;
   sessionStreak: number;
@@ -263,6 +265,36 @@ function drawUI(state: TUIState, _projectPath: string): string {
     return lines.join('\n');
   }
 
+  // Help screen
+  if (state.showingHelp) {
+    lines.push(emptyRow());
+    lines.push(row(`${bold}${cyan}HELP - Keyboard Shortcuts${reset}`));
+    lines.push(emptyRow());
+    lines.push(row(`${dim}Navigation:${reset}`));
+    lines.push(row(`  ${bold}[r]${reset} Analyze     Re-analyze the project`));
+    lines.push(row(`  ${bold}[c]${reset} Copy        Copy suggested prompt to clipboard`));
+    lines.push(row(`  ${bold}[n]${reset} Next        Advance to next phase step`));
+    lines.push(row(`  ${bold}[p]${reset} Prev        Go back to previous step`));
+    lines.push(emptyRow());
+    lines.push(row(`${dim}Actions:${reset}`));
+    lines.push(row(`  ${bold}[v]${reset} Paste       Paste AI response for analysis`));
+    lines.push(row(`  ${bold}[j]${reset} Journal     Save current session to journal`));
+    lines.push(row(`  ${bold}[a]${reset} Add Rules   Add .cursorrules to project`));
+    lines.push(emptyRow());
+    lines.push(row(`${dim}Display:${reset}`));
+    lines.push(row(`  ${bold}[b]${reset} Beginner    Toggle simplified display mode`));
+    lines.push(row(`  ${bold}[?]${reset} Help        Show/hide this help screen`));
+    lines.push(row(`  ${bold}[R]${reset} Reset       Hard reset TUI state`));
+    lines.push(emptyRow());
+    lines.push(row(`${dim}Exit:${reset}`));
+    lines.push(row(`  ${bold}[q]${reset} Quit        Exit Midas TUI`));
+    lines.push(emptyRow());
+    lines.push(`${cyan}╠${hLine}╣${reset}`);
+    lines.push(row(`${dim}Press any key to close help${reset}`));
+    lines.push(`${cyan}╚${hLine}╝${reset}`);
+    return lines.join('\n');
+  }
+
   if (state.isAnalyzing) {
     lines.push(emptyRow());
     lines.push(row(`${magenta}...${reset} ${bold}Analyzing project${reset}`));
@@ -407,7 +439,7 @@ function drawUI(state: TUIState, _projectPath: string): string {
 
   lines.push(emptyRow());
   lines.push(`${cyan}╠${hLine}╣${reset}`);
-  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[i]${reset} Input  ${dim}[r]${reset} Analyze  ${dim}[v]${reset} Verify  ${dim}[q]${reset} Quit`));
+  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[r]${reset} Analyze  ${dim}[v]${reset} Verify  ${dim}[?]${reset} Help  ${dim}[q]${reset} Quit`));
   lines.push(`${cyan}╚${hLine}╝${reset}`);
 
   return lines.join('\n');
@@ -476,6 +508,8 @@ export async function runInteractive(): Promise<void> {
     hasApiKey: hasApiKey(),
     showingSessionStart: true, // Start with session starter prompt
     showingRejectionInput: false,
+    showingHelp: false,
+    beginnerMode: false,       // Toggle with 'b' key
     sessionStarterPrompt: getSessionStarterPrompt(projectPath),
     sessionId,
     sessionStreak: metrics.currentStreak,
@@ -779,6 +813,13 @@ export async function runInteractive(): Promise<void> {
         process.exit(0);
       }
 
+      // Help screen - any key closes it
+      if (tuiState.showingHelp) {
+        tuiState.showingHelp = false;
+        render();
+        return;
+      }
+
       // Session start screen handling
       if (tuiState.showingSessionStart) {
       if (key === 'c') {
@@ -833,6 +874,23 @@ export async function runInteractive(): Promise<void> {
 
     if (key === 'r') {
       await runAnalysis();
+    }
+
+    if (key === '?') {
+      // Toggle help screen
+      tuiState.showingHelp = !tuiState.showingHelp;
+      render();
+      return;
+    }
+
+    if (key === 'b') {
+      // Toggle beginner mode (simplified display)
+      tuiState.beginnerMode = !tuiState.beginnerMode;
+      tuiState.message = tuiState.beginnerMode 
+        ? `${green}OK${reset} Beginner mode ON - simplified display`
+        : `${green}OK${reset} Beginner mode OFF - full display`;
+      render();
+      return;
     }
 
     if (key === 'x') {
