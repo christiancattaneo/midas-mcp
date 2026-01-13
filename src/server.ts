@@ -45,6 +45,15 @@ import {
   recordFixSchema,
   getStuck,
   getStuckSchema,
+  // Provider config tools
+  getProvider,
+  getProviderSchema,
+  setProvider,
+  setProviderSchema,
+  setApiKey,
+  setApiKeySchema,
+  listProviders,
+  listProvidersSchema,
 } from './tools/index.js';
 import { registerAllPrompts } from './prompts/index.js';
 import { registerAllResources } from './resources/index.js';
@@ -272,6 +281,35 @@ export function createServer(): McpServer {
     wrapTool('midas_get_stuck', getStuck)
   );
 
+  // Provider configuration tools
+  server.tool(
+    'midas_get_provider',
+    'Get the current AI provider (anthropic, openai, google, xai) and its capabilities.',
+    getProviderSchema.shape,
+    wrapTool('midas_get_provider', getProvider)
+  );
+
+  server.tool(
+    'midas_set_provider',
+    'Switch AI provider. Options: anthropic (Claude Opus 4), openai (GPT-4o), google (Gemini 2.0), xai (Grok 2).',
+    setProviderSchema.shape,
+    wrapTool('midas_set_provider', setProvider)
+  );
+
+  server.tool(
+    'midas_set_api_key',
+    'Set API key for a provider. Keys are stored in ~/.midas/config.json.',
+    setApiKeySchema.shape,
+    wrapTool('midas_set_api_key', setApiKey)
+  );
+
+  server.tool(
+    'midas_list_providers',
+    'List all available AI providers with their capabilities and configuration status.',
+    listProvidersSchema.shape,
+    wrapTool('midas_list_providers', listProviders)
+  );
+
   // Register prompts
   registerAllPrompts(server);
   logger.debug('Registered prompts');
@@ -280,6 +318,6 @@ export function createServer(): McpServer {
   registerAllResources(server);
   logger.debug('Registered resources');
 
-  logger.info('Midas MCP server ready', { tools: 22, prompts: 17, resources: 5 });
+  logger.info('Midas MCP server ready', { tools: 26, prompts: 17, resources: 5 });
   return server;
 }

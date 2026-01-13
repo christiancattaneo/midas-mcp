@@ -62,3 +62,15 @@ export {
   getStuck,
   getStuckSchema,
 } from './verify.js';
+
+// Provider/config tools
+export {
+  getProvider,
+  getProviderSchema,
+  setProvider,
+  setProviderSchema,
+  setApiKey,
+  setApiKeySchema,
+  listProviders,
+  listProvidersSchema,
+} from './config.js';

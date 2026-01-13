@@ -1,60 +1,8 @@
 import { getApiKey } from './config.js';
+import { chat, getCurrentModel, getProviderCapabilities } from './providers.js';
+import { getActiveProvider } from './config.js';
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join, extname } from 'path';
-
-// Claude 4.5 Opus with extended thinking for deep analysis
-async function callClaude(prompt: string, systemPrompt?: string): Promise<string> {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error('No API key configured');
-  }
-
-  const maxTokens = 16000;
-  const thinkingBudget = 10000;
-
-  // Add timeout protection (60 seconds)
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60000);
-
-  let response: Response;
-  try {
-    response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-opus-4-20250514',
-        max_tokens: maxTokens,
-        thinking: {
-          type: 'enabled',
-          budget_tokens: thinkingBudget,
-        },
-        system: systemPrompt || 'You are Midas, a Golden Code coach. Be concise and actionable.',
-        messages: [{ role: 'user', content: prompt }],
-      }),
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`API error: ${response.status} - ${error}`);
-  }
-
-  // Extended thinking response has thinking blocks + text blocks
-  const data = await response.json() as { 
-    content: Array<{ type: string; text?: string; thinking?: string }> 
-  };
-  
-  // Extract text content (skip thinking blocks)
-  const textBlocks = data.content.filter(block => block.type === 'text');
-  return textBlocks[0]?.text || '';
-}
 
 // Scan codebase for context
 function scanCodebase(projectPath: string, maxFiles = 20): string[] {
@@ -148,7 +96,10 @@ export async function analyzeCodebase(projectPath: string): Promise<CodebaseCont
   }).join('\n\n');
 
   try {
-    const response = await callClaude(
+    const provider = getActiveProvider();
+    const capabilities = getProviderCapabilities(provider);
+    
+    const response = await chat(
       `Analyze this codebase and provide:
 1. A one-line summary of what it does
 2. The tech stack (list)
@@ -162,10 +113,13 @@ ${sampleContent}
 
 Respond in JSON format:
 {"summary": "...", "techStack": ["..."], "suggestedNextStep": "..."}`,
-      'You are a senior engineer analyzing a codebase. Be concise. Respond only with valid JSON.'
+      {
+        systemPrompt: 'You are a senior engineer analyzing a codebase. Be concise. Respond only with valid JSON.',
+        useThinking: capabilities.thinking,
+      }
     );
 
-    const parsed = JSON.parse(response);
+    const parsed = JSON.parse(response.content);
     return {
       files,
       summary: parsed.summary || `Found ${files.length} source files`,
@@ -194,9 +148,11 @@ export async function generateSmartPrompt(
   }
 
   const codebaseContext = context || await analyzeCodebase(projectPath);
+  const provider = getActiveProvider();
+  const capabilities = getProviderCapabilities(provider);
 
   try {
-    const response = await callClaude(
+    const response = await chat(
       `Generate a specific, actionable prompt for a developer to paste into Cursor AI.
 
 Project: ${codebaseContext.summary}
@@ -211,10 +167,13 @@ The prompt should:
 4. Follow the Golden Code methodology
 
 Respond with just the prompt text, no explanation.`,
-      'You are Midas, a Golden Code coach. Generate prompts that are specific, actionable, and context-aware.'
+      {
+        systemPrompt: 'You are Midas, a Golden Code coach. Generate prompts that are specific, actionable, and context-aware.',
+        useThinking: capabilities.thinking,
+      }
     );
 
-    return response.trim();
+    return response.content.trim();
   } catch {
     return '';
   }
@@ -230,9 +189,11 @@ export async function detectStepCompletion(
   }
 
   const context = await analyzeCodebase(projectPath);
+  const provider = getActiveProvider();
+  const capabilities = getProviderCapabilities(provider);
 
   try {
-    const response = await callClaude(
+    const response = await chat(
       `Based on this codebase analysis, determine if the following step is complete:
 
 Step: ${currentStep}
@@ -249,11 +210,17 @@ Consider:
 
 Respond in JSON:
 {"completed": true/false, "confidence": 0-100, "reason": "..."}`,
-      'You are analyzing project completeness. Be conservative - only mark complete if clearly done.'
+      {
+        systemPrompt: 'You are analyzing project completeness. Be conservative - only mark complete if clearly done.',
+        useThinking: capabilities.thinking,
+      }
     );
 
-    return JSON.parse(response);
+    return JSON.parse(response.content);
   } catch {
     return { completed: false, confidence: 0, reason: 'Analysis failed' };
   }
 }
+
+// Re-export for backward compatibility
+export { getCurrentModel };

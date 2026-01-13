@@ -1,4 +1,5 @@
-import { getApiKey } from './config.js';
+import { getApiKey, getActiveProvider } from './config.js';
+import { chat, getProviderCapabilities, getCurrentModel } from './providers.js';
 import { readdirSync, readFileSync, existsSync } from 'fs';
 import { join, extname } from 'path';
 import type { Phase, EagleSightStep, BuildStep, ShipStep, GrowStep } from './state/phase.js';
@@ -10,124 +11,58 @@ import { logger } from './logger.js';
 import { buildCompressedContext, contextToString, estimateTokens } from './context.js';
 
 // ============================================================================
-// CLAUDE API WITH PROMPT CACHING
+// AI PROVIDER ABSTRACTION
 // ============================================================================
 
 /**
- * Call Claude with optional prompt caching
+ * Call the configured AI provider
  * 
- * Prompt caching saves 90% on repeated system prompts:
- * - First call: Normal price for cache write
- * - Subsequent calls: 90% cheaper for cached portion
+ * Supports: Anthropic Claude, OpenAI GPT-4o, Google Gemini, xAI Grok
  * 
- * Requirements:
- * - System prompt must be identical
- * - Cache expires after ~5 minutes of inactivity
- * - Minimum 1024 tokens for caching to activate
+ * Provider-specific features:
+ * - Anthropic: Extended thinking, prompt caching (90% savings)
+ * - OpenAI: Standard chat completions
+ * - Google: 1M token context
+ * - xAI: OpenAI-compatible format
  */
-async function callClaude(
+async function callAI(
   prompt: string, 
   systemPrompt: string, 
-  options: { useCache?: boolean; maxTokens?: number; useThinking?: boolean } = {}
+  options: { maxTokens?: number; useThinking?: boolean } = {}
 ): Promise<string> {
   const apiKey = getApiKey();
-  if (!apiKey) throw new Error('No API key');
+  if (!apiKey) throw new Error('No API key configured');
 
-  const useCache = options.useCache ?? true;
+  const provider = getActiveProvider();
+  const capabilities = getProviderCapabilities(provider);
   const maxTokens = options.maxTokens ?? 16000;
-  const useThinking = options.useThinking ?? true;
-
-  // Build request body with Claude 4.5 Opus + extended thinking
-  const body: Record<string, unknown> = {
-    model: 'claude-opus-4-20250514',
-    max_tokens: maxTokens,
-    messages: [{ role: 'user', content: prompt }],
-  };
-
-  // Enable extended thinking for deeper analysis
-  if (useThinking) {
-    body.thinking = {
-      type: 'enabled',
-      budget_tokens: Math.min(10000, Math.floor(maxTokens * 0.6)),
-    };
-    // Note: Extended thinking doesn't support system prompt caching
-    body.system = systemPrompt;
-  } else if (useCache && estimateTokens(systemPrompt) >= 256) {
-    // Use prompt caching if enabled and system prompt is large enough
-    body.system = [{
-      type: 'text',
-      text: systemPrompt,
-      cache_control: { type: 'ephemeral' },
-    }];
-  } else {
-    body.system = systemPrompt;
-  }
-
-  // Add timeout protection for API calls (60 seconds)
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60000);
   
-  let response: Response;
-  try {
-    response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  // Use extended thinking only if provider supports it
+  const useThinking = (options.useThinking ?? true) && capabilities.thinking;
 
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => 'Unknown error');
-    throw new Error(`API error: ${response.status} - ${errorText}`);
-  }
+  logger.debug('AI call', { 
+    provider,
+    model: getCurrentModel(),
+    thinking: useThinking,
+  });
 
-  const data = await response.json() as { 
-    content: Array<{ type: string; text?: string; thinking?: string }>;
-    usage?: { 
-      input_tokens?: number;
-      output_tokens?: number;
-      cache_creation_input_tokens?: number;
-      cache_read_input_tokens?: number;
-    };
-  };
+  const response = await chat(prompt, {
+    systemPrompt,
+    maxTokens,
+    useThinking,
+    timeout: 60000,
+  });
   
   // Log usage for monitoring
-  if (data.usage) {
-    const usage = data.usage;
-    if (usage.cache_read_input_tokens && usage.cache_read_input_tokens > 0) {
-      // Cache hit - 90% savings on cached portion
-      const savings = Math.round(usage.cache_read_input_tokens * 0.9);
-      logger.info('Prompt cache HIT', { 
-        cached_tokens: usage.cache_read_input_tokens,
-        estimated_savings: savings,
-        total_input: usage.input_tokens,
-      });
-    } else if (usage.cache_creation_input_tokens && usage.cache_creation_input_tokens > 0) {
-      // Cache write - will save on subsequent calls
-      logger.info('Prompt cache WRITE', {
-        cached_tokens: usage.cache_creation_input_tokens,
-        total_input: usage.input_tokens,
-      });
-    } else {
-      logger.debug('Claude usage', { 
-        input_tokens: usage.input_tokens,
-        output_tokens: usage.output_tokens,
-        model: 'claude-opus-4',
-        thinking: useThinking,
-      });
-    }
-  }
+  logger.debug('AI response', {
+    provider: response.provider,
+    model: response.model,
+    inputTokens: response.inputTokens,
+    outputTokens: response.outputTokens,
+    cached: response.cached,
+  });
   
-  // Extract text content (skip thinking blocks when extended thinking is enabled)
-  const textBlocks = data.content.filter(block => block.type === 'text');
-  return textBlocks[0]?.text || '';
+  return response.content;
 }
 
 function scanFiles(dir: string, maxFiles = 30): string[] {
@@ -178,10 +113,10 @@ export async function summarizeContent(
   if (estimateTokens(content) <= targetTokens) return content;
   
   try {
-    const result = await callClaude(
+    const result = await callAI(
       `Summarize this in ~${targetTokens} tokens. Preserve: key decisions, technical choices, errors, solutions.\n\n${content.slice(0, 4000)}`,
       'You are a concise technical summarizer. Output only the summary, no preamble.',
-      { maxTokens: targetTokens + 50, useCache: false }  // Don't cache summaries
+      { maxTokens: targetTokens + 50, useThinking: false }  // Fast summarization
     );
     return result.trim();
   } catch {
@@ -400,7 +335,7 @@ Respond ONLY with valid JSON:
 }`;
 
   try {
-    const response = await callClaude(prompt, 
+    const response = await callAI(prompt, 
       'You are Midas, a Golden Code coach. Analyze projects and determine their exact phase in the development lifecycle. Be specific and actionable. Respond only with valid JSON.'
     );
     
@@ -566,10 +501,9 @@ Analyze this exchange and respond with JSON:
 }`;
 
   try {
-    const response = await callClaude(prompt, systemPrompt, { 
+    const response = await callAI(prompt, systemPrompt, { 
       maxTokens: 1000, 
       useThinking: false,  // Fast response for this
-      useCache: true 
     });
     
     // Parse JSON from response
