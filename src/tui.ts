@@ -210,11 +210,16 @@ function drawUI(state: TUIState, _projectPath: string): string {
   
   const lines: string[] = [];
   
-  // Header
+  // Header with right-aligned status
   lines.push(`${cyan}╔${hLine}╗${reset}`);
-  const streakStr = state.sessionStreak > 0 ? `${yellow}${state.sessionStreak}d streak${reset}` : '';
-  const statusIcons = `${streakStr} ${state.hasApiKey ? `${green}[ok]${reset}AI` : `${dim}[--]${reset}`}`;
-  lines.push(row(`${bold}${white}MIDAS${reset} ${dim}- Golden Code Coach${reset}           ${statusIcons}`));
+  const title = `${bold}${white}MIDAS${reset} ${dim}- Golden Code Coach${reset}`;
+  const streakStr = state.sessionStreak > 0 ? `${yellow}${state.sessionStreak}d${reset} ` : '';
+  const apiStatus = state.hasApiKey ? `${green}OK${reset}` : `${dim}--${reset}`;
+  const statusIcons = `${streakStr}${apiStatus}`;
+  const titleWidth = visibleWidth(title);
+  const statusWidth = visibleWidth(statusIcons);
+  const headerPadding = Math.max(1, I - titleWidth - statusWidth);
+  lines.push(row(`${title}${' '.repeat(headerPadding)}${statusIcons}`));
   lines.push(`${cyan}╠${hLine}╣${reset}`);
   
   // Show session starter prompt first
@@ -395,7 +400,7 @@ function drawUI(state: TUIState, _projectPath: string): string {
 
   lines.push(emptyRow());
   lines.push(`${cyan}╠${hLine}╣${reset}`);
-  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[r]${reset} Refresh  ${dim}[v]${reset} Verify  ${dim}[a]${reset} Add rules  ${dim}[q]${reset} Quit`));
+  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[x]${reset} Decline  ${dim}[r]${reset} Analyze  ${dim}[v]${reset} Verify  ${dim}[q]${reset} Quit`));
   lines.push(`${cyan}╚${hLine}╝${reset}`);
 
   return lines.join('\n');
