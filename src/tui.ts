@@ -57,6 +57,29 @@ function truncate(str: string, len: number): string {
   return str.slice(0, len - 3) + '...';
 }
 
+function wrapText(text: string, maxWidth: number): string[] {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let current = '';
+  
+  for (const word of words) {
+    if (current.length + word.length + 1 <= maxWidth) {
+      current += (current ? ' ' : '') + word;
+    } else {
+      if (current) lines.push(current);
+      current = word.length > maxWidth ? word.slice(0, maxWidth) : word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length ? lines : [''];
+}
+
+function pad(text: string, width: number): string {
+  const len = text.length;
+  if (len >= width) return text;
+  return text + ' '.repeat(width - len);
+}
+
 function phaseLabel(phase: Phase): string {
   if (phase.phase === 'IDLE') return 'Not started';
   const info = PHASE_INFO[phase.phase];
@@ -70,55 +93,57 @@ function phaseLabelSimple(phase: Phase): string {
   return `${info.name} → ${phase.step}`;
 }
 
-function drawUI(state: TUIState, projectPath: string): string {
-  const lines: string[] = [];
-  const width = 66;
-  const innerWidth = width - 4;
+function drawUI(state: TUIState, _projectPath: string): string {
+  const W = 70; // total width
+  const I = W - 4; // inner content width (between ║ and ║)
   
-  const hLine = '═'.repeat(width - 2);
-  const hLineLight = '─'.repeat(innerWidth);
+  const hLine = '═'.repeat(W - 2);
+  const hLineLight = '─'.repeat(I);
+  
+  const row = (content: string, visibleLen: number) => {
+    const padding = ' '.repeat(Math.max(0, I - visibleLen));
+    return `${cyan}║${reset}  ${content}${padding}${cyan}║${reset}`;
+  };
+  
+  const emptyRow = () => `${cyan}║${reset}${' '.repeat(W - 2)}${cyan}║${reset}`;
+  
+  const lines: string[] = [];
   
   // Header
   lines.push(`${cyan}╔${hLine}╗${reset}`);
-  const statusIcon = state.cursorConnected ? `${green}●${reset}` : `${dim}○${reset}`;
-  const aiIcon = state.hasApiKey ? `${magenta}AI${reset}` : `${red}--${reset}`;
-  lines.push(`${cyan}║${reset}  ${bold}${white}MIDAS${reset} ${dim}- Elite Vibecoding Coach${reset}        ${statusIcon} Cursor  ${aiIcon}   ${cyan}║${reset}`);
+  lines.push(row(`${bold}${white}MIDAS${reset} ${dim}- Elite Vibecoding Coach${reset}              ${state.cursorConnected ? `${green}●${reset}` : `${dim}○${reset}`} Cursor  ${state.hasApiKey ? `${magenta}AI${reset}` : `${dim}--${reset}`}`, I));
   lines.push(`${cyan}╠${hLine}╣${reset}`);
 
   if (state.isAnalyzing) {
-    lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
-    lines.push(`${cyan}║${reset}  ${magenta}⟳${reset} ${bold}Analyzing project...${reset}${' '.repeat(width - 28)}${cyan}║${reset}`);
-    lines.push(`${cyan}║${reset}  ${dim}Reading codebase, chat history, docs...${reset}${' '.repeat(width - 46)}${cyan}║${reset}`);
-    lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
+    lines.push(emptyRow());
+    lines.push(row(`${magenta}⟳${reset} ${bold}Analyzing project...${reset}`, 23));
+    lines.push(row(`${dim}Reading codebase, chat history, docs...${reset}`, 40));
+    lines.push(emptyRow());
     lines.push(`${cyan}╚${hLine}╝${reset}`);
     return lines.join('\n');
   }
 
   if (!state.analysis) {
-    lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
-    lines.push(`${cyan}║${reset}  ${yellow}!${reset} No analysis yet. Press ${bold}[r]${reset} to analyze.${' '.repeat(width - 49)}${cyan}║${reset}`);
-    lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
+    lines.push(emptyRow());
+    lines.push(row(`${yellow}!${reset} No analysis yet. Press ${bold}[r]${reset} to analyze.`, 44));
+    lines.push(emptyRow());
     lines.push(`${cyan}╠${hLine}╣${reset}`);
-    lines.push(`${cyan}║${reset}  ${dim}[r]${reset} Analyze  ${dim}[q]${reset} Quit${' '.repeat(width - 28)}${cyan}║${reset}`);
+    lines.push(row(`${dim}[r]${reset} Analyze  ${dim}[q]${reset} Quit`, 22));
     lines.push(`${cyan}╚${hLine}╝${reset}`);
     return lines.join('\n');
   }
 
   const a = state.analysis;
 
-  // Project summary
-  lines.push(`${cyan}║${reset}  ${bold}${truncate(a.summary, innerWidth)}${reset}${' '.repeat(Math.max(0, innerWidth - a.summary.length))}${cyan}║${reset}`);
+  // Project summary (wrapped)
+  for (const line of wrapText(a.summary, I)) {
+    lines.push(row(`${bold}${line}${reset}`, line.length));
+  }
   if (a.techStack.length > 0) {
     const stack = a.techStack.slice(0, 5).join(' · ');
-    lines.push(`${cyan}║${reset}  ${dim}${truncate(stack, innerWidth)}${reset}${' '.repeat(Math.max(0, innerWidth - stack.length))}${cyan}║${reset}`);
+    lines.push(row(`${dim}${stack}${reset}`, stack.length));
   }
-  lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
-
-  // Cursor context
-  if (state.cursorConnected && state.lastChatSummary && state.lastChatSummary !== 'Empty conversation') {
-    lines.push(`${cyan}║${reset}  ${dim}Chat:${reset} ${truncate(state.lastChatSummary, innerWidth - 7)}${' '.repeat(Math.max(0, innerWidth - 7 - Math.min(state.lastChatSummary.length, innerWidth - 7)))}${cyan}║${reset}`);
-    lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
-  }
+  lines.push(emptyRow());
 
   lines.push(`${cyan}╠${hLine}╣${reset}`);
 
@@ -126,63 +151,69 @@ function drawUI(state: TUIState, projectPath: string): string {
   const phases = ['EAGLE_SIGHT', 'BUILD', 'SHIP', 'GROW'] as const;
   const currentPhaseIdx = a.currentPhase.phase === 'IDLE' ? -1 : phases.indexOf(a.currentPhase.phase as typeof phases[number]);
   
-  let phaseBar = '  ';
+  let phaseBarText = '';
+  let phaseBarLen = 0;
   for (let i = 0; i < phases.length; i++) {
     const p = phases[i];
     const info = PHASE_INFO[p];
     const color = PHASE_COLORS[p];
+    const sep = i < phases.length - 1 ? '  ' : '';
     if (i < currentPhaseIdx) {
-      phaseBar += `${green}✓${reset} ${dim}${info.name}${reset}  `;
+      phaseBarText += `${green}✓${reset} ${dim}${info.name}${reset}${sep}`;
     } else if (i === currentPhaseIdx) {
-      phaseBar += `${color}●${reset} ${bold}${info.name}${reset}  `;
+      phaseBarText += `${color}●${reset} ${bold}${info.name}${reset}${sep}`;
     } else {
-      phaseBar += `${dim}○ ${info.name}${reset}  `;
+      phaseBarText += `${dim}○ ${info.name}${reset}${sep}`;
     }
+    phaseBarLen += 2 + info.name.length + sep.length;
   }
-  lines.push(`${cyan}║${reset}${phaseBar}${' '.repeat(Math.max(0, width - 2 - 50))}${cyan}║${reset}`);
-  lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
+  lines.push(row(phaseBarText, phaseBarLen));
+  lines.push(emptyRow());
 
   // Current phase with confidence
   const confColor = a.confidence >= 70 ? green : a.confidence >= 40 ? yellow : red;
   const phaseStr = phaseLabelSimple(a.currentPhase);
-  lines.push(`${cyan}║${reset}  ${bold}PHASE:${reset} ${phaseLabel(a.currentPhase)}  ${confColor}${a.confidence}%${reset}${' '.repeat(Math.max(0, width - 22 - phaseStr.length - 4))}${cyan}║${reset}`);
-  lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
+  lines.push(row(`${bold}PHASE:${reset} ${phaseLabel(a.currentPhase)}  ${confColor}${a.confidence}%${reset}`, 8 + phaseStr.length + 2 + String(a.confidence).length + 1));
+  lines.push(emptyRow());
 
   // What's done
   if (a.whatsDone.length > 0) {
-    lines.push(`${cyan}║${reset}  ${dim}Completed:${reset}${' '.repeat(innerWidth - 10)}${cyan}║${reset}`);
-    for (const done of a.whatsDone.slice(0, 3)) {
-      lines.push(`${cyan}║${reset}  ${green}✓${reset} ${dim}${truncate(done, innerWidth - 4)}${reset}${' '.repeat(Math.max(0, innerWidth - 4 - Math.min(done.length, innerWidth - 4)))}${cyan}║${reset}`);
+    lines.push(row(`${dim}Completed:${reset}`, 10));
+    for (const done of a.whatsDone.slice(0, 4)) {
+      const t = done.length > I - 4 ? done.slice(0, I - 7) + '...' : done;
+      lines.push(row(`${green}✓${reset} ${dim}${t}${reset}`, 2 + t.length));
     }
-    lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
+    lines.push(emptyRow());
   }
 
   lines.push(`${cyan}╠${hLine}╣${reset}`);
 
-  // What's next
-  lines.push(`${cyan}║${reset}  ${bold}${yellow}NEXT:${reset} ${truncate(a.whatsNext, innerWidth - 7)}${' '.repeat(Math.max(0, innerWidth - 7 - Math.min(a.whatsNext.length, innerWidth - 7)))}${cyan}║${reset}`);
-  lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
+  // What's next (wrapped)
+  const nextLines = wrapText(a.whatsNext, I - 6);
+  lines.push(row(`${bold}${yellow}NEXT:${reset} ${nextLines[0]}`, 6 + nextLines[0].length));
+  for (let i = 1; i < nextLines.length; i++) {
+    lines.push(row(`      ${nextLines[i]}`, 6 + nextLines[i].length));
+  }
+  lines.push(emptyRow());
 
-  // Suggested prompt
+  // Suggested prompt - full display
   if (a.suggestedPrompt) {
-    lines.push(`${cyan}║${reset}  ${dim}Paste this in Cursor:${reset}${' '.repeat(innerWidth - 21)}${cyan}║${reset}`);
+    lines.push(row(`${dim}Paste this in Cursor:${reset}`, 21));
     lines.push(`${cyan}║${reset}  ${dim}┌${hLineLight}┐${reset}${cyan}║${reset}`);
     
-    const promptLines = a.suggestedPrompt.split('\n').slice(0, 5);
-    for (const pLine of promptLines) {
-      const truncated = truncate(pLine, innerWidth - 4);
-      lines.push(`${cyan}║${reset}  ${dim}│${reset} ${truncated}${' '.repeat(Math.max(0, innerWidth - 4 - truncated.length))}${dim}│${reset}${cyan}║${reset}`);
-    }
-    if (a.suggestedPrompt.split('\n').length > 5) {
-      lines.push(`${cyan}║${reset}  ${dim}│ ...${' '.repeat(innerWidth - 8)}│${reset}${cyan}║${reset}`);
+    // Show full prompt, wrapped
+    const promptText = a.suggestedPrompt.replace(/\n/g, ' ');
+    const promptWrapped = wrapText(promptText, I - 4);
+    for (const pLine of promptWrapped) {
+      lines.push(`${cyan}║${reset}  ${dim}│${reset} ${pad(pLine, I - 4)}${dim}│${reset}${cyan}║${reset}`);
     }
     
     lines.push(`${cyan}║${reset}  ${dim}└${hLineLight}┘${reset}${cyan}║${reset}`);
   }
 
-  lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
+  lines.push(emptyRow());
   lines.push(`${cyan}╠${hLine}╣${reset}`);
-  lines.push(`${cyan}║${reset}  ${dim}[c]${reset} Copy prompt  ${dim}[r]${reset} Re-analyze  ${dim}[q]${reset} Quit${' '.repeat(width - 49)}${cyan}║${reset}`);
+  lines.push(row(`${dim}[c]${reset} Copy prompt  ${dim}[r]${reset} Re-analyze  ${dim}[q]${reset} Quit`, 43));
   lines.push(`${cyan}╚${hLine}╝${reset}`);
 
   return lines.join('\n');
