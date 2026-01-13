@@ -2,6 +2,7 @@ import { loadState, type Phase } from './state/phase.js';
 import { startProject } from './tools/phase.js';
 import { audit } from './tools/audit.js';
 import { checkDocs } from './tools/docs.js';
+import { loadMetrics } from './metrics.js';
 
 // ANSI colors
 const reset = '\x1b[0m';
@@ -38,15 +39,18 @@ ${bold}${cyan}MIDAS${reset} - Everything you vibecode turns to gold
 ${bold}Usage:${reset}
   npx midas-mcp              Interactive coach (recommended)
   npx midas-mcp status       Show current phase and progress
+  npx midas-mcp metrics      Show session metrics and statistics
   npx midas-mcp init <name>  Initialize new project with Eagle Sight
   npx midas-mcp audit        Audit project against 12 ingredients
   npx midas-mcp docs         Check Eagle Sight docs completeness
   npx midas-mcp server       Start MCP server (for Cursor integration)
   npx midas-mcp help         Show this help
 
-${bold}The Two Phases:${reset}
+${bold}The Four Phases:${reset}
   ${yellow}EAGLE SIGHT${reset}  Plan before building (Idea → Research → Brainlift → PRD → Gameplan)
   ${blue}BUILD${reset}        Execute with the 7-step process
+  ${green}SHIP${reset}         Deploy to production (Review → Deploy → Monitor)
+  ${cyan}GROW${reset}         Iterate and improve (Feedback → Analyze → Iterate)
 
 ${bold}Learn more:${reset}
   https://github.com/christiancattaneo/midas-mcp
@@ -208,6 +212,59 @@ export function runDocsCheck(): void {
   }
 }
 
+export function showMetrics(): void {
+  const projectPath = process.cwd();
+  const m = loadMetrics(projectPath);
+  
+  console.log(`\n${bold}${cyan}MIDAS METRICS${reset}\n`);
+  
+  if (m.totalSessions === 0) {
+    console.log(`  ${dim}No sessions recorded yet.${reset}`);
+    console.log(`  ${dim}Run 'midas-mcp' to start your first session.${reset}\n`);
+    return;
+  }
+  
+  // Summary stats
+  console.log(box([
+    `${bold}Sessions${reset}`,
+    `  Total: ${m.totalSessions}`,
+    `  Streak: ${m.currentStreak} day${m.currentStreak !== 1 ? 's' : ''}`,
+    `  Avg length: ${m.averageSessionMinutes} min`,
+    '',
+    `${bold}Activity${reset}`,
+    `  Tool calls: ${m.totalToolCalls}`,
+    `  Tornado cycles: ${m.totalTornadoCycles}`,
+    `  Journals saved: ${m.totalJournalsSaved}`,
+  ].join('\n'), 40));
+  
+  // Phase history
+  if (m.phaseHistory.length > 0) {
+    console.log(`\n${bold}Phase Journey:${reset}`);
+    const recent = m.phaseHistory.slice(-5);
+    for (const p of recent) {
+      const duration = p.duration ? ` (${p.duration} min)` : ' (current)';
+      const date = new Date(p.enteredAt).toLocaleDateString();
+      console.log(`  ${dim}${date}${reset} ${p.phase}${dim}${duration}${reset}`);
+    }
+  }
+  
+  // Recent sessions
+  if (m.sessions.length > 0) {
+    console.log(`\n${bold}Recent Sessions:${reset}`);
+    const recent = m.sessions.slice(-3);
+    for (const s of recent) {
+      const date = new Date(s.startTime).toLocaleDateString();
+      const time = new Date(s.startTime).toLocaleTimeString().slice(0, 5);
+      const duration = s.endTime 
+        ? Math.round((new Date(s.endTime).getTime() - new Date(s.startTime).getTime()) / 60000)
+        : 0;
+      console.log(`  ${dim}${date} ${time}${reset} - ${s.toolCalls} tools, ${duration}min`);
+    }
+  }
+  
+  console.log('');
+}
+
 export function runCLI(args: string[]): 'interactive' | 'server' | 'handled' {
   const command = args[0];
 
@@ -232,6 +289,10 @@ export function runCLI(args: string[]): 'interactive' | 'server' | 'handled' {
 
     case 'docs':
       runDocsCheck();
+      return 'handled';
+
+    case 'metrics':
+      showMetrics();
       return 'handled';
 
     case 'server':

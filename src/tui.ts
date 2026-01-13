@@ -7,6 +7,7 @@ import { logEvent, watchEvents, type MidasEvent } from './events.js';
 import { analyzeProject, type ProjectAnalysis } from './analyzer.js';
 import { getActivitySummary, loadTracker, updateTracker } from './tracker.js';
 import { getJournalEntries } from './tools/journal.js';
+import { startSession, endSession, recordPromptCopied, recordPhaseChange, loadMetrics } from './metrics.js';
 
 // ANSI codes
 const ESC = '\x1b';
@@ -87,6 +88,8 @@ interface TUIState {
   hasApiKey: boolean;
   showingSessionStart: boolean;
   sessionStarterPrompt: string;
+  sessionId: string;
+  sessionStreak: number;
 }
 
 function copyToClipboard(text: string): Promise<void> {
@@ -159,8 +162,9 @@ function drawUI(state: TUIState, _projectPath: string): string {
   
   // Header
   lines.push(`${cyan}╔${hLine}╗${reset}`);
-  const statusIcons = `${state.hasApiKey ? `${green}●${reset} AI Ready` : `${dim}○${reset} No API Key`}`;
-  lines.push(row(`${bold}${white}MIDAS${reset} ${dim}- Golden Code Coach${reset}         ${statusIcons}`, I));
+  const streakStr = state.sessionStreak > 0 ? `${yellow}🔥${state.sessionStreak}${reset}` : '';
+  const statusIcons = `${streakStr} ${state.hasApiKey ? `${green}●${reset}AI` : `${dim}○${reset}--`}`;
+  lines.push(row(`${bold}${white}MIDAS${reset} ${dim}- Golden Code Coach${reset}           ${statusIcons}`, I));
   lines.push(`${cyan}╠${hLine}╣${reset}`);
   
   // Show session starter prompt first
@@ -318,6 +322,11 @@ export async function runInteractive(): Promise<void> {
   process.stdin.resume();
   process.stdin.setEncoding('utf8');
 
+  // Start a new session for metrics tracking
+  const currentPhase = loadState(projectPath).current;
+  const sessionId = startSession(projectPath, currentPhase);
+  const metrics = loadMetrics(projectPath);
+  
   const tuiState: TUIState = {
     analysis: null,
     isAnalyzing: false,
@@ -328,6 +337,8 @@ export async function runInteractive(): Promise<void> {
     hasApiKey: hasApiKey(),
     showingSessionStart: true, // Start with session starter prompt
     sessionStarterPrompt: getSessionStarterPrompt(projectPath),
+    sessionId,
+    sessionStreak: metrics.currentStreak,
   };
 
   const render = () => {
@@ -411,8 +422,12 @@ export async function runInteractive(): Promise<void> {
 
   process.stdin.on('data', async (key: string) => {
     if (key === 'q' || key === '\u0003') {
+      // End session and save metrics
+      const endPhase = tuiState.analysis?.currentPhase || { phase: 'IDLE' as const };
+      endSession(projectPath, tuiState.sessionId, endPhase);
+      
       console.log(clearScreen);
-      console.log(`\n  ${cyan}Midas${reset} signing off. Happy vibecoding!\n`);
+      console.log(`\n  ${cyan}Midas${reset} signing off. Session saved. Happy vibecoding!\n`);
       clearInterval(activityInterval);
       stopWatchingEvents();
       process.exit(0);
@@ -460,6 +475,7 @@ export async function runInteractive(): Promise<void> {
           await copyToClipboard(tuiState.analysis.suggestedPrompt);
           tuiState.message = `${green}✓${reset} Prompt copied to clipboard!`;
           logEvent(projectPath, { type: 'prompt_copied', message: tuiState.analysis.suggestedPrompt.slice(0, 100) });
+          recordPromptCopied(projectPath, tuiState.sessionId);
         } catch {
           tuiState.message = `${yellow}!${reset} Could not copy.`;
         }
