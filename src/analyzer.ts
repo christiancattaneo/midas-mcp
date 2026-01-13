@@ -247,6 +247,34 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
   const hasDockerfile = existsSync(join(safePath, 'Dockerfile')) || existsSync(join(safePath, 'docker-compose.yml'));
   const hasCI = existsSync(join(safePath, '.github', 'workflows'));
   const hasTests = files.some(f => f.includes('.test.') || f.includes('.spec.') || f.includes('__tests__'));
+
+  // Detect PROJECT TYPE - critical for appropriate suggestions
+  let projectType = 'unknown';
+  let deployMethod = 'unknown';
+  const packageJsonPath = join(safePath, 'package.json');
+  if (existsSync(packageJsonPath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+      if (pkg.bin) {
+        projectType = 'npm-cli-tool';
+        deployMethod = 'npm publish';
+      } else if (pkg.main || pkg.exports) {
+        projectType = 'npm-library';
+        deployMethod = 'npm publish';
+      } else if (pkg.scripts?.start || pkg.scripts?.dev) {
+        projectType = 'web-app';
+        deployMethod = hasDockerfile ? 'Docker' : 'platform (Vercel/Railway/etc)';
+      }
+    } catch { /* ignore parse errors */ }
+  }
+  if (existsSync(join(safePath, 'Cargo.toml'))) {
+    projectType = 'rust-crate';
+    deployMethod = 'cargo publish';
+  }
+  if (existsSync(join(safePath, 'pyproject.toml')) || existsSync(join(safePath, 'setup.py'))) {
+    projectType = 'python-package';
+    deployMethod = 'pip/PyPI';
+  }
   
   // Get activity context (replaces broken chat history)
   const activityContext = getActivityContext(safePath);
@@ -337,8 +365,14 @@ Purpose: Code methodically with verification at each step.
 Steps: REVIEW → DEPLOY → MONITOR
 Purpose: Get code into production safely.
 - REVIEW: Code review, security audit, performance check
-- DEPLOY: Push to production with proper CI/CD
+- DEPLOY: Use the CORRECT method based on project type:
+  * npm-cli-tool / npm-library → npm publish (NOT Docker - these are local tools!)
+  * web-app → Docker/Vercel/Railway
+  * rust-crate → cargo publish
+  * python-package → PyPI
 - MONITOR: Watch for errors, performance issues
+
+CRITICAL: CLI tools and libraries deploy to package registries, NOT containers. Check project type!
 
 ### GROW (Iteration Phase)
 Steps: MONITOR → COLLECT → TRIAGE → RETROSPECT → PLAN_NEXT → LOOP
@@ -403,7 +437,9 @@ ${prdContent ? `## prd.md (full):\n${prdContent}` : ''}
 
 ${gameplanContent ? `## gameplan.md (full):\n${gameplanContent}` : ''}
 
-## Infrastructure:
+## Project Type & Deployment:
+- Type: ${projectType}
+- Deploy method: ${deployMethod}
 - Tests: ${hasTests ? 'yes' : 'no'} (found ${files.filter(f => f.includes('.test.') || f.includes('.spec.')).length} test files)
 - Dockerfile/compose: ${hasDockerfile ? 'yes' : 'no'}
 - CI/CD: ${hasCI ? 'yes' : 'no'}
