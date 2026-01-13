@@ -104,7 +104,7 @@ Provide specific, actionable recommendations.`,
    - What metrics will we track?
    - What's the minimum viable version?
 
-4. **Return to Eagle Sight**
+4. **Return to Plan Phase**
    - Update brainlift with new learnings
    - Revise PRD for next feature
    - Create new gameplan

@@ -90,7 +90,7 @@ export function createServer(): McpServer {
 
   server.tool(
     'midas_start_project',
-    'Initialize a new project with Eagle Sight phase and create docs templates',
+    'Initialize a new project with Plan phase and create docs templates',
     startProjectSchema.shape,
     wrapTool('midas_start_project', startProject)
   );
@@ -118,7 +118,7 @@ export function createServer(): McpServer {
 
   server.tool(
     'midas_check_docs',
-    'Verify Eagle Sight docs (brainlift, prd, gameplan) exist and are complete',
+    'Verify planning docs (brainlift, prd, gameplan) exist and are complete',
     checkDocsSchema.shape,
     wrapTool('midas_check_docs', checkDocs)
   );

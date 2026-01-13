@@ -137,17 +137,17 @@ export function suggestPrompt(input: SuggestPromptInput): PromptSuggestion {
       },
       ITERATE: {
         prompt: 'Based on learnings, plan the next iteration. What\'s the single most important thing to build next? Update the brainlift with new insights.',
-        explanation: 'Plan next cycle and return to Eagle Sight.',
+        explanation: 'Plan next cycle and return to Plan phase.',
       },
     },
   };
 
   if (phase.phase === 'IDLE') {
     return {
-      prompt: 'I want to start a new project. Use midas_start_project to initialize it with Eagle Sight docs.',
+      prompt: 'I want to start a new project. Use midas_start_project to initialize it with planning docs.',
       phase: 'IDLE',
       step: 'none',
-      explanation: 'No project started yet. Initialize with Eagle Sight.',
+      explanation: 'No project started yet. Initialize with planning docs.',
     };
   }
 

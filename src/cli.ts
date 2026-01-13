@@ -40,9 +40,9 @@ ${bold}Usage:${reset}
   npx midas-mcp              Interactive coach (recommended)
   npx midas-mcp status       Show current phase and progress
   npx midas-mcp metrics      Show session metrics and statistics
-  npx midas-mcp init <name>  Initialize new project with Eagle Sight
+  npx midas-mcp init <name>  Initialize new project with Plan phase
   npx midas-mcp audit        Audit project against 12 ingredients
-  npx midas-mcp docs         Check Eagle Sight docs completeness
+  npx midas-mcp docs         Check planning docs completeness
   npx midas-mcp server       Start MCP server (for Cursor integration)
   npx midas-mcp help         Show this help
 
@@ -131,7 +131,7 @@ export function runInit(projectName: string): void {
   console.log('');
   console.log(box(`${green}${bold}Project Initialized${reset}`));
   console.log('');
-  console.log(`  ${bold}${projectName}${reset} is ready for Eagle Sight.\n`);
+  console.log(`  ${bold}${projectName}${reset} is ready for planning.\n`);
   console.log('  Created:');
   console.log(`    ${dim}docs/brainlift.md${reset}  - Your unique insights`);
   console.log(`    ${dim}docs/prd.md${reset}        - Requirements`);

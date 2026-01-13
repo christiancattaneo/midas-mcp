@@ -103,7 +103,7 @@ export function setPhase(projectPath: string, newPhase: Phase): PhaseState {
 // Phase metadata for display and guidance
 export const PHASE_INFO = {
   EAGLE_SIGHT: {
-    name: 'Eagle Sight',
+    name: 'Plan',
     description: 'Plan before you build',
     color: 'yellow',
     steps: {
@@ -145,7 +145,7 @@ export const PHASE_INFO = {
     steps: {
       FEEDBACK: { name: 'Feedback', action: 'Collect user feedback', prompt: 'User interviews, support tickets, reviews' },
       ANALYZE: { name: 'Analyze', action: 'Study the data', prompt: 'Metrics, behavior patterns, retention' },
-      ITERATE: { name: 'Iterate', action: 'Plan next cycle', prompt: 'Prioritize, plan, return to Eagle Sight' },
+      ITERATE: { name: 'Iterate', action: 'Plan next cycle', prompt: 'Prioritize, plan, return to Plan phase' },
     },
   },
 };

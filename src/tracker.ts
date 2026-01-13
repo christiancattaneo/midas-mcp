@@ -623,7 +623,7 @@ function getPhaseExplanation(phase: string, step: string): string {
     GROW: {
       FEEDBACK: 'Collect real user feedback. Your assumptions need validation.',
       ANALYZE: 'Study the data. Where do users struggle? What do they love?',
-      ITERATE: 'Plan the next cycle based on evidence, not guesses. Back to Eagle Sight.',
+      ITERATE: 'Plan the next cycle based on evidence, not guesses. Back to Plan phase.',
     },
   };
   
@@ -777,7 +777,7 @@ function getPhaseBasedPrompt(phase: Phase, task: TaskFocus | null): string {
     const stepPrompts: Record<string, string> = {
       FEEDBACK: 'Collect user feedback: interviews, support tickets, reviews',
       ANALYZE: 'Study the data: metrics, behavior patterns, retention',
-      ITERATE: 'Plan next cycle: prioritize and return to Eagle Sight',
+      ITERATE: 'Plan next cycle: prioritize and return to Plan phase',
     };
     return stepPrompts[phase.step] || 'Continue growing.';
   }

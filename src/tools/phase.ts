@@ -138,7 +138,7 @@ export function startProject(input: StartProjectInput): {
     'Use midas_get_phase to see current progress',
   ];
   
-  let message = `Project "${projectName}" initialized with Eagle Sight docs.`;
+  let message = `Project "${projectName}" initialized with planning docs.`;
   
   if (input.addCursorRules) {
     const rulesResult = writeCursorRules(projectPath, projectName);
