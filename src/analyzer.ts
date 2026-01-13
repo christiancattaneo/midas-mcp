@@ -478,3 +478,118 @@ export async function quickAnalyze(projectPath: string): Promise<{
     explanation: suggestion.explanation,
   };
 }
+
+// ============================================================================
+// ANALYZE AI RESPONSE - Extract insights from pasted chat response
+// ============================================================================
+
+export interface ResponseAnalysis {
+  summary: string;           // One-line summary of what was done
+  accomplished: string[];    // List of things accomplished
+  errors: string[];          // Errors or blockers mentioned
+  filesChanged: string[];    // Files that were modified
+  taskComplete: boolean;     // Whether the current task seems complete
+  suggestedNextPrompt: string;
+  shouldAdvancePhase: boolean;
+  confidence: number;
+}
+
+/**
+ * Analyze a pasted AI response to extract insights
+ * This bridges the gap between Cursor chat and Midas tracking
+ */
+export async function analyzeResponse(
+  projectPath: string,
+  userPrompt: string,
+  aiResponse: string
+): Promise<ResponseAnalysis> {
+  const safePath = sanitizePath(projectPath);
+  const apiKey = getApiKey();
+  
+  if (!apiKey) {
+    // Return basic analysis without AI
+    return {
+      summary: 'Response received (no AI analysis - missing API key)',
+      accomplished: [],
+      errors: [],
+      filesChanged: [],
+      taskComplete: false,
+      suggestedNextPrompt: 'Continue with current task',
+      shouldAdvancePhase: false,
+      confidence: 0,
+    };
+  }
+  
+  const state = loadState(safePath);
+  const currentPhase = state.current;
+  
+  const systemPrompt = `You are Midas, analyzing an AI coding assistant's response to extract actionable insights.
+
+Current project phase: ${currentPhase.phase}${currentPhase.phase !== 'IDLE' ? `:${currentPhase.step}` : ''}
+
+Analyze the response and extract:
+1. What was accomplished
+2. Any errors, failures, or blockers mentioned
+3. Files that were modified
+4. Whether the task seems complete
+5. What the next logical prompt should be
+6. Whether the phase should advance
+
+Respond in JSON format only.`;
+
+  const prompt = `USER PROMPT:
+${userPrompt.slice(0, 500)}
+
+AI RESPONSE:
+${aiResponse.slice(0, 3000)}
+
+Analyze this exchange and respond with JSON:
+{
+  "summary": "One-line summary of what was done",
+  "accomplished": ["item1", "item2"],
+  "errors": ["error1"] or [],
+  "filesChanged": ["path/to/file.ts"] or [],
+  "taskComplete": true/false,
+  "suggestedNextPrompt": "The next prompt to continue progress",
+  "shouldAdvancePhase": true/false,
+  "confidence": 0-100
+}`;
+
+  try {
+    const response = await callClaude(prompt, systemPrompt, { 
+      maxTokens: 1000, 
+      useThinking: false,  // Fast response for this
+      useCache: true 
+    });
+    
+    // Parse JSON from response
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        summary: parsed.summary || 'Response analyzed',
+        accomplished: parsed.accomplished || [],
+        errors: parsed.errors || [],
+        filesChanged: parsed.filesChanged || [],
+        taskComplete: parsed.taskComplete ?? false,
+        suggestedNextPrompt: parsed.suggestedNextPrompt || 'Continue with current task',
+        shouldAdvancePhase: parsed.shouldAdvancePhase ?? false,
+        confidence: parsed.confidence ?? 50,
+      };
+    }
+  } catch (error) {
+    logger.error('Failed to analyze response', error as unknown);
+  }
+  
+  // Fallback
+  return {
+    summary: 'Response received',
+    accomplished: [],
+    errors: [],
+    filesChanged: [],
+    taskComplete: false,
+    suggestedNextPrompt: 'Continue with current task',
+    shouldAdvancePhase: false,
+    confidence: 0,
+  };
+}

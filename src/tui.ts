@@ -5,7 +5,8 @@ import { createInterface } from 'readline';
 import { loadState, saveState, type Phase, PHASE_INFO } from './state/phase.js';
 import { hasApiKey, ensureApiKey } from './config.js';
 import { logEvent, watchEvents, type MidasEvent } from './events.js';
-import { analyzeProject, type ProjectAnalysis } from './analyzer.js';
+import { analyzeProject, analyzeResponse, type ProjectAnalysis } from './analyzer.js';
+import { saveToJournal } from './tools/journal.js';
 import { 
   getActivitySummary, 
   loadTracker, 
@@ -404,7 +405,7 @@ function drawUI(state: TUIState, _projectPath: string): string {
 
   lines.push(emptyRow());
   lines.push(`${cyan}╠${hLine}╣${reset}`);
-  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[x]${reset} Decline  ${dim}[r]${reset} Analyze  ${dim}[v]${reset} Verify  ${dim}[q]${reset} Quit`));
+  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[i]${reset} Input  ${dim}[r]${reset} Analyze  ${dim}[v]${reset} Verify  ${dim}[q]${reset} Quit`));
   lines.push(`${cyan}╚${hLine}╝${reset}`);
 
   return lines.join('\n');
@@ -549,6 +550,85 @@ export async function runInteractive(): Promise<void> {
           process.stdin.setRawMode(true);
         }
         resolve(answer.trim());
+      });
+    });
+  };
+
+  // Multi-line input for pasting AI responses
+  const promptForResponse = async (): Promise<{ userPrompt: string; aiResponse: string } | null> => {
+    return new Promise((resolve) => {
+      // Exit alternate screen temporarily for input
+      process.stdout.write(exitAltScreen);
+      
+      console.log(`\n  ${cyan}━━━ Paste AI Response ━━━${reset}`);
+      console.log(`  ${dim}Paste the exchange below. When done, type ${bold}END${reset}${dim} on a new line and press Enter.${reset}\n`);
+      console.log(`  ${dim}Format: First paste your prompt, then the AI response.${reset}\n`);
+      
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      
+      const rl = createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+      
+      const lines: string[] = [];
+      console.log(`  ${dim}--- Start pasting (type END when done) ---${reset}\n`);
+      
+      rl.on('line', (line) => {
+        if (line.trim().toUpperCase() === 'END') {
+          rl.close();
+          if (process.stdin.isTTY) {
+            process.stdin.setRawMode(true);
+          }
+          // Re-enter alternate screen
+          process.stdout.write(enterAltScreen);
+          
+          const fullText = lines.join('\n');
+          if (fullText.trim().length < 10) {
+            resolve(null);
+            return;
+          }
+          
+          // Try to split into user prompt and AI response
+          // Look for common patterns
+          const splitPatterns = [
+            /\n(?:assistant|ai|claude|cursor):\s*/i,
+            /\n(?:response|answer):\s*/i,
+            /\n---+\n/,
+          ];
+          
+          let userPrompt = '';
+          let aiResponse = fullText;
+          
+          for (const pattern of splitPatterns) {
+            const match = fullText.match(pattern);
+            if (match && match.index) {
+              userPrompt = fullText.slice(0, match.index).trim();
+              aiResponse = fullText.slice(match.index + match[0].length).trim();
+              break;
+            }
+          }
+          
+          // If no split found, treat first 20% as prompt
+          if (!userPrompt && fullText.length > 100) {
+            const splitPoint = Math.min(500, Math.floor(fullText.length * 0.2));
+            userPrompt = fullText.slice(0, splitPoint).trim();
+            aiResponse = fullText.slice(splitPoint).trim();
+          }
+          
+          resolve({ userPrompt, aiResponse });
+        } else {
+          lines.push(line);
+        }
+      });
+      
+      rl.on('close', () => {
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
+        }
+        process.stdout.write(enterAltScreen);
       });
     });
   };
@@ -741,6 +821,80 @@ export async function runInteractive(): Promise<void> {
         tuiState.message = `${red}!${reset} Error creating .cursorrules`;
       }
       render();
+    }
+
+    if (key === 'i') {
+      // Input/paste AI response for analysis
+      const exchange = await promptForResponse();
+      
+      if (!exchange) {
+        tuiState.message = `${yellow}!${reset} No response pasted.`;
+        render();
+        return;
+      }
+      
+      tuiState.message = `${magenta}...${reset} Analyzing response...`;
+      render();
+      
+      try {
+        // Analyze the pasted response
+        const analysis = await analyzeResponse(projectPath, exchange.userPrompt, exchange.aiResponse);
+        
+        // Auto-save to journal
+        const journalTitle = analysis.summary.slice(0, 80);
+        saveToJournal({
+          projectPath,
+          title: journalTitle,
+          conversation: `USER:\n${exchange.userPrompt}\n\nAI:\n${exchange.aiResponse}`,
+          tags: analysis.taskComplete ? ['completed'] : ['in-progress'],
+        });
+        
+        // Record any errors to error memory
+        if (analysis.errors.length > 0) {
+          const { recordError } = await import('./tracker.js');
+          for (const err of analysis.errors) {
+            recordError(projectPath, err, undefined, undefined);
+          }
+        }
+        
+        // Log event
+        logEvent(projectPath, {
+          type: 'ai_suggestion',
+          message: `Analyzed: ${analysis.summary}`,
+          data: { 
+            accomplished: analysis.accomplished.length,
+            errors: analysis.errors.length,
+            taskComplete: analysis.taskComplete,
+          },
+        });
+        
+        // Update analysis with new suggested prompt
+        if (tuiState.analysis) {
+          tuiState.analysis.suggestedPrompt = analysis.suggestedNextPrompt;
+          tuiState.analysis.whatsNext = analysis.suggestedNextPrompt;
+        }
+        
+        // Show summary
+        const accomplishedCount = analysis.accomplished.length;
+        const errorsCount = analysis.errors.length;
+        let statusMsg = `${green}OK${reset} Analyzed: ${analysis.summary.slice(0, 40)}`;
+        if (accomplishedCount > 0) statusMsg += ` | ${green}${accomplishedCount} done${reset}`;
+        if (errorsCount > 0) statusMsg += ` | ${red}${errorsCount} errors${reset}`;
+        
+        tuiState.message = statusMsg;
+        tuiState.filesChanged = true;  // Trigger refresh prompt
+        
+        // Re-analyze if task complete or errors found
+        if (analysis.taskComplete || analysis.shouldAdvancePhase) {
+          await runAnalysis();
+        } else {
+          render();
+        }
+        
+      } catch (error) {
+        tuiState.message = `${red}!${reset} Failed to analyze response.`;
+        render();
+      }
     }
   });
 }
