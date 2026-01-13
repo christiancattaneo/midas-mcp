@@ -1,11 +1,22 @@
 import { exec } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { createInterface } from 'readline';
 import { loadState, saveState, type Phase, PHASE_INFO } from './state/phase.js';
 import { hasApiKey, ensureApiKey } from './config.js';
 import { logEvent, watchEvents, type MidasEvent } from './events.js';
 import { analyzeProject, type ProjectAnalysis } from './analyzer.js';
-import { getActivitySummary, loadTracker, updateTracker } from './tracker.js';
+import { 
+  getActivitySummary, 
+  loadTracker, 
+  updateTracker,
+  hasFilesChangedSinceAnalysis,
+  getSmartPromptSuggestion,
+  getGatesStatus,
+  recordSuggestion,
+  recordSuggestionOutcome,
+  getSuggestionAcceptanceRate,
+} from './tracker.js';
 import { getJournalEntries } from './tools/journal.js';
 import { startSession, endSession, recordPromptCopied, recordPhaseChange, loadMetrics } from './metrics.js';
 
@@ -87,9 +98,14 @@ interface TUIState {
   message: string;
   hasApiKey: boolean;
   showingSessionStart: boolean;
+  showingRejectionInput: boolean;
   sessionStarterPrompt: string;
   sessionId: string;
   sessionStreak: number;
+  smartSuggestion: ReturnType<typeof getSmartPromptSuggestion> | null;
+  gatesStatus: ReturnType<typeof getGatesStatus> | null;
+  filesChanged: boolean;
+  suggestionAcceptanceRate: number;
 }
 
 function copyToClipboard(text: string): Promise<void> {
@@ -289,6 +305,25 @@ function drawUI(state: TUIState, _projectPath: string): string {
     lines.push(`${cyan}║${reset}  ${dim}└${hLineLight}┘${reset}${cyan}║${reset}`);
   }
 
+  // Show gates status if available
+  if (state.gatesStatus) {
+    lines.push(emptyRow());
+    const gs = state.gatesStatus;
+    if (gs.allPass) {
+      lines.push(row(`${green}[GATES]${reset} All passing (build, tests, lint)`, 37));
+    } else if (gs.failing.length > 0) {
+      lines.push(row(`${red}[GATES]${reset} Failing: ${gs.failing.join(', ')}`, 20 + gs.failing.join(', ').length));
+    }
+    if (gs.stale) {
+      lines.push(row(`${yellow}!${reset} ${dim}Gates are stale - consider running midas_verify${reset}`, 47));
+    }
+  }
+
+  // Show if files changed since last analysis
+  if (state.filesChanged) {
+    lines.push(row(`${yellow}!${reset} ${dim}Files changed since analysis - press [r] to refresh${reset}`, 51));
+  }
+
   // Show recent MCP events (real-time from Cursor)
   if (state.recentEvents.length > 0) {
     lines.push(emptyRow());
@@ -301,9 +336,14 @@ function drawUI(state: TUIState, _projectPath: string): string {
     }
   }
 
+  // Show suggestion acceptance rate
+  if (state.suggestionAcceptanceRate > 0) {
+    lines.push(row(`${dim}Suggestion acceptance: ${state.suggestionAcceptanceRate}%${reset}`, 24 + String(state.suggestionAcceptanceRate).length));
+  }
+
   lines.push(emptyRow());
   lines.push(`${cyan}╠${hLine}╣${reset}`);
-  lines.push(row(`${dim}[c]${reset} Copy prompt  ${dim}[r]${reset} Re-analyze  ${dim}[q]${reset} Quit`, 43));
+  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[x]${reset} Decline  ${dim}[r]${reset} Re-analyze  ${dim}[v]${reset} Verify  ${dim}[q]${reset} Quit`, 56));
   lines.push(`${cyan}╚${hLine}╝${reset}`);
 
   return lines.join('\n');
@@ -336,9 +376,14 @@ export async function runInteractive(): Promise<void> {
     message: '',
     hasApiKey: hasApiKey(),
     showingSessionStart: true, // Start with session starter prompt
+    showingRejectionInput: false,
     sessionStarterPrompt: getSessionStarterPrompt(projectPath),
     sessionId,
     sessionStreak: metrics.currentStreak,
+    smartSuggestion: null,
+    gatesStatus: null,
+    filesChanged: false,
+    suggestionAcceptanceRate: getSuggestionAcceptanceRate(projectPath),
   };
 
   const render = () => {
@@ -370,6 +415,17 @@ export async function runInteractive(): Promise<void> {
         saveState(projectPath, state);
       }
       
+      // Get smart suggestion and gates status
+      tuiState.smartSuggestion = getSmartPromptSuggestion(projectPath);
+      tuiState.gatesStatus = getGatesStatus(projectPath);
+      tuiState.filesChanged = false;
+      tuiState.suggestionAcceptanceRate = getSuggestionAcceptanceRate(projectPath);
+      
+      // Record the suggestion for tracking
+      if (tuiState.analysis.suggestedPrompt) {
+        recordSuggestion(projectPath, tuiState.analysis.suggestedPrompt);
+      }
+      
       logEvent(projectPath, { 
         type: 'ai_suggestion', 
         message: tuiState.analysis.summary,
@@ -382,6 +438,30 @@ export async function runInteractive(): Promise<void> {
     
     tuiState.isAnalyzing = false;
     render();
+  };
+
+  const promptForRejectionReason = async (): Promise<string> => {
+    return new Promise((resolve) => {
+      console.log(`\n  ${yellow}Why are you declining this suggestion?${reset}`);
+      console.log(`  ${dim}(This helps Midas learn. Press Enter to skip.)${reset}\n`);
+      
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      
+      const rl = createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+      
+      rl.question('  > ', (answer) => {
+        rl.close();
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
+        }
+        resolve(answer.trim());
+      });
+    });
   };
 
   render();
@@ -398,6 +478,18 @@ export async function runInteractive(): Promise<void> {
       tuiState.recentToolCalls = tracker.recentToolCalls.slice(0, 5).map(t => t.tool);
       render();
     }
+    
+    // Check if files changed since last analysis
+    if (!tuiState.filesChanged && tuiState.analysis) {
+      tuiState.filesChanged = hasFilesChangedSinceAnalysis(projectPath);
+      if (tuiState.filesChanged) {
+        tuiState.message = `${yellow}!${reset} Files changed. Press [r] to re-analyze.`;
+        render();
+      }
+    }
+    
+    // Update gates status
+    tuiState.gatesStatus = getGatesStatus(projectPath);
   }, 5000);
 
   // REAL-TIME: Watch for MCP events (tool calls from Cursor)
@@ -487,6 +579,60 @@ export async function runInteractive(): Promise<void> {
 
     if (key === 'r') {
       await runAnalysis();
+    }
+
+    if (key === 'x') {
+      // Decline/reject the current suggestion
+      if (tuiState.analysis?.suggestedPrompt) {
+        tuiState.showingRejectionInput = true;
+        const reason = await promptForRejectionReason();
+        tuiState.showingRejectionInput = false;
+        
+        recordSuggestionOutcome(projectPath, false, undefined, reason || undefined);
+        tuiState.suggestionAcceptanceRate = getSuggestionAcceptanceRate(projectPath);
+        
+        if (reason) {
+          tuiState.message = `${yellow}OK${reset} Noted: "${truncate(reason, 40)}" - will learn from this.`;
+        } else {
+          tuiState.message = `${yellow}OK${reset} Suggestion declined.`;
+        }
+        
+        logEvent(projectPath, { 
+          type: 'prompt_copied', 
+          message: 'Suggestion declined',
+          data: { reason: reason || 'No reason given' }
+        });
+        
+        render();
+      } else {
+        tuiState.message = `${yellow}!${reset} No suggestion to decline.`;
+        render();
+      }
+    }
+
+    if (key === 'v') {
+      // Run verification gates
+      tuiState.message = `${magenta}...${reset} Running verification gates (build, test, lint)...`;
+      render();
+      
+      try {
+        const { verify } = await import('./tools/verify.js');
+        const result = verify({ projectPath });
+        
+        tuiState.gatesStatus = getGatesStatus(projectPath);
+        
+        if (result.allPass) {
+          tuiState.message = `${green}OK${reset} All gates pass!${result.autoAdvanced ? ` Auto-advanced to ${result.autoAdvanced.to}` : ''}`;
+          // Re-analyze to get new suggestions
+          await runAnalysis();
+        } else {
+          tuiState.message = `${red}!${reset} Failing: ${result.failing.join(', ')}`;
+          render();
+        }
+      } catch (error) {
+        tuiState.message = `${red}!${reset} Verification failed.`;
+        render();
+      }
     }
   });
 }

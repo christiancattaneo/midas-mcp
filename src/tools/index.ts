@@ -42,3 +42,23 @@ export {
   searchJournal,
   searchJournalSchema,
 } from './journal.js';
+
+// Verification and smart suggestion tools
+export {
+  verify,
+  verifySchema,
+  smartSuggest,
+  smartSuggestSchema,
+  setTask,
+  setTaskSchema,
+  updateTask,
+  updateTaskSchema,
+  clearTask,
+  clearTaskSchema,
+  recordErrorTool,
+  recordErrorSchema,
+  recordFix,
+  recordFixSchema,
+  getStuck,
+  getStuckSchema,
+} from './verify.js';

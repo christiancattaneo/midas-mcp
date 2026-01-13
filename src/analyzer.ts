@@ -2,7 +2,8 @@ import { getApiKey } from './config.js';
 import { readdirSync, readFileSync, existsSync } from 'fs';
 import { join, extname } from 'path';
 import type { Phase, EagleSightStep, BuildStep, ShipStep, GrowStep } from './state/phase.js';
-import { updateTracker, getActivitySummary } from './tracker.js';
+import { loadState } from './state/phase.js';
+import { updateTracker, getActivitySummary, loadTracker, getGatesStatus, getUnresolvedErrors } from './tracker.js';
 import { getJournalEntries } from './tools/journal.js';
 import { sanitizePath, limitLength, LIMITS } from './security.js';
 import { logger } from './logger.js';
@@ -169,68 +170,81 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
     return `--- ${f.replace(safePath + '/', '')} ---\n${content}`;
   }).join('\n\n');
 
-  const prompt = `Analyze this project and determine where the developer is in the product lifecycle.
+  // Get current state for context
+  const currentState = loadState(safePath);
+  const tracker = loadTracker(safePath);
+  const gatesStatus = getGatesStatus(safePath);
+  const unresolvedErrors = getUnresolvedErrors(safePath);
+  
+  // Build error context
+  const errorContext = unresolvedErrors.length > 0
+    ? unresolvedErrors.slice(0, 3).map(e => 
+        `- ${e.error.slice(0, 100)}${e.fixAttempts.length > 0 ? ` (tried ${e.fixAttempts.length}x)` : ''}`
+      ).join('\n')
+    : 'No unresolved errors';
+
+  // Context stacking: STABLE FIRST (high attention at beginning)
+  // Then PROJECT CONTEXT (middle, lower attention)
+  // Then RECENT ACTIVITY LAST (high attention at end)
+  
+  const prompt = `# GOLDEN CODE METHODOLOGY (Stable Context - Beginning)
+
+## The 4 Phases with Steps:
+EAGLE_SIGHT (Planning): IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN
+BUILD (7-step cycle): RULES → INDEX → READ → RESEARCH → IMPLEMENT → TEST → DEBUG
+SHIP: REVIEW → DEPLOY → MONITOR
+GROW: FEEDBACK → ANALYZE → ITERATE
+
+## Current State (from Midas tracking):
+- Phase: ${currentState.current.phase}${('step' in currentState.current) ? ` → ${currentState.current.step}` : ''}
+- Confidence: ${tracker.confidence}%
+- Gates: ${gatesStatus.allPass ? 'ALL PASS' : gatesStatus.failing.length > 0 ? `FAILING: ${gatesStatus.failing.join(', ')}` : 'Not yet run'}
+
+---
+
+# PROJECT CONTEXT (Middle - Architecture/Docs)
 
 ## Project Files (${files.length} total):
 ${fileList}
 
 ## Eagle Sight Docs:
 - brainlift.md: ${hasbrainlift ? 'exists' : 'missing'}
-${brainliftContent ? `Preview:\n${brainliftContent.slice(0, 400)}` : ''}
-
-- prd.md: ${hasPrd ? 'exists' : 'missing'}
-${prdContent ? `Preview:\n${prdContent.slice(0, 400)}` : ''}
-
+- prd.md: ${hasPrd ? 'exists' : 'missing'}  
 - gameplan.md: ${hasGameplan ? 'exists' : 'missing'}
-${gameplanContent ? `Preview:\n${gameplanContent.slice(0, 400)}` : ''}
+
+${brainliftContent ? `brainlift.md preview:\n${brainliftContent.slice(0, 300)}` : ''}
 
 ## Infrastructure:
 - Tests: ${hasTests ? 'yes' : 'no'}
 - Dockerfile/compose: ${hasDockerfile ? 'yes' : 'no'}
-- CI/CD (.github/workflows): ${hasCI ? 'yes' : 'no'}
-
-## Recent Activity:
-${activityContext}
-
-## Journal (Past Conversations):
-${journalContext}
+- CI/CD: ${hasCI ? 'yes' : 'no'}
 
 ## Code Samples:
 ${codeSamples || 'No code files yet'}
 
-## The 4 Phases with Steps:
+---
 
-EAGLE_SIGHT (Planning):
-- IDEA: Define core idea, problem, audience
-- RESEARCH: Landscape scan, competitors
-- BRAINLIFT: Document unique insights
-- PRD: Write requirements
-- GAMEPLAN: Plan the build
+# RECENT CONTEXT (End - High Attention)
 
-BUILD (Development - the 7-step cycle):
-- RULES: Read .cursorrules, understand constraints
-- INDEX: Index codebase structure, architecture
-- READ: Read specific implementation files
-- RESEARCH: Look up docs, APIs, best practices
-- IMPLEMENT: Write code with tests
-- TEST: Run tests, fix failures
-- DEBUG: Tornado cycle (research + logs + tests)
+## Unresolved Errors:
+${errorContext}
 
-SHIP (Deployment):
-- REVIEW: Code review, security audit
-- DEPLOY: CI/CD, production deploy
-- MONITOR: Logs, alerts, health checks
+## Recent Activity:
+${activityContext}
 
-GROW (Iteration):
-- FEEDBACK: Collect user feedback
-- ANALYZE: Study metrics and behavior
-- ITERATE: Plan next cycle (back to EAGLE_SIGHT)
+## Journal (Most Recent Conversations):
+${journalContext}
 
-Based on all evidence, determine:
-1. Current phase and step
+---
+
+Based on ALL evidence above, determine:
+1. Verify/adjust the current phase and step
 2. What's completed
-3. What's next
-4. Specific prompt for Cursor
+3. What's the single most important next action
+4. Specific prompt for Cursor (actionable, one task)
+
+CRITICAL: If gates are failing (build/tests/lint), the next action MUST be to fix them.
+If there are unresolved errors with multiple fix attempts, suggest Tornado debugging.
 
 Respond ONLY with valid JSON:
 {

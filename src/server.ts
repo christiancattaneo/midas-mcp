@@ -28,6 +28,23 @@ import {
   getJournalSchema,
   searchJournal,
   searchJournalSchema,
+  // New verification and smart suggestion tools
+  verify,
+  verifySchema,
+  smartSuggest,
+  smartSuggestSchema,
+  setTask,
+  setTaskSchema,
+  updateTask,
+  updateTaskSchema,
+  clearTask,
+  clearTaskSchema,
+  recordErrorTool,
+  recordErrorSchema,
+  recordFix,
+  recordFixSchema,
+  getStuck,
+  getStuckSchema,
 } from './tools/index.js';
 import { registerAllPrompts } from './prompts/index.js';
 import { registerAllResources } from './resources/index.js';
@@ -198,6 +215,63 @@ export function createServer(): McpServer {
     wrapTool('midas_journal_search', searchJournal)
   );
 
+  // Verification and smart suggestion tools
+  server.tool(
+    'midas_verify',
+    'Run verification gates: build, test, lint. Returns pass/fail status and auto-advances phase if all pass.',
+    verifySchema.shape,
+    wrapTool('midas_verify', verify)
+  );
+
+  server.tool(
+    'midas_smart_suggest',
+    'Get an intelligent prompt suggestion based on current gates, errors, and phase. Prioritizes fixing broken builds/tests.',
+    smartSuggestSchema.shape,
+    wrapTool('midas_smart_suggest', smartSuggest)
+  );
+
+  server.tool(
+    'midas_set_task',
+    'Set the current task focus. Helps Midas track what you are working on.',
+    setTaskSchema.shape,
+    wrapTool('midas_set_task', setTask)
+  );
+
+  server.tool(
+    'midas_update_task',
+    'Update the current task phase (plan, implement, verify, reflect).',
+    updateTaskSchema.shape,
+    wrapTool('midas_update_task', updateTask)
+  );
+
+  server.tool(
+    'midas_clear_task',
+    'Clear the current task focus when done.',
+    clearTaskSchema.shape,
+    wrapTool('midas_clear_task', clearTask)
+  );
+
+  server.tool(
+    'midas_record_error',
+    'Record an error for tracking. Helps Midas remember what errors occurred and suggest Tornado when stuck.',
+    recordErrorSchema.shape,
+    wrapTool('midas_record_error', recordErrorTool)
+  );
+
+  server.tool(
+    'midas_record_fix',
+    'Record a fix attempt for an error. Helps Midas track what approaches have been tried.',
+    recordFixSchema.shape,
+    wrapTool('midas_record_fix', recordFix)
+  );
+
+  server.tool(
+    'midas_get_stuck',
+    'Get errors that have had multiple failed fix attempts. These are candidates for Tornado debugging.',
+    getStuckSchema.shape,
+    wrapTool('midas_get_stuck', getStuck)
+  );
+
   // Register prompts
   registerAllPrompts(server);
   logger.debug('Registered prompts');
@@ -206,6 +280,6 @@ export function createServer(): McpServer {
   registerAllResources(server);
   logger.debug('Registered resources');
 
-  logger.info('Midas MCP server ready', { tools: 14, prompts: 17, resources: 5 });
+  logger.info('Midas MCP server ready', { tools: 22, prompts: 17, resources: 5 });
   return server;
 }
