@@ -3,14 +3,57 @@ import { readdirSync, readFileSync, existsSync } from 'fs';
 import { join, extname } from 'path';
 import type { Phase, EagleSightStep, BuildStep, ShipStep, GrowStep } from './state/phase.js';
 import { loadState } from './state/phase.js';
-import { updateTracker, getActivitySummary, loadTracker, getGatesStatus, getUnresolvedErrors } from './tracker.js';
+import { updateTracker, getActivitySummary, loadTracker, getGatesStatus, getUnresolvedErrors, markAnalysisComplete } from './tracker.js';
 import { getJournalEntries } from './tools/journal.js';
 import { sanitizePath, limitLength, LIMITS } from './security.js';
 import { logger } from './logger.js';
+import { buildCompressedContext, contextToString, estimateTokens } from './context.js';
 
-async function callClaude(prompt: string, systemPrompt: string): Promise<string> {
+// ============================================================================
+// CLAUDE API WITH PROMPT CACHING
+// ============================================================================
+
+/**
+ * Call Claude with optional prompt caching
+ * 
+ * Prompt caching saves 90% on repeated system prompts:
+ * - First call: Normal price for cache write
+ * - Subsequent calls: 90% cheaper for cached portion
+ * 
+ * Requirements:
+ * - System prompt must be identical
+ * - Cache expires after ~5 minutes of inactivity
+ * - Minimum 1024 tokens for caching to activate
+ */
+async function callClaude(
+  prompt: string, 
+  systemPrompt: string, 
+  options: { useCache?: boolean; maxTokens?: number } = {}
+): Promise<string> {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error('No API key');
+
+  const useCache = options.useCache ?? true;
+  const maxTokens = options.maxTokens ?? 2048;
+
+  // Build request body
+  const body: Record<string, unknown> = {
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: maxTokens,
+    messages: [{ role: 'user', content: prompt }],
+  };
+
+  // Use prompt caching if enabled and system prompt is large enough
+  // Caching requires minimum 1024 tokens to be effective
+  if (useCache && estimateTokens(systemPrompt) >= 256) {
+    body.system = [{
+      type: 'text',
+      text: systemPrompt,
+      cache_control: { type: 'ephemeral' },  // Cache this system prompt
+    }];
+  } else {
+    body.system = systemPrompt;
+  }
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -19,19 +62,29 @@ async function callClaude(prompt: string, systemPrompt: string): Promise<string>
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
     },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 2048,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: prompt }],
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
-    throw new Error(`API error: ${response.status}`);
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`API error: ${response.status} - ${errorText}`);
   }
 
-  const data = await response.json() as { content: Array<{ text: string }> };
+  const data = await response.json() as { 
+    content: Array<{ text: string }>;
+    usage?: { 
+      cache_creation_input_tokens?: number;
+      cache_read_input_tokens?: number;
+    };
+  };
+  
+  // Log cache usage for debugging/monitoring
+  if (data.usage?.cache_read_input_tokens) {
+    logger.debug('Prompt cache hit', { 
+      cached_tokens: data.usage.cache_read_input_tokens 
+    });
+  }
+  
   return data.content[0]?.text || '';
 }
 
@@ -64,6 +117,52 @@ function readFile(path: string, maxLines = 30): string {
   } catch {
     return '';
   }
+}
+
+// ============================================================================
+// CONTEXT SUMMARIZATION
+// ============================================================================
+
+/**
+ * Summarize long content using Claude (with caching for efficiency)
+ * Use for: journal entries, long error logs, large code files
+ */
+export async function summarizeContent(
+  content: string, 
+  purpose: string,
+  targetTokens: number = 200
+): Promise<string> {
+  // Don't summarize if already short enough
+  if (estimateTokens(content) <= targetTokens) return content;
+  
+  try {
+    const result = await callClaude(
+      `Summarize this in ~${targetTokens} tokens. Preserve: key decisions, technical choices, errors, solutions.\n\n${content.slice(0, 4000)}`,
+      'You are a concise technical summarizer. Output only the summary, no preamble.',
+      { maxTokens: targetTokens + 50, useCache: false }  // Don't cache summaries
+    );
+    return result.trim();
+  } catch {
+    // Fallback: truncate intelligently
+    return truncateIntelligently(content, targetTokens * 4);
+  }
+}
+
+/**
+ * Truncate text at sentence boundaries
+ */
+function truncateIntelligently(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  
+  const truncated = text.slice(0, maxChars);
+  const lastPeriod = truncated.lastIndexOf('. ');
+  const lastNewline = truncated.lastIndexOf('\n');
+  const boundary = Math.max(lastPeriod, lastNewline);
+  
+  if (boundary > maxChars * 0.7) {
+    return truncated.slice(0, boundary + 1) + '...';
+  }
+  return truncated + '...';
 }
 
 function getActivityContext(projectPath: string): string {
@@ -107,7 +206,7 @@ function getActivityContext(projectPath: string): string {
     
     return lines.join('\n');
   } catch (error) {
-    logger.error('Failed to get activity context', error);
+    logger.error('Failed to get activity context', error as unknown);
     return 'No activity data available';
   }
 }
@@ -288,6 +387,9 @@ Respond ONLY with valid JSON:
       currentPhase = { phase: 'IDLE' };
     }
     
+    // Mark analysis as complete for file change tracking
+    markAnalysisComplete(safePath);
+    
     return {
       currentPhase,
       summary: data.summary || 'Project analyzed',
@@ -298,7 +400,7 @@ Respond ONLY with valid JSON:
       techStack: data.techStack || [],
     };
   } catch (error) {
-    logger.error('AI analysis failed', error);
+    logger.error('AI analysis failed', error as unknown);
     return {
       currentPhase: { phase: 'IDLE' },
       summary: 'Analysis failed',
@@ -309,4 +411,36 @@ Respond ONLY with valid JSON:
       techStack: [],
     };
   }
+}
+
+// ============================================================================
+// QUICK ANALYSIS (for frequent re-checks)
+// ============================================================================
+
+/**
+ * Fast analysis using pre-compressed context
+ * Use this for file-change triggered re-analysis
+ */
+export async function quickAnalyze(projectPath: string): Promise<{
+  suggestedPrompt: string;
+  priority: 'critical' | 'high' | 'normal' | 'low';
+  reason: string;
+}> {
+  const safePath = sanitizePath(projectPath);
+  
+  // Build compressed context (fast, no AI needed)
+  buildCompressedContext(safePath, { maxTokens: 2000 });
+  
+  // Get smart suggestion based on gates/errors
+  const { getSmartPromptSuggestion } = await import('./tracker.js');
+  const suggestion = getSmartPromptSuggestion(safePath);
+  
+  // Mark analysis complete
+  markAnalysisComplete(safePath);
+  
+  return {
+    suggestedPrompt: suggestion.prompt,
+    priority: suggestion.priority,
+    reason: suggestion.reason,
+  };
 }
