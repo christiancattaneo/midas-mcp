@@ -33,15 +33,29 @@ const PHASE_COLORS: Record<string, string> = {
 const MIDAS_CURSORRULES = `
 # Golden Code Methodology (via Midas MCP)
 
-## Workflow Rules
-1. **Before any code changes**: Call \`midas_analyze\` to understand current phase
-2. **After important discussions**: Call \`midas_journal_save\` to preserve context
-3. **When stuck**: Call \`midas_tornado\` for Research + Logs + Tests cycle
-4. **When output doesn't fit**: Call \`midas_horizon\` to expand context
-5. **When retrying failed prompts**: Call \`midas_oneshot\` to construct better retry
+## AUTOMATIC BEHAVIOR - Do these without being asked:
 
-## Session Start
-At the start of each new chat session, call \`midas_journal_list\` to load context from previous sessions.
+### On EVERY new chat session:
+1. Call \`midas_journal_list\` to load context from previous sessions
+2. Call \`midas_analyze\` to understand current project phase
+3. Follow the suggested approach from the analysis
+
+### After EVERY significant code change:
+1. Call \`midas_journal_save\` with title describing what was done
+2. Include the full conversation in the journal entry
+
+### Before EVERY implementation:
+1. Call \`midas_suggest_prompt\` to get phase-appropriate guidance
+2. Follow the Golden Code methodology for current phase
+
+## When Things Go Wrong:
+- **Stuck/confused**: Call \`midas_tornado\` for Research + Logs + Tests cycle
+- **Output doesn't fit**: Call \`midas_horizon\` to expand context
+- **Retry after error**: Call \`midas_oneshot\` to construct better retry
+
+## The 7-Step BUILD Cycle:
+RULES → INDEX → READ → RESEARCH → IMPLEMENT → TEST → DEBUG
+Always complete earlier steps before jumping to implementation.
 `;
 
 // Session starter prompt
