@@ -16,6 +16,12 @@ import {
   tornadoSchema,
   expandHorizon,
   horizonSchema,
+  analyze,
+  analyzeSchema,
+  suggestPrompt,
+  suggestPromptSchema,
+  advancePhase,
+  advancePhaseSchema,
 } from './tools/index.js';
 import { registerAllPrompts } from './prompts/index.js';
 import { registerAllResources } from './resources/index.js';
@@ -105,6 +111,47 @@ export function createServer(): McpServer {
     wrapTool('midas_horizon', expandHorizon)
   );
 
+  // Async tool wrapper for analyze (which is async)
+  const wrapAsyncTool = <T, R>(name: string, fn: (args: T) => Promise<R>) => {
+    return async (args: T) => {
+      logger.tool(name, args as Record<string, unknown>);
+      try {
+        const result = await fn(args);
+        logger.debug(`Tool ${name} completed`);
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (error) {
+        logger.error(`Tool ${name} failed`, error);
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify({ error: String(error) }) }],
+          isError: true,
+        };
+      }
+    };
+  };
+
+  server.tool(
+    'midas_analyze',
+    'AI-powered project analysis - determines current phase, what is done, and suggests next steps',
+    analyzeSchema.shape,
+    wrapAsyncTool('midas_analyze', analyze)
+  );
+
+  server.tool(
+    'midas_suggest_prompt',
+    'Get a context-aware prompt suggestion for the current phase and step',
+    suggestPromptSchema.shape,
+    wrapTool('midas_suggest_prompt', suggestPrompt)
+  );
+
+  server.tool(
+    'midas_advance_phase',
+    'Advance to the next step in the development lifecycle',
+    advancePhaseSchema.shape,
+    wrapTool('midas_advance_phase', advancePhase)
+  );
+
   // Register prompts
   registerAllPrompts(server);
   logger.debug('Registered prompts');
@@ -113,6 +160,6 @@ export function createServer(): McpServer {
   registerAllResources(server);
   logger.debug('Registered resources');
 
-  logger.info('Midas MCP server ready', { tools: 8, prompts: 17, resources: 5 });
+  logger.info('Midas MCP server ready', { tools: 11, prompts: 17, resources: 5 });
   return server;
 }

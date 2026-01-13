@@ -22,3 +22,13 @@ export { triggerTornado, tornadoSchema } from './tornado.js';
 
 // Horizon tool
 export { expandHorizon, horizonSchema } from './horizon.js';
+
+// AI-powered analyze tools
+export {
+  analyze,
+  analyzeSchema,
+  suggestPrompt,
+  suggestPromptSchema,
+  advancePhase,
+  advancePhaseSchema,
+} from './analyze.js';
