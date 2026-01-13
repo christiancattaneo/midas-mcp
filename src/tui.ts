@@ -368,7 +368,7 @@ function drawUI(state: TUIState, _projectPath: string): string {
 
   lines.push(emptyRow());
   lines.push(`${cyan}╠${hLine}╣${reset}`);
-  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[x]${reset} Decline  ${dim}[r]${reset} Re-analyze  ${dim}[v]${reset} Verify  ${dim}[q]${reset} Quit`));
+  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[r]${reset} Refresh  ${dim}[v]${reset} Verify  ${dim}[a]${reset} Add rules  ${dim}[q]${reset} Quit`));
   lines.push(`${cyan}╚${hLine}╝${reset}`);
 
   return lines.join('\n');
@@ -658,6 +658,25 @@ export async function runInteractive(): Promise<void> {
         tuiState.message = `${red}!${reset} Verification failed.`;
         render();
       }
+    }
+
+    if (key === 'a') {
+      // Add .cursorrules to project
+      try {
+        const { writeCursorRules, detectTechStack } = await import('./techstack.js');
+        const projectName = projectPath.split('/').pop() || 'project';
+        const result = writeCursorRules(projectPath, projectName);
+        
+        if (result.success) {
+          const stack = detectTechStack(projectPath);
+          tuiState.message = `${green}OK${reset} Created .cursorrules for ${stack.language}${stack.framework ? `/${stack.framework}` : ''}`;
+        } else {
+          tuiState.message = `${red}!${reset} Failed to create .cursorrules`;
+        }
+      } catch (error) {
+        tuiState.message = `${red}!${reset} Error creating .cursorrules`;
+      }
+      render();
     }
   });
 }

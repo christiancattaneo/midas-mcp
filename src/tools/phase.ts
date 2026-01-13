@@ -14,6 +14,7 @@ import {
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { sanitizePath, limitLength, LIMITS, validateEnum } from '../security.js';
+import { writeCursorRules, detectTechStack } from '../techstack.js';
 
 // Valid step values for each phase
 const EAGLE_SIGHT_STEPS = ['IDEA', 'RESEARCH', 'BRAINLIFT', 'PRD', 'GAMEPLAN'] as const;
@@ -25,6 +26,7 @@ const GROW_STEPS = ['FEEDBACK', 'ANALYZE', 'ITERATE'] as const;
 export const startProjectSchema = z.object({
   projectName: z.string().max(100).describe('Name of the project'),
   projectPath: z.string().max(LIMITS.PATH_MAX_LENGTH).optional().describe('Path to project root, defaults to cwd'),
+  addCursorRules: z.boolean().optional().describe('Generate .cursorrules file based on detected tech stack'),
 });
 
 export type StartProjectInput = z.infer<typeof startProjectSchema>;
@@ -128,15 +130,28 @@ export function startProject(input: StartProjectInput): {
   state.startedAt = new Date().toISOString();
   saveState(projectPath, state);
 
+  // Generate .cursorrules if requested
+  const nextSteps = [
+    'Fill out docs/brainlift.md with your unique insights',
+    'Define requirements in docs/prd.md',
+    'Plan the build in docs/gameplan.md',
+    'Use midas_get_phase to see current progress',
+  ];
+  
+  let message = `Project "${projectName}" initialized with Eagle Sight docs.`;
+  
+  if (input.addCursorRules) {
+    const rulesResult = writeCursorRules(projectPath, projectName);
+    if (rulesResult.success) {
+      const stack = detectTechStack(projectPath);
+      message += ` Generated .cursorrules for ${stack.language}${stack.framework ? `/${stack.framework}` : ''}.`;
+    }
+  }
+
   return {
     success: true,
-    message: `Project "${projectName}" initialized with Eagle Sight docs.`,
-    nextSteps: [
-      'Fill out docs/brainlift.md with your unique insights',
-      'Define requirements in docs/prd.md',
-      'Plan the build in docs/gameplan.md',
-      'Use midas_get_phase to see current progress',
-    ],
+    message,
+    nextSteps,
   };
 }
 

@@ -77,7 +77,7 @@ function saveCache(projectPath: string, cache: SummaryCache): void {
   writeFileSync(getCachePath(projectPath), JSON.stringify(cache, null, 2));
 }
 
-function getCachedSummary(projectPath: string, content: string, maxTokens: number): string | null {
+export function getCachedSummary(projectPath: string, content: string, maxTokens: number): string | null {
   const cache = loadCache(projectPath);
   const key = `${simpleHash(content)}-${maxTokens}`;
   const entry = cache[key];
@@ -88,7 +88,7 @@ function getCachedSummary(projectPath: string, content: string, maxTokens: numbe
   return null;
 }
 
-function setCachedSummary(projectPath: string, content: string, maxTokens: number, summary: string): void {
+export function setCachedSummary(projectPath: string, content: string, maxTokens: number, summary: string): void {
   const cache = loadCache(projectPath);
   const key = `${simpleHash(content)}-${maxTokens}`;
   
@@ -109,6 +109,30 @@ function setCachedSummary(projectPath: string, content: string, maxTokens: numbe
   }
   
   saveCache(projectPath, cache);
+}
+
+/**
+ * Get cache statistics for monitoring
+ */
+export function getCacheStats(projectPath: string): {
+  entries: number;
+  totalOriginalTokens: number;
+  totalSummaryTokens: number;
+  tokensSaved: number;
+  hitRate?: number;
+} {
+  const cache = loadCache(projectPath);
+  const entries = Object.values(cache);
+  
+  const totalOriginal = entries.reduce((sum, e) => sum + e.originalTokens, 0);
+  const totalSummary = entries.reduce((sum, e) => sum + e.summaryTokens, 0);
+  
+  return {
+    entries: entries.length,
+    totalOriginalTokens: totalOriginal,
+    totalSummaryTokens: totalSummary,
+    tokensSaved: totalOriginal - totalSummary,
+  };
 }
 
 function simpleHash(str: string): string {

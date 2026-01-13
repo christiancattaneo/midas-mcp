@@ -73,16 +73,36 @@ async function callClaude(
   const data = await response.json() as { 
     content: Array<{ text: string }>;
     usage?: { 
+      input_tokens?: number;
+      output_tokens?: number;
       cache_creation_input_tokens?: number;
       cache_read_input_tokens?: number;
     };
   };
   
-  // Log cache usage for debugging/monitoring
-  if (data.usage?.cache_read_input_tokens) {
-    logger.debug('Prompt cache hit', { 
-      cached_tokens: data.usage.cache_read_input_tokens 
-    });
+  // Log cache usage for monitoring
+  if (data.usage) {
+    const usage = data.usage;
+    if (usage.cache_read_input_tokens && usage.cache_read_input_tokens > 0) {
+      // Cache hit - 90% savings on cached portion
+      const savings = Math.round(usage.cache_read_input_tokens * 0.9);
+      logger.info('Prompt cache HIT', { 
+        cached_tokens: usage.cache_read_input_tokens,
+        estimated_savings: savings,
+        total_input: usage.input_tokens,
+      });
+    } else if (usage.cache_creation_input_tokens && usage.cache_creation_input_tokens > 0) {
+      // Cache write - will save on subsequent calls
+      logger.info('Prompt cache WRITE', {
+        cached_tokens: usage.cache_creation_input_tokens,
+        total_input: usage.input_tokens,
+      });
+    } else {
+      logger.debug('No cache activity', { 
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+      });
+    }
   }
   
   return data.content[0]?.text || '';
