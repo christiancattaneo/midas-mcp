@@ -36,11 +36,12 @@ export function showHelp(): void {
 ${bold}${cyan}MIDAS${reset} - Everything you vibecode turns to gold
 
 ${bold}Usage:${reset}
-  npx midas-mcp              Start MCP server (for Cursor)
+  npx midas-mcp              Interactive coach (recommended)
   npx midas-mcp status       Show current phase and progress
   npx midas-mcp init <name>  Initialize new project with Eagle Sight
   npx midas-mcp audit        Audit project against 12 ingredients
   npx midas-mcp docs         Check Eagle Sight docs completeness
+  npx midas-mcp server       Start MCP server (for Cursor integration)
   npx midas-mcp help         Show this help
 
 ${bold}The Two Phases:${reset}
@@ -229,7 +230,7 @@ export function runDocsCheck(): void {
   }
 }
 
-export function runCLI(args: string[]): boolean {
+export function runCLI(args: string[]): 'interactive' | 'server' | 'handled' {
   const command = args[0];
 
   switch (command) {
@@ -237,25 +238,33 @@ export function runCLI(args: string[]): boolean {
     case '--help':
     case '-h':
       showHelp();
-      return true;
+      return 'handled';
 
     case 'status':
       showStatus();
-      return true;
+      return 'handled';
 
     case 'init':
       runInit(args[1]);
-      return true;
+      return 'handled';
 
     case 'audit':
       runAudit();
-      return true;
+      return 'handled';
 
     case 'docs':
       runDocsCheck();
-      return true;
+      return 'handled';
+
+    case 'server':
+      return 'server'; // Start MCP server
+
+    case undefined:
+      return 'interactive'; // No args = interactive mode
 
     default:
-      return false; // Not a CLI command, start MCP server
+      console.log(`Unknown command: ${command}`);
+      console.log('Run: npx midas-mcp help');
+      return 'handled';
   }
 }
