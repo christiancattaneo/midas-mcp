@@ -65,77 +65,55 @@ export function showStatus(): void {
     return;
   }
 
-  if (phase.phase === 'EAGLE_SIGHT') {
-    const steps = ['IDEA', 'RESEARCH', 'BRAINLIFT', 'PRD', 'GAMEPLAN'];
-    const currentIdx = steps.indexOf(phase.step);
-    const progress = currentIdx + 1;
+  const phaseConfig: Record<string, { color: string; steps: string[]; labels?: Record<string, string> }> = {
+    EAGLE_SIGHT: {
+      color: yellow,
+      steps: ['IDEA', 'RESEARCH', 'BRAINLIFT', 'PRD', 'GAMEPLAN'],
+    },
+    BUILD: {
+      color: blue,
+      steps: ['SCAFFOLD', 'IMPLEMENT', 'TEST', 'POLISH'],
+      labels: { SCAFFOLD: 'Scaffold', IMPLEMENT: 'Implement', TEST: 'Test', POLISH: 'Polish' },
+    },
+    SHIP: {
+      color: green,
+      steps: ['REVIEW', 'DEPLOY', 'MONITOR'],
+      labels: { REVIEW: 'Review', DEPLOY: 'Deploy', MONITOR: 'Monitor' },
+    },
+    GROW: {
+      color: '\x1b[35m', // magenta
+      steps: ['FEEDBACK', 'ANALYZE', 'ITERATE'],
+      labels: { FEEDBACK: 'Feedback', ANALYZE: 'Analyze', ITERATE: 'Iterate' },
+    },
+  };
 
-    console.log(box(
-      `${yellow}${bold}EAGLE SIGHT${reset}  ${progressBar(progress, 5)}  ${progress}/5`
-    ));
-    console.log('');
-
-    steps.forEach((step, i) => {
-      if (i < currentIdx) {
-        console.log(`  ${green}✓${reset} ${dim}${step}${reset}`);
-      } else if (i === currentIdx) {
-        console.log(`  ${yellow}→${reset} ${bold}${step}${reset} ${dim}(current)${reset}`);
-      } else {
-        console.log(`  ${dim}○ ${step}${reset}`);
-      }
-    });
-
-    console.log('');
-    const nextActions: Record<string, string> = {
-      IDEA: 'Define your core idea. What problem are you solving?',
-      RESEARCH: 'Scan the landscape. What already exists?',
-      BRAINLIFT: 'Fill out docs/brainlift.md with YOUR unique insights',
-      PRD: 'Fill out docs/prd.md with requirements',
-      GAMEPLAN: 'Fill out docs/gameplan.md with your build plan',
-    };
-    console.log(`  ${bold}Next:${reset} ${nextActions[phase.step]}\n`);
+  const config = phaseConfig[phase.phase];
+  if (!config) {
+    console.log(box(`${dim}Unknown phase${reset}`));
     return;
   }
 
-  if (phase.phase === 'BUILD') {
-    const steps = ['RULES_LOADED', 'CODEBASE_INDEXED', 'FILES_READ', 'RESEARCHING', 'IMPLEMENTING', 'TESTING', 'DEBUGGING'];
-    const currentIdx = steps.indexOf(phase.step);
-    const progress = currentIdx + 1;
+  const steps = config.steps;
+  const currentIdx = steps.indexOf(phase.step);
+  const progress = currentIdx + 1;
 
-    console.log(box(
-      `${blue}${bold}BUILD${reset}  ${progressBar(progress, 7)}  ${progress}/7`
-    ));
-    console.log('');
+  console.log(box(
+    `${config.color}${bold}${phase.phase.replace('_', ' ')}${reset}  ${progressBar(progress, steps.length)}  ${progress}/${steps.length}`
+  ));
+  console.log('');
 
-    const stepLabels: Record<string, string> = {
-      RULES_LOADED: 'Load Rules',
-      CODEBASE_INDEXED: 'Index Codebase',
-      FILES_READ: 'Read Files',
-      RESEARCHING: 'Research',
-      IMPLEMENTING: 'Implement',
-      TESTING: 'Test',
-      DEBUGGING: 'Debug',
-    };
+  steps.forEach((step, i) => {
+    const label = config.labels?.[step] || step;
+    if (i < currentIdx) {
+      console.log(`  ${green}✓${reset} ${dim}${label}${reset}`);
+    } else if (i === currentIdx) {
+      console.log(`  ${config.color}→${reset} ${bold}${label}${reset} ${dim}(current)${reset}`);
+    } else {
+      console.log(`  ${dim}○ ${label}${reset}`);
+    }
+  });
 
-    steps.forEach((step, i) => {
-      const label = stepLabels[step];
-      if (i < currentIdx) {
-        console.log(`  ${green}✓${reset} ${dim}${label}${reset}`);
-      } else if (i === currentIdx) {
-        console.log(`  ${blue}→${reset} ${bold}${label}${reset} ${dim}(current)${reset}`);
-      } else {
-        console.log(`  ${dim}○ ${label}${reset}`);
-      }
-    });
-
-    console.log('');
-    return;
-  }
-
-  if (phase.phase === 'SHIPPED') {
-    console.log(box(`${green}${bold}SHIPPED${reset}  ${progressBar(1, 1)}  Done!`));
-    console.log(`\n  Run ${cyan}npx midas-mcp audit${reset} to check production readiness.\n`);
-  }
+  console.log('');
 }
 
 export function runInit(projectName: string): void {

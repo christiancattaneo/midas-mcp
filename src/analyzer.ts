@@ -1,8 +1,8 @@
 import { getApiKey } from './config.js';
-import { getRecentConversationIds, getConversation, type ChatMessage } from './cursor.js';
+import { getRecentConversationIds, getConversation } from './cursor.js';
 import { readdirSync, readFileSync, existsSync } from 'fs';
 import { join, extname } from 'path';
-import type { Phase, EagleSightStep, BuildStep } from './state/phase.js';
+import type { Phase, EagleSightStep, BuildStep, ShipStep, GrowStep } from './state/phase.js';
 
 async function callClaude(prompt: string, systemPrompt: string): Promise<string> {
   const apiKey = getApiKey();
@@ -117,6 +117,11 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
   const prdContent = hasPrd ? readFile(join(projectPath, 'docs', 'prd.md')) : '';
   const gameplanContent = hasGameplan ? readFile(join(projectPath, 'docs', 'gameplan.md')) : '';
   
+  // Check for deployment/monitoring
+  const hasDockerfile = existsSync(join(projectPath, 'Dockerfile')) || existsSync(join(projectPath, 'docker-compose.yml'));
+  const hasCI = existsSync(join(projectPath, '.github', 'workflows'));
+  const hasTests = files.some(f => f.includes('.test.') || f.includes('.spec.') || f.includes('__tests__'));
+  
   // Get chat history
   const chatHistory = getRecentChatHistory();
   
@@ -126,20 +131,25 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
     return `--- ${f.replace(projectPath + '/', '')} ---\n${content}`;
   }).join('\n\n');
 
-  const prompt = `Analyze this project and determine where the developer is in the Elite Vibecoding workflow.
+  const prompt = `Analyze this project and determine where the developer is in the product lifecycle.
 
 ## Project Files (${files.length} total):
 ${fileList}
 
 ## Eagle Sight Docs:
 - brainlift.md: ${hasbrainlift ? 'exists' : 'missing'}
-${brainliftContent ? `Content preview:\n${brainliftContent.slice(0, 500)}` : ''}
+${brainliftContent ? `Preview:\n${brainliftContent.slice(0, 400)}` : ''}
 
 - prd.md: ${hasPrd ? 'exists' : 'missing'}
-${prdContent ? `Content preview:\n${prdContent.slice(0, 500)}` : ''}
+${prdContent ? `Preview:\n${prdContent.slice(0, 400)}` : ''}
 
 - gameplan.md: ${hasGameplan ? 'exists' : 'missing'}
-${gameplanContent ? `Content preview:\n${gameplanContent.slice(0, 500)}` : ''}
+${gameplanContent ? `Preview:\n${gameplanContent.slice(0, 400)}` : ''}
+
+## Infrastructure:
+- Tests: ${hasTests ? 'yes' : 'no'}
+- Dockerfile/compose: ${hasDockerfile ? 'yes' : 'no'}
+- CI/CD (.github/workflows): ${hasCI ? 'yes' : 'no'}
 
 ## Recent Chat History:
 ${chatHistory || 'No recent chat history'}
@@ -147,39 +157,44 @@ ${chatHistory || 'No recent chat history'}
 ## Code Samples:
 ${codeSamples || 'No code files yet'}
 
-## The Vibecoding Phases:
+## The 4 Phases with Steps:
 
-EAGLE SIGHT (Pre-Build):
+EAGLE_SIGHT (Planning):
 - IDEA: Define core idea, problem, audience
 - RESEARCH: Landscape scan, competitors
-- BRAINLIFT: Document unique insights in brainlift.md
-- PRD: Write requirements in prd.md
-- GAMEPLAN: Plan in gameplan.md
+- BRAINLIFT: Document unique insights
+- PRD: Write requirements
+- GAMEPLAN: Plan the build
 
 BUILD (Development):
-- RULES_LOADED: Load .cursorrules
-- CODEBASE_INDEXED: Understand architecture
-- FILES_READ: Read specific files
-- RESEARCHING: Research docs/APIs
-- IMPLEMENTING: Write code with tests
-- TESTING: Run and fix tests
-- DEBUGGING: Fix issues with Tornado cycle
+- SCAFFOLD: Set up project structure, configs
+- IMPLEMENT: Write core features
+- TEST: Write and run tests
+- POLISH: Fix bugs, refine UX
 
-SHIPPED: Project complete
+SHIP (Deployment):
+- REVIEW: Code review, security audit
+- DEPLOY: CI/CD, production deploy
+- MONITOR: Logs, alerts, health checks
 
-Based on the evidence, determine:
-1. What phase and step is this project currently at?
-2. What has been completed?
-3. What should happen next?
-4. What prompt should the developer paste into Cursor?
+GROW (Iteration):
+- FEEDBACK: Collect user feedback
+- ANALYZE: Study metrics and behavior
+- ITERATE: Plan next cycle (back to EAGLE_SIGHT)
+
+Based on all evidence, determine:
+1. Current phase and step
+2. What's completed
+3. What's next
+4. Specific prompt for Cursor
 
 Respond ONLY with valid JSON:
 {
-  "phase": "EAGLE_SIGHT" | "BUILD" | "SHIPPED" | "IDLE",
-  "step": "step name if applicable",
+  "phase": "EAGLE_SIGHT" | "BUILD" | "SHIP" | "GROW" | "IDLE",
+  "step": "step name",
   "summary": "one-line project summary",
-  "techStack": ["detected", "technologies"],
-  "whatsDone": ["completed item 1", "completed item 2"],
+  "techStack": ["tech1", "tech2"],
+  "whatsDone": ["done1", "done2"],
   "whatsNext": "specific next action",
   "suggestedPrompt": "exact prompt to paste in Cursor",
   "confidence": 0-100
@@ -187,10 +202,10 @@ Respond ONLY with valid JSON:
 
   try {
     const response = await callClaude(prompt, 
-      'You are Midas, an elite vibecoding coach. Analyze projects and determine their exact phase in the development workflow. Be specific and actionable. Respond only with valid JSON.'
+      'You are Midas, an elite vibecoding coach. Analyze projects and determine their exact phase in the development lifecycle. Be specific and actionable. Respond only with valid JSON.'
     );
     
-    // Parse JSON from response (handle markdown code blocks)
+    // Parse JSON from response
     let jsonStr = response;
     if (response.includes('```')) {
       const match = response.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -201,14 +216,18 @@ Respond ONLY with valid JSON:
     
     // Convert to Phase type
     let currentPhase: Phase;
-    if (data.phase === 'IDLE') {
+    if (data.phase === 'IDLE' || !data.phase) {
       currentPhase = { phase: 'IDLE' };
-    } else if (data.phase === 'SHIPPED') {
-      currentPhase = { phase: 'SHIPPED' };
     } else if (data.phase === 'EAGLE_SIGHT') {
       currentPhase = { phase: 'EAGLE_SIGHT', step: data.step as EagleSightStep };
-    } else {
+    } else if (data.phase === 'BUILD') {
       currentPhase = { phase: 'BUILD', step: data.step as BuildStep };
+    } else if (data.phase === 'SHIP') {
+      currentPhase = { phase: 'SHIP', step: data.step as ShipStep };
+    } else if (data.phase === 'GROW') {
+      currentPhase = { phase: 'GROW', step: data.step as GrowStep };
+    } else {
+      currentPhase = { phase: 'IDLE' };
     }
     
     return {

@@ -1,5 +1,5 @@
 import { exec } from 'child_process';
-import { loadState, saveState, type Phase, type EagleSightStep, type BuildStep } from './state/phase.js';
+import { loadState, saveState, type Phase, PHASE_INFO } from './state/phase.js';
 import { hasApiKey, ensureApiKey } from './config.js';
 import { logEvent } from './events.js';
 import { 
@@ -24,6 +24,13 @@ const white = `${ESC}[37m`;
 const red = `${ESC}[31m`;
 const clearScreen = `${ESC}[2J${ESC}[H`;
 
+const PHASE_COLORS: Record<string, string> = {
+  EAGLE_SIGHT: yellow,
+  BUILD: blue,
+  SHIP: green,
+  GROW: magenta,
+};
+
 interface TUIState {
   analysis: ProjectAnalysis | null;
   isAnalyzing: boolean;
@@ -32,12 +39,6 @@ interface TUIState {
   recentToolCalls: string[];
   message: string;
   hasApiKey: boolean;
-}
-
-function progressBar(current: number, total: number, width = 20): string {
-  const filled = Math.round((current / total) * width);
-  const empty = width - filled;
-  return `${green}${'█'.repeat(filled)}${dim}${'░'.repeat(empty)}${reset}`;
 }
 
 function copyToClipboard(text: string): Promise<void> {
@@ -56,26 +57,22 @@ function truncate(str: string, len: number): string {
   return str.slice(0, len - 3) + '...';
 }
 
-function wrapText(text: string, width: number): string[] {
-  const words = text.split(' ');
-  const lines: string[] = [];
-  let current = '';
-  
-  for (const word of words) {
-    if (current.length + word.length + 1 <= width) {
-      current += (current ? ' ' : '') + word;
-    } else {
-      if (current) lines.push(current);
-      current = word;
-    }
-  }
-  if (current) lines.push(current);
-  return lines;
+function phaseLabel(phase: Phase): string {
+  if (phase.phase === 'IDLE') return 'Not started';
+  const info = PHASE_INFO[phase.phase];
+  const color = PHASE_COLORS[phase.phase] || white;
+  return `${color}${info.name}${reset} → ${phase.step}`;
+}
+
+function phaseLabelSimple(phase: Phase): string {
+  if (phase.phase === 'IDLE') return 'Not started';
+  const info = PHASE_INFO[phase.phase];
+  return `${info.name} → ${phase.step}`;
 }
 
 function drawUI(state: TUIState, projectPath: string): string {
   const lines: string[] = [];
-  const width = 64;
+  const width = 66;
   const innerWidth = width - 4;
   
   const hLine = '═'.repeat(width - 2);
@@ -85,7 +82,7 @@ function drawUI(state: TUIState, projectPath: string): string {
   lines.push(`${cyan}╔${hLine}╗${reset}`);
   const statusIcon = state.cursorConnected ? `${green}●${reset}` : `${dim}○${reset}`;
   const aiIcon = state.hasApiKey ? `${magenta}AI${reset}` : `${red}--${reset}`;
-  lines.push(`${cyan}║${reset}  ${bold}${white}MIDAS${reset} ${dim}- Elite Vibecoding Coach${reset}      ${statusIcon} Cursor  ${aiIcon}   ${cyan}║${reset}`);
+  lines.push(`${cyan}║${reset}  ${bold}${white}MIDAS${reset} ${dim}- Elite Vibecoding Coach${reset}        ${statusIcon} Cursor  ${aiIcon}   ${cyan}║${reset}`);
   lines.push(`${cyan}╠${hLine}╣${reset}`);
 
   if (state.isAnalyzing) {
@@ -99,7 +96,7 @@ function drawUI(state: TUIState, projectPath: string): string {
 
   if (!state.analysis) {
     lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
-    lines.push(`${cyan}║${reset}  ${yellow}!${reset} No analysis yet. Press [r] to analyze.${' '.repeat(width - 47)}${cyan}║${reset}`);
+    lines.push(`${cyan}║${reset}  ${yellow}!${reset} No analysis yet. Press ${bold}[r]${reset} to analyze.${' '.repeat(width - 49)}${cyan}║${reset}`);
     lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
     lines.push(`${cyan}╠${hLine}╣${reset}`);
     lines.push(`${cyan}║${reset}  ${dim}[r]${reset} Analyze  ${dim}[q]${reset} Quit${' '.repeat(width - 28)}${cyan}║${reset}`);
@@ -112,33 +109,49 @@ function drawUI(state: TUIState, projectPath: string): string {
   // Project summary
   lines.push(`${cyan}║${reset}  ${bold}${truncate(a.summary, innerWidth)}${reset}${' '.repeat(Math.max(0, innerWidth - a.summary.length))}${cyan}║${reset}`);
   if (a.techStack.length > 0) {
-    const stack = a.techStack.slice(0, 4).join(' · ');
+    const stack = a.techStack.slice(0, 5).join(' · ');
     lines.push(`${cyan}║${reset}  ${dim}${truncate(stack, innerWidth)}${reset}${' '.repeat(Math.max(0, innerWidth - stack.length))}${cyan}║${reset}`);
   }
   lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
 
-  // Cursor chat context
+  // Cursor context
   if (state.cursorConnected && state.lastChatSummary && state.lastChatSummary !== 'Empty conversation') {
     lines.push(`${cyan}║${reset}  ${dim}Chat:${reset} ${truncate(state.lastChatSummary, innerWidth - 7)}${' '.repeat(Math.max(0, innerWidth - 7 - Math.min(state.lastChatSummary.length, innerWidth - 7)))}${cyan}║${reset}`);
-    if (state.recentToolCalls.length > 0) {
-      const tools = state.recentToolCalls.slice(0, 3).join(', ');
-      lines.push(`${cyan}║${reset}  ${dim}Tools:${reset} ${magenta}${truncate(tools, innerWidth - 8)}${reset}${' '.repeat(Math.max(0, innerWidth - 8 - Math.min(tools.length, innerWidth - 8)))}${cyan}║${reset}`);
-    }
     lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
   }
 
   lines.push(`${cyan}╠${hLine}╣${reset}`);
 
+  // Phase lifecycle bar
+  const phases = ['EAGLE_SIGHT', 'BUILD', 'SHIP', 'GROW'] as const;
+  const currentPhaseIdx = a.currentPhase.phase === 'IDLE' ? -1 : phases.indexOf(a.currentPhase.phase as typeof phases[number]);
+  
+  let phaseBar = '  ';
+  for (let i = 0; i < phases.length; i++) {
+    const p = phases[i];
+    const info = PHASE_INFO[p];
+    const color = PHASE_COLORS[p];
+    if (i < currentPhaseIdx) {
+      phaseBar += `${green}✓${reset} ${dim}${info.name}${reset}  `;
+    } else if (i === currentPhaseIdx) {
+      phaseBar += `${color}●${reset} ${bold}${info.name}${reset}  `;
+    } else {
+      phaseBar += `${dim}○ ${info.name}${reset}  `;
+    }
+  }
+  lines.push(`${cyan}║${reset}${phaseBar}${' '.repeat(Math.max(0, width - 2 - 50))}${cyan}║${reset}`);
+  lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
+
   // Current phase with confidence
-  const phase = a.currentPhase;
   const confColor = a.confidence >= 70 ? green : a.confidence >= 40 ? yellow : red;
-  lines.push(`${cyan}║${reset}  ${bold}PHASE:${reset} ${phaseLabel(phase)}  ${confColor}${a.confidence}% confidence${reset}${' '.repeat(Math.max(0, width - 40 - phaseLabel(phase).length))}${cyan}║${reset}`);
+  const phaseStr = phaseLabelSimple(a.currentPhase);
+  lines.push(`${cyan}║${reset}  ${bold}PHASE:${reset} ${phaseLabel(a.currentPhase)}  ${confColor}${a.confidence}%${reset}${' '.repeat(Math.max(0, width - 22 - phaseStr.length - 4))}${cyan}║${reset}`);
   lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
 
   // What's done
   if (a.whatsDone.length > 0) {
     lines.push(`${cyan}║${reset}  ${dim}Completed:${reset}${' '.repeat(innerWidth - 10)}${cyan}║${reset}`);
-    for (const done of a.whatsDone.slice(0, 4)) {
+    for (const done of a.whatsDone.slice(0, 3)) {
       lines.push(`${cyan}║${reset}  ${green}✓${reset} ${dim}${truncate(done, innerWidth - 4)}${reset}${' '.repeat(Math.max(0, innerWidth - 4 - Math.min(done.length, innerWidth - 4)))}${cyan}║${reset}`);
     }
     lines.push(`${cyan}║${reset}${' '.repeat(width - 2)}${cyan}║${reset}`);
@@ -155,12 +168,12 @@ function drawUI(state: TUIState, projectPath: string): string {
     lines.push(`${cyan}║${reset}  ${dim}Paste this in Cursor:${reset}${' '.repeat(innerWidth - 21)}${cyan}║${reset}`);
     lines.push(`${cyan}║${reset}  ${dim}┌${hLineLight}┐${reset}${cyan}║${reset}`);
     
-    const promptLines = a.suggestedPrompt.split('\n').slice(0, 6);
+    const promptLines = a.suggestedPrompt.split('\n').slice(0, 5);
     for (const pLine of promptLines) {
       const truncated = truncate(pLine, innerWidth - 4);
       lines.push(`${cyan}║${reset}  ${dim}│${reset} ${truncated}${' '.repeat(Math.max(0, innerWidth - 4 - truncated.length))}${dim}│${reset}${cyan}║${reset}`);
     }
-    if (a.suggestedPrompt.split('\n').length > 6) {
+    if (a.suggestedPrompt.split('\n').length > 5) {
       lines.push(`${cyan}║${reset}  ${dim}│ ...${' '.repeat(innerWidth - 8)}│${reset}${cyan}║${reset}`);
     }
     
@@ -173,13 +186,6 @@ function drawUI(state: TUIState, projectPath: string): string {
   lines.push(`${cyan}╚${hLine}╝${reset}`);
 
   return lines.join('\n');
-}
-
-function phaseLabel(phase: Phase): string {
-  if (phase.phase === 'IDLE') return 'Not started';
-  if (phase.phase === 'SHIPPED') return 'Shipped';
-  if (phase.phase === 'EAGLE_SIGHT') return `Eagle Sight → ${phase.step}`;
-  return `Build → ${phase.step}`;
 }
 
 export async function runInteractive(): Promise<void> {

@@ -8,6 +8,8 @@ import {
   type Phase,
   type EagleSightStep,
   type BuildStep,
+  type ShipStep,
+  type GrowStep,
 } from '../state/phase.js';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -155,7 +157,7 @@ export function getPhase(input: GetPhaseInput): {
 
 // Tool: midas_set_phase
 export const setPhaseSchema = z.object({
-  phase: z.enum(['IDLE', 'EAGLE_SIGHT', 'BUILD', 'SHIPPED']).describe('Target phase'),
+  phase: z.enum(['IDLE', 'EAGLE_SIGHT', 'BUILD', 'SHIP', 'GROW']).describe('Target phase'),
   step: z.string().optional().describe('Step within phase'),
   projectPath: z.string().optional().describe('Path to project root'),
 });
@@ -173,14 +175,20 @@ export function setPhaseManually(input: SetPhaseInput): {
   
   if (input.phase === 'IDLE') {
     newPhase = { phase: 'IDLE' };
-  } else if (input.phase === 'SHIPPED') {
-    newPhase = { phase: 'SHIPPED' };
   } else if (input.phase === 'EAGLE_SIGHT') {
     const step = (input.step as EagleSightStep) || 'IDEA';
     newPhase = { phase: 'EAGLE_SIGHT', step };
-  } else {
-    const step = (input.step as BuildStep) || 'RULES_LOADED';
+  } else if (input.phase === 'BUILD') {
+    const step = (input.step as BuildStep) || 'SCAFFOLD';
     newPhase = { phase: 'BUILD', step };
+  } else if (input.phase === 'SHIP') {
+    const step = (input.step as ShipStep) || 'REVIEW';
+    newPhase = { phase: 'SHIP', step };
+  } else if (input.phase === 'GROW') {
+    const step = (input.step as GrowStep) || 'FEEDBACK';
+    newPhase = { phase: 'GROW', step };
+  } else {
+    newPhase = { phase: 'IDLE' };
   }
   
   const state = setPhase(projectPath, newPhase);
