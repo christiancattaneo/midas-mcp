@@ -556,8 +556,18 @@ export async function runInteractive(): Promise<void> {
     tuiState.isAnalyzing = true;
     render();
     
+    // Timeout protection for analysis (90 seconds max)
+    const ANALYSIS_TIMEOUT = 90000;
+    let timeoutId: NodeJS.Timeout | null = null;
+    
     try {
-      tuiState.analysis = await analyzeProject(projectPath);
+      const analysisPromise = analyzeProject(projectPath);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Analysis timeout')), ANALYSIS_TIMEOUT);
+      });
+      
+      tuiState.analysis = await Promise.race([analysisPromise, timeoutPromise]);
+      if (timeoutId) clearTimeout(timeoutId);
       
       // Save phase to state
       if (tuiState.analysis.currentPhase) {
@@ -584,7 +594,11 @@ export async function runInteractive(): Promise<void> {
       });
       
     } catch (error) {
-      tuiState.message = `${red}!${reset} Analysis failed. Check API key.`;
+      if (timeoutId) clearTimeout(timeoutId);
+      const msg = error instanceof Error && error.message === 'Analysis timeout'
+        ? 'Analysis timed out. Project may be too large.'
+        : 'Analysis failed. Check API key.';
+      tuiState.message = `${red}!${reset} ${msg}`;
     }
     
     tuiState.isAnalyzing = false;
@@ -592,12 +606,13 @@ export async function runInteractive(): Promise<void> {
   };
 
   const promptForRejectionReason = async (): Promise<string> => {
-    const TIMEOUT_MS = 60000; // 60 second timeout
+    const TIMEOUT_MS = 30000; // 30 second timeout (reduced)
     
     return new Promise((resolve) => {
       console.log(`\n  ${yellow}Why are you declining this suggestion?${reset}`);
-      console.log(`  ${dim}(This helps Midas learn. Press Enter to skip.)${reset}\n`);
+      console.log(`  ${dim}(Press Enter to skip, or type reason + Enter)${reset}\n`);
       
+      // Exit raw mode for line input
       if (process.stdin.isTTY) {
         process.stdin.setRawMode(false);
       }
@@ -605,24 +620,47 @@ export async function runInteractive(): Promise<void> {
       const rl = createInterface({
         input: process.stdin,
         output: process.stdout,
+        terminal: false, // Prevent readline from messing with terminal
       });
+      
+      let resolved = false;
+      
+      const cleanup = () => {
+        if (resolved) return;
+        resolved = true;
+        rl.removeAllListeners();
+        rl.close();
+        // Restore raw mode after cleanup
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
+          process.stdin.resume();
+        }
+      };
       
       // Timeout protection
       const timeout = setTimeout(() => {
-        rl.close();
-        if (process.stdin.isTTY) {
-          process.stdin.setRawMode(true);
-        }
-        resolve(''); // Timeout = no reason given
+        cleanup();
+        resolve('');
       }, TIMEOUT_MS);
       
-      rl.question('  > ', (answer) => {
+      rl.once('line', (answer) => {
         clearTimeout(timeout);
-        rl.close();
-        if (process.stdin.isTTY) {
-          process.stdin.setRawMode(true);
-        }
+        cleanup();
         resolve(answer.trim());
+      });
+      
+      rl.once('close', () => {
+        clearTimeout(timeout);
+        if (!resolved) {
+          cleanup();
+          resolve('');
+        }
+      });
+      
+      rl.once('error', () => {
+        clearTimeout(timeout);
+        cleanup();
+        resolve('');
       });
     });
   };
@@ -645,29 +683,35 @@ export async function runInteractive(): Promise<void> {
       const rl = createInterface({
         input: process.stdin,
         output: process.stdout,
+        terminal: false, // Prevent readline from messing with terminal
       });
       
       const lines: string[] = [];
       let emptyLineCount = 0;
       let timeoutId: NodeJS.Timeout | null = null;
+      let resolved = false;
       
-      // Timeout protection - auto-cancel after 2 minutes
-      timeoutId = setTimeout(() => {
+      const cleanup = () => {
+        if (resolved) return;
+        resolved = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        rl.removeAllListeners();
         rl.close();
         if (process.stdin.isTTY) {
           process.stdin.setRawMode(true);
+          process.stdin.resume();
         }
         process.stdout.write(clearScreen);
+      };
+      
+      // Timeout protection - auto-cancel after 2 minutes
+      timeoutId = setTimeout(() => {
+        cleanup();
         resolve(null);
       }, TIMEOUT_MS);
       
       const finishInput = () => {
-        if (timeoutId) clearTimeout(timeoutId);
-        rl.close();
-        if (process.stdin.isTTY) {
-          process.stdin.setRawMode(true);
-        }
-        process.stdout.write(clearScreen);
+        cleanup();
         
         // Remove trailing empty lines
         while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
@@ -710,6 +754,8 @@ export async function runInteractive(): Promise<void> {
       };
       
       rl.on('line', (line) => {
+        if (resolved) return;
+        
         // Check for double Enter (two empty lines in a row)
         if (line.trim() === '') {
           emptyLineCount++;
@@ -730,11 +776,16 @@ export async function runInteractive(): Promise<void> {
         lines.push(line);
       });
       
-      rl.on('close', () => {
-        if (process.stdin.isTTY) {
-          process.stdin.setRawMode(true);
+      rl.once('close', () => {
+        if (!resolved) {
+          cleanup();
+          resolve(null);
         }
-        // Don't clear here - finishInput handles it
+      });
+      
+      rl.once('error', () => {
+        cleanup();
+        resolve(null);
       });
     });
   };
