@@ -215,7 +215,11 @@ function drawUI(state: TUIState, _projectPath: string): string {
   const title = `${bold}${white}MIDAS${reset} ${dim}- Golden Code Coach${reset}`;
   const streakStr = state.sessionStreak > 0 ? `${yellow}${state.sessionStreak}d${reset} ` : '';
   const apiStatus = state.hasApiKey ? `${green}OK${reset}` : `${dim}--${reset}`;
-  const statusIcons = `${streakStr}${apiStatus}`;
+  // Activity pulse: count recent events (last 5 min)
+  const fiveMinAgo = Date.now() - 5 * 60 * 1000;
+  const recentCount = state.recentEvents.filter(e => new Date(e.timestamp).getTime() > fiveMinAgo).length;
+  const activityPulse = recentCount > 0 ? `${magenta}${recentCount}${reset} ` : '';
+  const statusIcons = `${activityPulse}${streakStr}${apiStatus}`;
   const titleWidth = visibleWidth(title);
   const statusWidth = visibleWidth(statusIcons);
   const headerPadding = Math.max(1, I - titleWidth - statusWidth);
