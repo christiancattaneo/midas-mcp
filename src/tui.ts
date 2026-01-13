@@ -32,7 +32,13 @@ const cyan = `${ESC}[36m`;
 const magenta = `${ESC}[35m`;
 const white = `${ESC}[37m`;
 const red = `${ESC}[31m`;
-const clearScreen = `${ESC}[2J${ESC}[H`;
+
+// Screen control - use alternate buffer for clean refreshes
+const enterAltScreen = `${ESC}[?1049h`;  // Switch to alternate screen buffer
+const exitAltScreen = `${ESC}[?1049l`;   // Switch back to main buffer
+const clearScreen = `${ESC}[2J${ESC}[H`; // Clear screen + cursor to home
+const hideCursor = `${ESC}[?25l`;        // Hide cursor during redraw
+const showCursor = `${ESC}[?25h`;        // Show cursor after redraw
 
 const PHASE_COLORS: Record<string, string> = {
   EAGLE_SIGHT: yellow,
@@ -217,14 +223,23 @@ function drawUI(state: TUIState, _projectPath: string): string {
     lines.push(row(`${bold}${yellow}NEW SESSION${reset}`));
     lines.push(emptyRow());
     lines.push(row(`${dim}Paste this in your new Cursor chat:${reset}`));
-    lines.push(`${cyan}║${reset}  ${dim}┌${'─'.repeat(I - 4)}┐${reset} ${cyan}║${reset}`);
     
-    const promptWrapped = wrapText(state.sessionStarterPrompt, I - 6);
+    // Inner box with proper alignment
+    const boxWidth = I - 4;
+    const contentWidth = boxWidth - 4;
+    
+    const topBorder = `  ${dim}┌${'─'.repeat(boxWidth - 2)}┐${reset}`;
+    lines.push(row(topBorder));
+    
+    const promptWrapped = wrapText(state.sessionStarterPrompt, contentWidth);
     for (const pLine of promptWrapped) {
-      lines.push(`${cyan}║${reset}  ${dim}│${reset} ${padRight(pLine, I - 6)} ${dim}│${reset} ${cyan}║${reset}`);
+      const paddedContent = padRight(pLine, contentWidth);
+      const boxRow = `  ${dim}│${reset} ${paddedContent} ${dim}│${reset}`;
+      lines.push(row(boxRow));
     }
     
-    lines.push(`${cyan}║${reset}  ${dim}└${'─'.repeat(I - 4)}┘${reset} ${cyan}║${reset}`);
+    const bottomBorder = `  ${dim}└${'─'.repeat(boxWidth - 2)}┘${reset}`;
+    lines.push(row(bottomBorder));
     lines.push(emptyRow());
     lines.push(row(`${dim}TIP: Add User Rules in Cursor Settings for auto-behavior${reset}`));
     lines.push(row(`${dim}Press ${bold}[u]${reset}${dim} to copy User Rules to clipboard${reset}`));
@@ -315,19 +330,31 @@ function drawUI(state: TUIState, _projectPath: string): string {
   }
   lines.push(emptyRow());
 
-  // Suggested prompt - full display
+  // Suggested prompt - full display with inner box
   if (a.suggestedPrompt) {
     lines.push(row(`${dim}Paste this in Cursor:${reset}`));
-    lines.push(`${cyan}║${reset}  ${dim}┌${'─'.repeat(I - 4)}┐${reset} ${cyan}║${reset}`);
+    
+    // Inner box: 2 char margin on each side, box chars take 2 more
+    // Content width = I - 6 (2 margin + 1 border + 1 space on each side)
+    const boxWidth = I - 4;  // Width of inner box (including its borders)
+    const contentWidth = boxWidth - 4;  // Content inside │ padding │
+    
+    // Top border: pad to fill row
+    const topBorder = `  ${dim}┌${'─'.repeat(boxWidth - 2)}┐${reset}`;
+    lines.push(row(topBorder));
     
     // Show full prompt, wrapped
     const promptText = a.suggestedPrompt.replace(/\n/g, ' ');
-    const promptWrapped = wrapText(promptText, I - 6);
+    const promptWrapped = wrapText(promptText, contentWidth);
     for (const pLine of promptWrapped) {
-      lines.push(`${cyan}║${reset}  ${dim}│${reset} ${padRight(pLine, I - 6)} ${dim}│${reset} ${cyan}║${reset}`);
+      const paddedContent = padRight(pLine, contentWidth);
+      const boxRow = `  ${dim}│${reset} ${paddedContent} ${dim}│${reset}`;
+      lines.push(row(boxRow));
     }
     
-    lines.push(`${cyan}║${reset}  ${dim}└${'─'.repeat(I - 4)}┘${reset} ${cyan}║${reset}`);
+    // Bottom border
+    const bottomBorder = `  ${dim}└${'─'.repeat(boxWidth - 2)}┘${reset}`;
+    lines.push(row(bottomBorder));
   }
 
   // Show gates status if available
@@ -380,12 +407,38 @@ export async function runInteractive(): Promise<void> {
   // Check for API key on first run
   await ensureApiKey();
   
+  // Switch to alternate screen buffer for clean TUI (doesn't pollute main terminal)
+  process.stdout.write(enterAltScreen);
+  
   // Set up raw mode
   if (process.stdin.isTTY) {
     process.stdin.setRawMode(true);
   }
   process.stdin.resume();
   process.stdin.setEncoding('utf8');
+  
+  // Cleanup function to restore terminal state
+  const cleanup = () => {
+    process.stdout.write(showCursor + exitAltScreen);
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+    }
+  };
+  
+  // Ensure cleanup on unexpected exits
+  process.on('SIGINT', () => {
+    cleanup();
+    process.exit(0);
+  });
+  process.on('SIGTERM', () => {
+    cleanup();
+    process.exit(0);
+  });
+  process.on('uncaughtException', (err) => {
+    cleanup();
+    console.error('Uncaught exception:', err);
+    process.exit(1);
+  });
 
   // Start a new session for metrics tracking
   const currentPhase = loadState(projectPath).current;
@@ -412,12 +465,14 @@ export async function runInteractive(): Promise<void> {
   };
 
   const render = () => {
-    console.log(clearScreen);
-    console.log(drawUI(tuiState, projectPath));
+    // Hide cursor, clear, draw, show cursor - prevents flicker
+    process.stdout.write(hideCursor + clearScreen);
+    process.stdout.write(drawUI(tuiState, projectPath));
     if (tuiState.message) {
-      console.log(`\n  ${tuiState.message}`);
+      process.stdout.write(`\n  ${tuiState.message}`);
       tuiState.message = '';
     }
+    process.stdout.write(showCursor);
   };
 
   const runAnalysis = async () => {
@@ -543,10 +598,10 @@ export async function runInteractive(): Promise<void> {
       const endPhase = tuiState.analysis?.currentPhase || { phase: 'IDLE' as const };
       endSession(projectPath, tuiState.sessionId, endPhase);
       
-      console.log(clearScreen);
-      console.log(`\n  ${cyan}Midas${reset} signing off. Session saved. Happy vibecoding!\n`);
       clearInterval(activityInterval);
       stopWatchingEvents();
+      cleanup();  // Restore terminal state
+      console.log(`\n  ${cyan}Midas${reset} signing off. Session saved. Happy vibecoding!\n`);
       process.exit(0);
     }
 
