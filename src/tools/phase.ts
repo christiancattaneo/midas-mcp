@@ -13,11 +13,18 @@ import {
 } from '../state/phase.js';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { sanitizePath, limitLength, LIMITS, validateEnum } from '../security.js';
+
+// Valid step values for each phase
+const EAGLE_SIGHT_STEPS = ['IDEA', 'RESEARCH', 'BRAINLIFT', 'PRD', 'GAMEPLAN'] as const;
+const BUILD_STEPS = ['RULES', 'INDEX', 'READ', 'RESEARCH', 'IMPLEMENT', 'TEST', 'DEBUG'] as const;
+const SHIP_STEPS = ['REVIEW', 'DEPLOY', 'MONITOR'] as const;
+const GROW_STEPS = ['FEEDBACK', 'ANALYZE', 'ITERATE'] as const;
 
 // Tool: midas_start_project
 export const startProjectSchema = z.object({
-  projectName: z.string().describe('Name of the project'),
-  projectPath: z.string().optional().describe('Path to project root, defaults to cwd'),
+  projectName: z.string().max(100).describe('Name of the project'),
+  projectPath: z.string().max(LIMITS.PATH_MAX_LENGTH).optional().describe('Path to project root, defaults to cwd'),
 });
 
 export type StartProjectInput = z.infer<typeof startProjectSchema>;
@@ -27,7 +34,8 @@ export function startProject(input: StartProjectInput): {
   message: string;
   nextSteps: string[];
 } {
-  const projectPath = input.projectPath || process.cwd();
+  const projectPath = sanitizePath(input.projectPath);
+  const projectName = limitLength(input.projectName, 100);
   const docsPath = join(projectPath, 'docs');
 
   // Create docs folder
@@ -36,7 +44,7 @@ export function startProject(input: StartProjectInput): {
   }
 
   // Create brainlift template
-  const brainliftContent = `# Brainlift: ${input.projectName}
+  const brainliftContent = `# Brainlift: ${projectName}
 
 ## Contrarian Insights
 - [What do YOU know that contradicts conventional wisdom?]
@@ -56,7 +64,7 @@ export function startProject(input: StartProjectInput): {
 `;
 
   // Create PRD template
-  const prdContent = `# PRD: ${input.projectName}
+  const prdContent = `# PRD: ${projectName}
 
 ## Overview
 [One-paragraph description]
@@ -79,7 +87,7 @@ export function startProject(input: StartProjectInput): {
 `;
 
   // Create Gameplan template
-  const gameplanContent = `# Gameplan: ${input.projectName}
+  const gameplanContent = `# Gameplan: ${projectName}
 
 ## Tech Stack
 [Stack choice with justification]
@@ -122,7 +130,7 @@ export function startProject(input: StartProjectInput): {
 
   return {
     success: true,
-    message: `Project "${input.projectName}" initialized with Eagle Sight docs.`,
+    message: `Project "${projectName}" initialized with Eagle Sight docs.`,
     nextSteps: [
       'Fill out docs/brainlift.md with your unique insights',
       'Define requirements in docs/prd.md',
@@ -134,7 +142,7 @@ export function startProject(input: StartProjectInput): {
 
 // Tool: midas_get_phase
 export const getPhaseSchema = z.object({
-  projectPath: z.string().optional().describe('Path to project root'),
+  projectPath: z.string().max(LIMITS.PATH_MAX_LENGTH).optional().describe('Path to project root'),
 });
 
 export type GetPhaseInput = z.infer<typeof getPhaseSchema>;
@@ -144,7 +152,7 @@ export function getPhase(input: GetPhaseInput): {
   nextSteps: string[];
   prompt?: string;
 } {
-  const projectPath = input.projectPath || process.cwd();
+  const projectPath = sanitizePath(input.projectPath);
   const state = loadState(projectPath);
   const guidance = getPhaseGuidance(state.current);
   
@@ -158,8 +166,8 @@ export function getPhase(input: GetPhaseInput): {
 // Tool: midas_set_phase
 export const setPhaseSchema = z.object({
   phase: z.enum(['IDLE', 'EAGLE_SIGHT', 'BUILD', 'SHIP', 'GROW']).describe('Target phase'),
-  step: z.string().optional().describe('Step within phase'),
-  projectPath: z.string().optional().describe('Path to project root'),
+  step: z.string().max(20).optional().describe('Step within phase'),
+  projectPath: z.string().max(LIMITS.PATH_MAX_LENGTH).optional().describe('Path to project root'),
 });
 
 export type SetPhaseInput = z.infer<typeof setPhaseSchema>;
@@ -168,24 +176,57 @@ export function setPhaseManually(input: SetPhaseInput): {
   success: boolean;
   current: Phase;
   nextSteps: string[];
+  error?: string;
 } {
-  const projectPath = input.projectPath || process.cwd();
+  const projectPath = sanitizePath(input.projectPath);
   
   let newPhase: Phase;
   
   if (input.phase === 'IDLE') {
     newPhase = { phase: 'IDLE' };
   } else if (input.phase === 'EAGLE_SIGHT') {
-    const step = (input.step as EagleSightStep) || 'IDEA';
+    const step = validateEnum(input.step || 'IDEA', EAGLE_SIGHT_STEPS) as EagleSightStep;
+    if (!step) {
+      return {
+        success: false,
+        current: loadState(projectPath).current,
+        nextSteps: [],
+        error: `Invalid step "${input.step}" for EAGLE_SIGHT. Valid: ${EAGLE_SIGHT_STEPS.join(', ')}`,
+      };
+    }
     newPhase = { phase: 'EAGLE_SIGHT', step };
   } else if (input.phase === 'BUILD') {
-    const step = (input.step as BuildStep) || 'RULES';
+    const step = validateEnum(input.step || 'RULES', BUILD_STEPS) as BuildStep;
+    if (!step) {
+      return {
+        success: false,
+        current: loadState(projectPath).current,
+        nextSteps: [],
+        error: `Invalid step "${input.step}" for BUILD. Valid: ${BUILD_STEPS.join(', ')}`,
+      };
+    }
     newPhase = { phase: 'BUILD', step };
   } else if (input.phase === 'SHIP') {
-    const step = (input.step as ShipStep) || 'REVIEW';
+    const step = validateEnum(input.step || 'REVIEW', SHIP_STEPS) as ShipStep;
+    if (!step) {
+      return {
+        success: false,
+        current: loadState(projectPath).current,
+        nextSteps: [],
+        error: `Invalid step "${input.step}" for SHIP. Valid: ${SHIP_STEPS.join(', ')}`,
+      };
+    }
     newPhase = { phase: 'SHIP', step };
   } else if (input.phase === 'GROW') {
-    const step = (input.step as GrowStep) || 'FEEDBACK';
+    const step = validateEnum(input.step || 'FEEDBACK', GROW_STEPS) as GrowStep;
+    if (!step) {
+      return {
+        success: false,
+        current: loadState(projectPath).current,
+        nextSteps: [],
+        error: `Invalid step "${input.step}" for GROW. Valid: ${GROW_STEPS.join(', ')}`,
+      };
+    }
     newPhase = { phase: 'GROW', step };
   } else {
     newPhase = { phase: 'IDLE' };

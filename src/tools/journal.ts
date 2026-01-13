@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { z } from 'zod';
+import { sanitizePath, limitLength, LIMITS } from '../security.js';
 
 const MIDAS_DIR = '.midas';
 const JOURNAL_DIR = 'journal';
@@ -54,30 +55,35 @@ export function saveToJournal(input: {
   conversation: string;
   tags?: string[];
 }): { success: boolean; path: string; entry: JournalEntry } {
-  const projectPath = input.projectPath || process.cwd();
+  const projectPath = sanitizePath(input.projectPath);
   ensureJournalDir(projectPath);
   
   const timestamp = new Date().toISOString();
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const filename = `${timestamp.slice(0, 10)}-${id}.md`;
   
+  // Sanitize inputs with size limits
+  const title = limitLength(input.title, LIMITS.TITLE_MAX_LENGTH);
+  const conversation = limitLength(input.conversation, LIMITS.CONVERSATION_MAX_LENGTH);
+  const tags = input.tags?.slice(0, LIMITS.MAX_TAGS).map(t => limitLength(t, LIMITS.TAG_MAX_LENGTH));
+  
   const entry: JournalEntry = {
     id,
     timestamp,
-    title: input.title,
-    conversation: input.conversation,
-    tags: input.tags,
+    title,
+    conversation,
+    tags,
   };
   
   // Format as markdown for easy reading
-  const content = `# ${input.title}
+  const content = `# ${title}
 
 **Date**: ${timestamp}
-${input.tags?.length ? `**Tags**: ${input.tags.join(', ')}` : ''}
+${tags?.length ? `**Tags**: ${tags.join(', ')}` : ''}
 
 ---
 
-${input.conversation}
+${conversation}
 `;
 
   const filepath = join(getJournalDir(projectPath), filename);
@@ -93,7 +99,7 @@ export function getJournalEntries(input: {
   projectPath?: string;
   limit?: number;
 }): JournalEntry[] {
-  const projectPath = input.projectPath || process.cwd();
+  const projectPath = sanitizePath(input.projectPath);
   const journalDir = getJournalDir(projectPath);
   
   if (!existsSync(journalDir)) {
@@ -130,8 +136,8 @@ export function searchJournal(input: {
   projectPath?: string;
   query: string;
 }): JournalEntry[] {
-  const entries = getJournalEntries({ projectPath: input.projectPath, limit: 100 });
-  const query = input.query.toLowerCase();
+  const entries = getJournalEntries({ projectPath: sanitizePath(input.projectPath), limit: 100 });
+  const query = limitLength(input.query, 200).toLowerCase();
   
   return entries.filter(entry => 
     entry.title.toLowerCase().includes(query) ||

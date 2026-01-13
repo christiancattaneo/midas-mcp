@@ -1,6 +1,6 @@
 {
   "name": "midas-mcp",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "MCP server for Golden Code methodology - everything you vibecode turns to gold",
   "main": "dist/index.js",
   "bin": {
@@ -11,8 +11,7 @@
     "build": "tsc && cp -r docs dist/",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
-    "test": "node --experimental-strip-types --test src/tests/*.test.ts",
-    "test:build": "npm run build && node --test dist/tests/*.test.js",
+    "test": "npm run build && node --test dist/tests/*.test.js",
     "prepublishOnly": "npm run build"
   },
   "keywords": [

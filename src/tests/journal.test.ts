@@ -106,9 +106,12 @@ describe('Journal Tools', () => {
       assert.strictEqual(entries[0].title, 'Entry 1');
     });
 
-    it('returns entries in reverse chronological order', () => {
+    it('returns entries in reverse chronological order', async () => {
+      // Add small delays to ensure distinct timestamps
       saveToJournal({ projectPath: testDir, title: 'First', conversation: 'A' });
+      await new Promise(r => setTimeout(r, 5));
       saveToJournal({ projectPath: testDir, title: 'Second', conversation: 'B' });
+      await new Promise(r => setTimeout(r, 5));
       saveToJournal({ projectPath: testDir, title: 'Third', conversation: 'C' });
       
       const entries = getJournalEntries({ projectPath: testDir });

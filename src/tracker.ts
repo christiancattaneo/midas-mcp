@@ -2,6 +2,8 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, readdirSy
 import { join, relative } from 'path';
 import { execSync } from 'child_process';
 import { loadState, saveState, type Phase } from './state/phase.js';
+import { sanitizePath, isShellSafe } from './security.js';
+import { logger } from './logger.js';
 
 const MIDAS_DIR = '.midas';
 const TRACKER_FILE = 'tracker.json';
@@ -53,11 +55,14 @@ function ensureDir(projectPath: string): void {
 }
 
 export function loadTracker(projectPath: string): TrackerState {
-  const path = getTrackerPath(projectPath);
+  const safePath = sanitizePath(projectPath);
+  const path = getTrackerPath(safePath);
   if (existsSync(path)) {
     try {
       return JSON.parse(readFileSync(path, 'utf-8'));
-    } catch {}
+    } catch (error) {
+      logger.error('Failed to parse tracker state', error);
+    }
   }
   return getDefaultTracker();
 }
@@ -85,7 +90,8 @@ function getDefaultTracker(): TrackerState {
 
 // Track when an MCP tool is called
 export function trackToolCall(projectPath: string, tool: string, args?: Record<string, unknown>): void {
-  const tracker = loadTracker(projectPath);
+  const safePath = sanitizePath(projectPath);
+  const tracker = loadTracker(safePath);
   
   tracker.recentToolCalls = [
     { tool, timestamp: Date.now(), args },
@@ -95,7 +101,7 @@ export function trackToolCall(projectPath: string, tool: string, args?: Record<s
   // Update phase based on tool calls
   updatePhaseFromToolCalls(tracker);
   
-  saveTracker(projectPath, tracker);
+  saveTracker(safePath, tracker);
 }
 
 // Scan for recently modified files
@@ -133,30 +139,43 @@ export function scanRecentFiles(projectPath: string, since?: number): FileActivi
 
 // Get git activity
 export function getGitActivity(projectPath: string): GitActivity | null {
-  if (!existsSync(join(projectPath, '.git'))) return null;
+  const safePath = sanitizePath(projectPath);
+  
+  if (!existsSync(join(safePath, '.git'))) return null;
+  
+  // Security: Validate path is safe for shell commands
+  if (!isShellSafe(safePath)) {
+    logger.debug('Unsafe path for git commands', { path: safePath });
+    return null;
+  }
   
   try {
-    const branch = execSync('git branch --show-current', { cwd: projectPath, encoding: 'utf-8' }).trim();
+    const branch = execSync('git branch --show-current', { cwd: safePath, encoding: 'utf-8' }).trim();
     
     let lastCommit: string | undefined;
     let lastCommitMessage: string | undefined;
     let lastCommitTime: number | undefined;
     
     try {
-      lastCommit = execSync('git log -1 --format=%H', { cwd: projectPath, encoding: 'utf-8' }).trim();
-      lastCommitMessage = execSync('git log -1 --format=%s', { cwd: projectPath, encoding: 'utf-8' }).trim();
-      const timeStr = execSync('git log -1 --format=%ct', { cwd: projectPath, encoding: 'utf-8' }).trim();
+      lastCommit = execSync('git log -1 --format=%H', { cwd: safePath, encoding: 'utf-8' }).trim();
+      lastCommitMessage = execSync('git log -1 --format=%s', { cwd: safePath, encoding: 'utf-8' }).trim();
+      const timeStr = execSync('git log -1 --format=%ct', { cwd: safePath, encoding: 'utf-8' }).trim();
       lastCommitTime = parseInt(timeStr) * 1000;
-    } catch {}
+    } catch {
+      // Git log may fail on new repos with no commits
+    }
     
     let uncommittedChanges = 0;
     try {
-      const status = execSync('git status --porcelain', { cwd: projectPath, encoding: 'utf-8' });
+      const status = execSync('git status --porcelain', { cwd: safePath, encoding: 'utf-8' });
       uncommittedChanges = status.split('\n').filter(Boolean).length;
-    } catch {}
+    } catch {
+      // Git status may fail in edge cases
+    }
     
     return { branch, lastCommit, lastCommitMessage, lastCommitTime, uncommittedChanges };
-  } catch {
+  } catch (error) {
+    logger.error('Failed to get git activity', error);
     return null;
   }
 }

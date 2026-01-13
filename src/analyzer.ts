@@ -4,6 +4,8 @@ import { join, extname } from 'path';
 import type { Phase, EagleSightStep, BuildStep, ShipStep, GrowStep } from './state/phase.js';
 import { updateTracker, getActivitySummary } from './tracker.js';
 import { getJournalEntries } from './tools/journal.js';
+import { sanitizePath, limitLength, LIMITS } from './security.js';
+import { logger } from './logger.js';
 
 async function callClaude(prompt: string, systemPrompt: string): Promise<string> {
   const apiKey = getApiKey();
@@ -47,7 +49,9 @@ function scanFiles(dir: string, maxFiles = 30): string[] {
         if (entry.isDirectory()) scan(path, depth + 1);
         else if (extensions.includes(extname(entry.name))) files.push(path);
       }
-    } catch {}
+    } catch {
+      // Directory may be inaccessible
+    }
   }
   scan(dir);
   return files;
@@ -62,8 +66,9 @@ function readFile(path: string, maxLines = 30): string {
 }
 
 function getActivityContext(projectPath: string): string {
+  const safePath = sanitizePath(projectPath);
   try {
-    const tracker = updateTracker(projectPath);
+    const tracker = updateTracker(safePath);
     const lines: string[] = [];
     
     // Recent file activity
@@ -100,7 +105,8 @@ function getActivityContext(projectPath: string): string {
     lines.push(`- Docs complete: ${tracker.completionSignals.docsComplete ? 'yes' : 'no'}`);
     
     return lines.join('\n');
-  } catch {
+  } catch (error) {
+    logger.error('Failed to get activity context', error);
     return 'No activity data available';
   }
 }
@@ -116,6 +122,7 @@ export interface ProjectAnalysis {
 }
 
 export async function analyzeProject(projectPath: string): Promise<ProjectAnalysis> {
+  const safePath = sanitizePath(projectPath);
   const apiKey = getApiKey();
   if (!apiKey) {
     return {
@@ -130,36 +137,36 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
   }
 
   // Gather context
-  const files = scanFiles(projectPath);
-  const fileList = files.map(f => f.replace(projectPath + '/', '')).join('\n');
+  const files = scanFiles(safePath);
+  const fileList = files.map(f => f.replace(safePath + '/', '')).join('\n');
   
   // Check for Eagle Sight docs
-  const hasbrainlift = existsSync(join(projectPath, 'docs', 'brainlift.md'));
-  const hasPrd = existsSync(join(projectPath, 'docs', 'prd.md'));
-  const hasGameplan = existsSync(join(projectPath, 'docs', 'gameplan.md'));
+  const hasbrainlift = existsSync(join(safePath, 'docs', 'brainlift.md'));
+  const hasPrd = existsSync(join(safePath, 'docs', 'prd.md'));
+  const hasGameplan = existsSync(join(safePath, 'docs', 'gameplan.md'));
   
-  const brainliftContent = hasbrainlift ? readFile(join(projectPath, 'docs', 'brainlift.md')) : '';
-  const prdContent = hasPrd ? readFile(join(projectPath, 'docs', 'prd.md')) : '';
-  const gameplanContent = hasGameplan ? readFile(join(projectPath, 'docs', 'gameplan.md')) : '';
+  const brainliftContent = hasbrainlift ? readFile(join(safePath, 'docs', 'brainlift.md')) : '';
+  const prdContent = hasPrd ? readFile(join(safePath, 'docs', 'prd.md')) : '';
+  const gameplanContent = hasGameplan ? readFile(join(safePath, 'docs', 'gameplan.md')) : '';
   
   // Check for deployment/monitoring
-  const hasDockerfile = existsSync(join(projectPath, 'Dockerfile')) || existsSync(join(projectPath, 'docker-compose.yml'));
-  const hasCI = existsSync(join(projectPath, '.github', 'workflows'));
+  const hasDockerfile = existsSync(join(safePath, 'Dockerfile')) || existsSync(join(safePath, 'docker-compose.yml'));
+  const hasCI = existsSync(join(safePath, '.github', 'workflows'));
   const hasTests = files.some(f => f.includes('.test.') || f.includes('.spec.') || f.includes('__tests__'));
   
   // Get activity context (replaces broken chat history)
-  const activityContext = getActivityContext(projectPath);
+  const activityContext = getActivityContext(safePath);
   
   // Get journal entries for conversation history
-  const journalEntries = getJournalEntries({ projectPath, limit: 5 });
+  const journalEntries = getJournalEntries({ projectPath: safePath, limit: 5 });
   const journalContext = journalEntries.length > 0 
-    ? journalEntries.map(e => `### ${e.title} (${e.timestamp.slice(0, 10)})\n${e.conversation.slice(0, 500)}...`).join('\n\n')
+    ? journalEntries.map(e => `### ${e.title} (${e.timestamp.slice(0, 10)})\n${limitLength(e.conversation, 500)}`).join('\n\n')
     : 'No journal entries yet';
   
   // Sample some code files
   const codeSamples = files.slice(0, 5).map(f => {
     const content = readFile(f, 20);
-    return `--- ${f.replace(projectPath + '/', '')} ---\n${content}`;
+    return `--- ${f.replace(safePath + '/', '')} ---\n${content}`;
   }).join('\n\n');
 
   const prompt = `Analyze this project and determine where the developer is in the product lifecycle.
@@ -277,6 +284,7 @@ Respond ONLY with valid JSON:
       techStack: data.techStack || [],
     };
   } catch (error) {
+    logger.error('AI analysis failed', error);
     return {
       currentPhase: { phase: 'IDLE' },
       summary: 'Analysis failed',

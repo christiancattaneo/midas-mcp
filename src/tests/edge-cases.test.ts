@@ -260,7 +260,8 @@ describe('Edge Cases and Error Handling', () => {
       assert.strictEqual(result.success, true);
     });
 
-    it('handles many tags', () => {
+    it('handles many tags with security limit', () => {
+      // Security: Tags are limited to 20 max (LIMITS.MAX_TAGS)
       const manyTags = Array.from({ length: 50 }, (_, i) => `tag${i}`);
       const result = saveToJournal({
         projectPath: testDir,
@@ -269,7 +270,8 @@ describe('Edge Cases and Error Handling', () => {
         tags: manyTags,
       });
       
-      assert.strictEqual(result.entry.tags?.length, 50);
+      // Only first 20 tags should be stored (security limit)
+      assert.strictEqual(result.entry.tags?.length, 20);
     });
 
     it('handles deep history', () => {
