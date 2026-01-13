@@ -34,12 +34,14 @@ const magenta = `${ESC}[35m`;
 const white = `${ESC}[37m`;
 const red = `${ESC}[31m`;
 
-// Screen control - use alternate buffer for clean refreshes
-const enterAltScreen = `${ESC}[?1049h`;  // Switch to alternate screen buffer
-const exitAltScreen = `${ESC}[?1049l`;   // Switch back to main buffer
+// Screen control - NO alternate buffer (allows terminal scrolling)
+const cursorHome = `${ESC}[H`;           // Move cursor to top-left
+const clearToEnd = `${ESC}[J`;           // Clear from cursor to end of screen
 const clearScreen = `${ESC}[2J${ESC}[H`; // Clear screen + cursor to home
 const hideCursor = `${ESC}[?25l`;        // Hide cursor during redraw
 const showCursor = `${ESC}[?25h`;        // Show cursor after redraw
+const saveCursor = `${ESC}7`;            // Save cursor position
+const restoreCursor = `${ESC}8`;         // Restore cursor position
 
 const PHASE_COLORS: Record<string, string> = {
   EAGLE_SIGHT: yellow,
@@ -417,8 +419,8 @@ export async function runInteractive(): Promise<void> {
   // Check for API key on first run
   await ensureApiKey();
   
-  // Switch to alternate screen buffer for clean TUI (doesn't pollute main terminal)
-  process.stdout.write(enterAltScreen);
+  // Clear screen and save position (no alternate buffer - allows terminal scrolling)
+  process.stdout.write(saveCursor + clearScreen);
   
   // Set up raw mode
   if (process.stdin.isTTY) {
@@ -429,7 +431,7 @@ export async function runInteractive(): Promise<void> {
   
   // Cleanup function to restore terminal state
   const cleanup = () => {
-    process.stdout.write(showCursor + exitAltScreen);
+    process.stdout.write(showCursor + '\n');
     if (process.stdin.isTTY) {
       process.stdin.setRawMode(false);
     }
@@ -596,8 +598,8 @@ export async function runInteractive(): Promise<void> {
     const TIMEOUT_MS = 120000; // 2 minute timeout for pasting
     
     return new Promise((resolve) => {
-      // Exit alternate screen temporarily for input
-      process.stdout.write(exitAltScreen);
+      // Move to bottom and show input area
+      process.stdout.write('\n');
       
       console.log(`\n  ${cyan}━━━ Paste AI Response ━━━${reset}`);
       console.log(`  ${dim}Paste the response, then press Enter twice to submit.${reset}\n`);
@@ -621,7 +623,7 @@ export async function runInteractive(): Promise<void> {
         if (process.stdin.isTTY) {
           process.stdin.setRawMode(true);
         }
-        process.stdout.write(enterAltScreen);
+        process.stdout.write(clearScreen);
         resolve(null);
       }, TIMEOUT_MS);
       
@@ -631,7 +633,7 @@ export async function runInteractive(): Promise<void> {
         if (process.stdin.isTTY) {
           process.stdin.setRawMode(true);
         }
-        process.stdout.write(enterAltScreen);
+        process.stdout.write(clearScreen);
         
         // Remove trailing empty lines
         while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
@@ -698,7 +700,7 @@ export async function runInteractive(): Promise<void> {
         if (process.stdin.isTTY) {
           process.stdin.setRawMode(true);
         }
-        process.stdout.write(enterAltScreen);
+        // Don't clear here - finishInput handles it
       });
     });
   };
