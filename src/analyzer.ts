@@ -65,20 +65,28 @@ async function callAI(
   return response.content;
 }
 
-function scanFiles(dir: string, maxFiles = 30): string[] {
+/**
+ * Scan ALL project files to understand full structure.
+ * No artificial limits - we need complete visibility for accurate analysis.
+ * Paths are cheap; reading content is where we limit.
+ */
+function scanFiles(dir: string): string[] {
   const files: string[] = [];
-  const extensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.swift', '.go', '.rs', '.md'];
-  const ignore = ['node_modules', '.git', 'dist', 'build', '.next', '__pycache__'];
+  const extensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.swift', '.go', '.rs', '.md', '.json', '.yaml', '.yml'];
+  const ignore = ['node_modules', '.git', 'dist', 'build', '.next', '__pycache__', '.midas', 'coverage', '.nyc_output'];
 
   function scan(d: string, depth = 0): void {
-    if (depth > 3 || files.length >= maxFiles) return;
+    // Depth 6 covers most project structures (src/modules/feature/components/utils/file.ts)
+    if (depth > 6) return;
     try {
       for (const entry of readdirSync(d, { withFileTypes: true })) {
-        if (files.length >= maxFiles) break;
         if (entry.name.startsWith('.') || ignore.includes(entry.name)) continue;
         const path = join(d, entry.name);
-        if (entry.isDirectory()) scan(path, depth + 1);
-        else if (extensions.includes(extname(entry.name))) files.push(path);
+        if (entry.isDirectory()) {
+          scan(path, depth + 1);
+        } else if (extensions.includes(extname(entry.name))) {
+          files.push(path);
+        }
       }
     } catch {
       // Directory may be inaccessible
@@ -88,9 +96,18 @@ function scanFiles(dir: string, maxFiles = 30): string[] {
   return files;
 }
 
-function readFile(path: string, maxLines = 30): string {
+/**
+ * Read file content. Full read by default - compression happens later.
+ * Only limit for extremely large files to prevent memory issues.
+ */
+function readFile(path: string, maxLines = 500): string {
   try {
-    return readFileSync(path, 'utf-8').split('\n').slice(0, maxLines).join('\n');
+    const lines = readFileSync(path, 'utf-8').split('\n');
+    if (lines.length <= maxLines) return lines.join('\n');
+    // For very large files, take beginning + end (important context at both ends)
+    const head = lines.slice(0, Math.floor(maxLines * 0.7));
+    const tail = lines.slice(-Math.floor(maxLines * 0.3));
+    return [...head, '\n// ... middle truncated ...\n', ...tail].join('\n');
   } catch {
     return '';
   }
@@ -234,15 +251,20 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
   // Get activity context (replaces broken chat history)
   const activityContext = getActivityContext(safePath);
   
-  // Get journal entries for conversation history
-  const journalEntries = getJournalEntries({ projectPath: safePath, limit: 5 });
+  // Get journal entries for conversation history - read more context
+  const journalEntries = getJournalEntries({ projectPath: safePath, limit: 10 });
   const journalContext = journalEntries.length > 0 
-    ? journalEntries.map(e => `### ${e.title} (${e.timestamp.slice(0, 10)})\n${limitLength(e.conversation, 500)}`).join('\n\n')
+    ? journalEntries.map(e => `### ${e.title} (${e.timestamp.slice(0, 10)})\n${limitLength(e.conversation, 2000)}`).join('\n\n')
     : 'No journal entries yet';
   
-  // Sample some code files
-  const codeSamples = files.slice(0, 5).map(f => {
-    const content = readFile(f, 20);
+  // Sample key code files - prioritize tests, main entry, and config
+  const priorityPatterns = ['.test.', '.spec.', 'index.', 'main.', 'app.', 'server.', 'config.'];
+  const priorityFiles = files.filter(f => priorityPatterns.some(p => f.includes(p))).slice(0, 10);
+  const otherFiles = files.filter(f => !priorityPatterns.some(p => f.includes(p))).slice(0, 10);
+  const sampleFiles = [...priorityFiles, ...otherFiles].slice(0, 15);
+  
+  const codeSamples = sampleFiles.map(f => {
+    const content = readFile(f, 100); // Read more lines per file
     return `--- ${f.replace(safePath + '/', '')} ---\n${content}`;
   }).join('\n\n');
 
@@ -252,10 +274,10 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
   const gatesStatus = getGatesStatus(safePath);
   const unresolvedErrors = getUnresolvedErrors(safePath);
   
-  // Build error context
+  // Build error context - show all errors with full messages
   const errorContext = unresolvedErrors.length > 0
-    ? unresolvedErrors.slice(0, 3).map(e => 
-        `- ${e.error.slice(0, 100)}${e.fixAttempts.length > 0 ? ` (tried ${e.fixAttempts.length}x)` : ''}`
+    ? unresolvedErrors.slice(0, 10).map(e => 
+        `- ${e.error}${e.file ? ` (${e.file}${e.line ? `:${e.line}` : ''})` : ''}${e.fixAttempts.length > 0 ? ` [tried ${e.fixAttempts.length}x]` : ''}`
       ).join('\n')
     : 'No unresolved errors';
 
@@ -362,18 +384,22 @@ ${fileList}
 - prd.md: ${hasPrd ? 'exists' : 'missing'}
 - gameplan.md: ${hasGameplan ? 'exists' : 'missing'}
 
-${brainliftContent ? `brainlift.md preview:\n${brainliftContent.slice(0, 200)}` : ''}
+${brainliftContent ? `## brainlift.md (full):\n${brainliftContent}` : ''}
+
+${prdContent ? `## prd.md (full):\n${prdContent}` : ''}
+
+${gameplanContent ? `## gameplan.md (full):\n${gameplanContent}` : ''}
 
 ## Infrastructure:
-- Tests: ${hasTests ? 'yes' : 'no'}
+- Tests: ${hasTests ? 'yes' : 'no'} (found ${files.filter(f => f.includes('.test.') || f.includes('.spec.')).length} test files)
 - Dockerfile/compose: ${hasDockerfile ? 'yes' : 'no'}
 - CI/CD: ${hasCI ? 'yes' : 'no'}
 
-## Recent Code (samples):
-${(codeSamples || 'No code files yet').slice(0, 500)}
+## Code Samples (${sampleFiles.length} files):
+${codeSamples || 'No code files yet'}
 
-## Recent Conversations:
-${journalContext.slice(0, 400)}
+## Recent Conversations (${journalEntries.length} entries):
+${journalContext}
 
 ---
 
@@ -526,10 +552,10 @@ Analyze the response and extract:
 Respond in JSON format only.`;
 
   const prompt = `USER PROMPT:
-${userPrompt.slice(0, 500)}
+${userPrompt.slice(0, 2000)}
 
 AI RESPONSE:
-${aiResponse.slice(0, 3000)}
+${aiResponse.slice(0, 8000)}
 
 Analyze this exchange and respond with JSON:
 {
