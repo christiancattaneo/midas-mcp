@@ -960,19 +960,21 @@ export async function runInteractive(): Promise<void> {
         recordSuggestionOutcome(projectPath, false, undefined, reason || undefined);
         tuiState.suggestionAcceptanceRate = getSuggestionAcceptanceRate(projectPath);
         
-        if (reason) {
-          tuiState.message = `${yellow}OK${reset} Noted: "${truncate(reason, 40)}" - will learn from this.`;
-        } else {
-          tuiState.message = `${yellow}OK${reset} Suggestion declined.`;
-        }
-        
         logEvent(projectPath, { 
           type: 'prompt_copied', 
           message: 'Suggestion declined',
           data: { reason: reason || 'No reason given' }
         });
         
-        render();
+        if (reason) {
+          tuiState.message = `${yellow}OK${reset} Noted: "${truncate(reason, 40)}" - re-analyzing...`;
+          render();
+          // Re-analyze with the feedback context
+          await runAnalysis();
+        } else {
+          tuiState.message = `${yellow}OK${reset} Suggestion declined.`;
+          render();
+        }
       } else {
         tuiState.message = `${yellow}!${reset} No suggestion to decline.`;
         render();

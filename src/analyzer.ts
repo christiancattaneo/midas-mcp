@@ -281,6 +281,17 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
       ).join('\n')
     : 'No unresolved errors';
 
+  // Get recently rejected suggestions to avoid repeating them
+  const rejectedSuggestions = tracker.suggestionHistory
+    .filter(s => !s.accepted && s.rejectionReason)
+    .slice(0, 3)
+    .map(s => `- "${s.suggestion.slice(0, 60)}..." → Rejected: ${s.rejectionReason}`)
+    .join('\n');
+  
+  const rejectionContext = rejectedSuggestions 
+    ? `\n## Recently Rejected Suggestions (avoid these approaches):\n${rejectedSuggestions}\n`
+    : '';
+
   // =========================================================================
   // OPTIMIZED CONTEXT STACKING FOR MAXIMUM CACHE HITS
   // =========================================================================
@@ -367,7 +378,7 @@ Respond ONLY with valid JSON matching this schema:
 - Phase: ${currentState.current.phase}${('step' in currentState.current) ? ` → ${currentState.current.step}` : ''}
 - Confidence: ${tracker.confidence}%
 - Gates: ${gatesStatus.allPass ? 'ALL PASS' : gatesStatus.failing.length > 0 ? `FAILING: ${gatesStatus.failing.join(', ')}` : 'Not yet run'}
-
+${rejectionContext}
 ## Unresolved Errors:
 ${errorContext}
 
