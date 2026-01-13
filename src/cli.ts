@@ -47,7 +47,7 @@ ${bold}Usage:${reset}
   npx midas-mcp help         Show this help
 
 ${bold}The Four Phases:${reset}
-  ${yellow}EAGLE SIGHT${reset}  Plan before building (Idea → Research → Brainlift → PRD → Gameplan)
+  ${yellow}PLAN${reset}         Plan before building (Idea → Research → Brainlift → PRD → Gameplan)
   ${blue}BUILD${reset}        Execute with the 7-step process
   ${green}SHIP${reset}         Deploy to production (Review → Deploy → Monitor)
   ${cyan}GROW${reset}         Iterate and improve (Feedback → Analyze → Iterate)
@@ -182,7 +182,7 @@ export function runDocsCheck(): void {
   const result = checkDocs({ projectPath: process.cwd() });
 
   console.log('');
-  console.log(box(`${bold}EAGLE SIGHT DOCS${reset}`));
+  console.log(box(`${bold}PLANNING DOCS${reset}`));
   console.log('');
 
   const docs = [

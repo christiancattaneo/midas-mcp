@@ -209,7 +209,7 @@ describe('Tech Stack Detection', () => {
     it('includes Golden Code methodology', () => {
       const rules = generateCursorRules(testDir, 'any-project');
       assert.strictEqual(rules.includes('Golden Code Methodology'), true);
-      assert.strictEqual(rules.includes('EAGLE_SIGHT'), true);
+      assert.strictEqual(rules.includes('PLAN'), true);
     });
   });
 

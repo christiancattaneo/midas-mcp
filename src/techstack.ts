@@ -126,7 +126,7 @@ export function generateCursorRules(projectPath: string, projectName: string): s
     `# Project: ${projectName}`,
     '',
     '# Golden Code Methodology',
-    '- Follow the 4 phases: EAGLE_SIGHT -> BUILD -> SHIP -> GROW',
+    '- Follow the 4 phases: PLAN -> BUILD -> SHIP -> GROW',
     '- Use the 7-step BUILD cycle: RULES -> INDEX -> READ -> RESEARCH -> IMPLEMENT -> TEST -> DEBUG',
     '- When stuck: Use Tornado (research + logs + tests)',
     '',

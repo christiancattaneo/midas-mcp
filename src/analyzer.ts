@@ -272,7 +272,7 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
   const files = scanFiles(safePath);
   const fileList = files.map(f => f.replace(safePath + '/', '')).join('\n');
   
-  // Check for Eagle Sight docs
+  // Check for planning docs
   const hasbrainlift = existsSync(join(safePath, 'docs', 'brainlift.md'));
   const hasPrd = existsSync(join(safePath, 'docs', 'prd.md'));
   const hasGameplan = existsSync(join(safePath, 'docs', 'gameplan.md'));
@@ -321,7 +321,7 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
   const prompt = `# GOLDEN CODE METHODOLOGY (Stable Context - Beginning)
 
 ## The 4 Phases with Steps:
-EAGLE_SIGHT (Planning): IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN
+PLAN (Planning): IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN
 BUILD (7-step cycle): RULES → INDEX → READ → RESEARCH → IMPLEMENT → TEST → DEBUG
 SHIP: REVIEW → DEPLOY → MONITOR
 GROW: FEEDBACK → ANALYZE → ITERATE
@@ -338,7 +338,7 @@ GROW: FEEDBACK → ANALYZE → ITERATE
 ## Project Files (${files.length} total):
 ${fileList}
 
-## Eagle Sight Docs:
+## Planning Docs:
 - brainlift.md: ${hasbrainlift ? 'exists' : 'missing'}
 - prd.md: ${hasPrd ? 'exists' : 'missing'}  
 - gameplan.md: ${hasGameplan ? 'exists' : 'missing'}

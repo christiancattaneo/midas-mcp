@@ -221,7 +221,7 @@ export function summarizeJournalEntries(entries: Array<{ title: string; conversa
 // CONTEXT BUILDING
 // ============================================================================
 
-const METHODOLOGY_COMPRESSED = `Golden Code: EAGLE_SIGHT (plan) → BUILD (code) → SHIP (deploy) → GROW (iterate)
+const METHODOLOGY_COMPRESSED = `Golden Code: PLAN (plan) → BUILD (code) → SHIP (deploy) → GROW (iterate)
 BUILD cycle: RULES → INDEX → READ → RESEARCH → IMPLEMENT → TEST → DEBUG
 If stuck: Tornado (research + logs + tests). If output doesn't fit: Horizon (expand context).
 Gates must pass (build/test/lint) before advancing.`;

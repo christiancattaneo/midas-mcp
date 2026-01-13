@@ -7,7 +7,7 @@ import { registerShipPrompts } from './ship.js';
 import { registerGrowPrompts } from './grow.js';
 
 export function registerAllPrompts(server: McpServer): void {
-  // Eagle Sight & Build prompts
+  // Plan & Build prompts
   registerSessionPrompts(server);
   registerDevelopmentPrompts(server);
   registerReviewPrompts(server);
