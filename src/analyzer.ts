@@ -259,48 +259,90 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
       ).join('\n')
     : 'No unresolved errors';
 
-  // Context stacking: STABLE FIRST (high attention at beginning)
-  // Then PROJECT CONTEXT (middle, lower attention)
-  // Then RECENT ACTIVITY LAST (high attention at end)
+  // =========================================================================
+  // OPTIMIZED CONTEXT STACKING FOR MAXIMUM CACHE HITS
+  // =========================================================================
+  // System prompt (CACHED - 90% savings on repeated calls):
+  //   - Full methodology (stable across ALL calls)
+  //   - Response format instructions (stable)
+  //   - Project conventions (stable per project)
+  //
+  // User prompt (NOT cached - keep minimal):
+  //   - Current state (dynamic)
+  //   - Recent errors (dynamic)
+  //   - Recent activity (dynamic)
+  // =========================================================================
   
-  const prompt = `# GOLDEN CODE METHODOLOGY (Stable Context - Beginning)
+  // SYSTEM PROMPT - Large, stable content (will be cached)
+  const systemPrompt = `You are Midas, a Golden Code coach. You analyze projects and determine their exact phase in the development lifecycle.
 
-## The 4 Phases with Steps:
-PLAN (Planning): IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN
-BUILD (7-step cycle): RULES → INDEX → READ → RESEARCH → IMPLEMENT → TEST → DEBUG
-SHIP: REVIEW → DEPLOY → MONITOR
-GROW: FEEDBACK → ANALYZE → ITERATE
+# GOLDEN CODE METHODOLOGY (Stable Reference)
 
-## Current State (from Midas tracking):
+## The 4 Development Phases:
+
+### PLAN (Planning Phase)
+Steps: IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN
+Purpose: Understand the problem before writing code.
+- IDEA: Capture the core concept and motivation
+- RESEARCH: Study existing solutions, dependencies, constraints
+- BRAINLIFT: Extract key decisions and mental models
+- PRD: Define requirements, scope, success criteria
+- GAMEPLAN: Break into ordered implementation tasks
+
+### BUILD (Implementation Phase)
+Steps: RULES → INDEX → READ → RESEARCH → IMPLEMENT → TEST → DEBUG
+Purpose: Code methodically with verification at each step.
+- RULES: Set up .cursorrules with project conventions
+- INDEX: Understand codebase structure
+- READ: Study relevant existing code
+- RESEARCH: Look up APIs, patterns, best practices
+- IMPLEMENT: Write the code
+- TEST: Verify with automated tests
+- DEBUG: Fix any issues (use Tornado if stuck)
+
+### SHIP (Deployment Phase)
+Steps: REVIEW → DEPLOY → MONITOR
+Purpose: Get code into production safely.
+- REVIEW: Code review, security audit, performance check
+- DEPLOY: Push to production with proper CI/CD
+- MONITOR: Watch for errors, performance issues
+
+### GROW (Iteration Phase)
+Steps: MONITOR → COLLECT → TRIAGE → RETROSPECT → PLAN_NEXT → LOOP
+Purpose: Learn from production and improve.
+- MONITOR: Track error rates, performance, engagement
+- COLLECT: Gather user feedback, bug reports
+- TRIAGE: Prioritize by impact/effort
+- RETROSPECT: What worked, what didn't
+- PLAN_NEXT: Define next iteration scope
+- LOOP: Return to PLAN with new context
+
+## Key Rules:
+1. GATES MUST PASS: Build, tests, and lint must pass before advancing
+2. TORNADO DEBUGGING: If stuck on same error 3+ times, use Research + Logs + Tests
+3. ONE TASK PER PROMPT: Each suggested prompt should be specific and actionable
+4. ERRORS FIRST: If gates are failing, the next action MUST fix them
+
+## Response Format:
+Respond ONLY with valid JSON matching this schema:
+{
+  "phase": "EAGLE_SIGHT" | "BUILD" | "SHIP" | "GROW" | "IDLE",
+  "step": "step name within phase",
+  "summary": "one-line project summary",
+  "techStack": ["detected", "technologies"],
+  "whatsDone": ["completed item 1", "completed item 2"],
+  "whatsNext": "specific next action description",
+  "suggestedPrompt": "exact actionable prompt for Cursor",
+  "confidence": 0-100
+}`;
+
+  // USER PROMPT - Minimal, dynamic content only (NOT cached)
+  const userPrompt = `# CURRENT PROJECT STATE
+
+## Midas Tracking:
 - Phase: ${currentState.current.phase}${('step' in currentState.current) ? ` → ${currentState.current.step}` : ''}
 - Confidence: ${tracker.confidence}%
 - Gates: ${gatesStatus.allPass ? 'ALL PASS' : gatesStatus.failing.length > 0 ? `FAILING: ${gatesStatus.failing.join(', ')}` : 'Not yet run'}
-
----
-
-# PROJECT CONTEXT (Middle - Architecture/Docs)
-
-## Project Files (${files.length} total):
-${fileList}
-
-## Planning Docs:
-- brainlift.md: ${hasbrainlift ? 'exists' : 'missing'}
-- prd.md: ${hasPrd ? 'exists' : 'missing'}  
-- gameplan.md: ${hasGameplan ? 'exists' : 'missing'}
-
-${brainliftContent ? `brainlift.md preview:\n${brainliftContent.slice(0, 300)}` : ''}
-
-## Infrastructure:
-- Tests: ${hasTests ? 'yes' : 'no'}
-- Dockerfile/compose: ${hasDockerfile ? 'yes' : 'no'}
-- CI/CD: ${hasCI ? 'yes' : 'no'}
-
-## Code Samples:
-${codeSamples || 'No code files yet'}
-
----
-
-# RECENT CONTEXT (End - High Attention)
 
 ## Unresolved Errors:
 ${errorContext}
@@ -308,36 +350,37 @@ ${errorContext}
 ## Recent Activity:
 ${activityContext}
 
-## Journal (Most Recent Conversations):
-${journalContext}
+---
+
+# PROJECT STRUCTURE
+
+## Files (${files.length} total):
+${fileList}
+
+## Planning Docs:
+- brainlift.md: ${hasbrainlift ? 'exists' : 'missing'}
+- prd.md: ${hasPrd ? 'exists' : 'missing'}
+- gameplan.md: ${hasGameplan ? 'exists' : 'missing'}
+
+${brainliftContent ? `brainlift.md preview:\n${brainliftContent.slice(0, 200)}` : ''}
+
+## Infrastructure:
+- Tests: ${hasTests ? 'yes' : 'no'}
+- Dockerfile/compose: ${hasDockerfile ? 'yes' : 'no'}
+- CI/CD: ${hasCI ? 'yes' : 'no'}
+
+## Recent Code (samples):
+${(codeSamples || 'No code files yet').slice(0, 500)}
+
+## Recent Conversations:
+${journalContext.slice(0, 400)}
 
 ---
 
-Based on ALL evidence above, determine:
-1. Verify/adjust the current phase and step
-2. What's completed
-3. What's the single most important next action
-4. Specific prompt for Cursor (actionable, one task)
-
-CRITICAL: If gates are failing (build/tests/lint), the next action MUST be to fix them.
-If there are unresolved errors with multiple fix attempts, suggest Tornado debugging.
-
-Respond ONLY with valid JSON:
-{
-  "phase": "EAGLE_SIGHT" | "BUILD" | "SHIP" | "GROW" | "IDLE",
-  "step": "step name",
-  "summary": "one-line project summary",
-  "techStack": ["tech1", "tech2"],
-  "whatsDone": ["done1", "done2"],
-  "whatsNext": "specific next action",
-  "suggestedPrompt": "exact prompt to paste in Cursor",
-  "confidence": 0-100
-}`;
+Analyze this project and provide the JSON response.`;
 
   try {
-    const response = await callAI(prompt, 
-      'You are Midas, a Golden Code coach. Analyze projects and determine their exact phase in the development lifecycle. Be specific and actionable. Respond only with valid JSON.'
-    );
+    const response = await callAI(userPrompt, systemPrompt);
     
     // Parse JSON from response
     let jsonStr = response;
