@@ -179,7 +179,7 @@ export function setPhaseManually(input: SetPhaseInput): {
     const step = (input.step as EagleSightStep) || 'IDEA';
     newPhase = { phase: 'EAGLE_SIGHT', step };
   } else if (input.phase === 'BUILD') {
-    const step = (input.step as BuildStep) || 'SCAFFOLD';
+    const step = (input.step as BuildStep) || 'RULES';
     newPhase = { phase: 'BUILD', step };
   } else if (input.phase === 'SHIP') {
     const step = (input.step as ShipStep) || 'REVIEW';

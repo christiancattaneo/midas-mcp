@@ -72,8 +72,8 @@ export function showStatus(): void {
     },
     BUILD: {
       color: blue,
-      steps: ['SCAFFOLD', 'IMPLEMENT', 'TEST', 'POLISH'],
-      labels: { SCAFFOLD: 'Scaffold', IMPLEMENT: 'Implement', TEST: 'Test', POLISH: 'Polish' },
+      steps: ['RULES', 'INDEX', 'READ', 'RESEARCH', 'IMPLEMENT', 'TEST', 'DEBUG'],
+      labels: { RULES: 'Rules', INDEX: 'Index', READ: 'Read', RESEARCH: 'Research', IMPLEMENT: 'Implement', TEST: 'Test', DEBUG: 'Debug' },
     },
     SHIP: {
       color: green,

@@ -166,11 +166,14 @@ EAGLE_SIGHT (Planning):
 - PRD: Write requirements
 - GAMEPLAN: Plan the build
 
-BUILD (Development):
-- SCAFFOLD: Set up project structure, configs
-- IMPLEMENT: Write core features
-- TEST: Write and run tests
-- POLISH: Fix bugs, refine UX
+BUILD (Development - the 7-step cycle):
+- RULES: Read .cursorrules, understand constraints
+- INDEX: Index codebase structure, architecture
+- READ: Read specific implementation files
+- RESEARCH: Look up docs, APIs, best practices
+- IMPLEMENT: Write code with tests
+- TEST: Run tests, fix failures
+- DEBUG: Tornado cycle (research + logs + tests)
 
 SHIP (Deployment):
 - REVIEW: Code review, security audit

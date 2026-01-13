@@ -10,10 +10,13 @@ export type EagleSightStep =
   | 'GAMEPLAN';
 
 export type BuildStep =
-  | 'SCAFFOLD'
+  | 'RULES'
+  | 'INDEX'
+  | 'READ'
+  | 'RESEARCH'
   | 'IMPLEMENT'
   | 'TEST'
-  | 'POLISH';
+  | 'DEBUG';
 
 export type ShipStep =
   | 'REVIEW'
@@ -116,10 +119,13 @@ export const PHASE_INFO = {
     description: 'Write code that works',
     color: 'blue',
     steps: {
-      SCAFFOLD: { name: 'Scaffold', action: 'Set up project structure', prompt: 'Create folders, configs, dependencies' },
-      IMPLEMENT: { name: 'Implement', action: 'Write core features', prompt: 'Build the main functionality' },
-      TEST: { name: 'Test', action: 'Write and run tests', prompt: 'Unit tests, integration tests, E2E' },
-      POLISH: { name: 'Polish', action: 'Fix bugs, refine UX', prompt: 'Edge cases, error handling, UX polish' },
+      RULES: { name: 'Rules', action: 'Read and understand user rules', prompt: 'Load .cursorrules, understand constraints and patterns' },
+      INDEX: { name: 'Index', action: 'Index the codebase', prompt: 'Understand architecture, folder structure, key files' },
+      READ: { name: 'Read', action: 'Read specific files', prompt: 'Read implementation files needed for current task' },
+      RESEARCH: { name: 'Research', action: 'Research docs and APIs', prompt: 'Look up documentation, best practices, examples' },
+      IMPLEMENT: { name: 'Implement', action: 'Write code with tests', prompt: 'Write test first, then implement to make it pass' },
+      TEST: { name: 'Test', action: 'Run and fix tests', prompt: 'Run all tests, fix failures, add edge cases' },
+      DEBUG: { name: 'Debug', action: 'Debug with Tornado cycle', prompt: 'Research + Logs + Tests to solve issues' },
     },
   },
   SHIP: {
@@ -175,10 +181,13 @@ export function getNextPhase(current: Phase): Phase {
     { phase: 'EAGLE_SIGHT', step: 'BRAINLIFT' },
     { phase: 'EAGLE_SIGHT', step: 'PRD' },
     { phase: 'EAGLE_SIGHT', step: 'GAMEPLAN' },
-    { phase: 'BUILD', step: 'SCAFFOLD' },
+    { phase: 'BUILD', step: 'RULES' },
+    { phase: 'BUILD', step: 'INDEX' },
+    { phase: 'BUILD', step: 'READ' },
+    { phase: 'BUILD', step: 'RESEARCH' },
     { phase: 'BUILD', step: 'IMPLEMENT' },
     { phase: 'BUILD', step: 'TEST' },
-    { phase: 'BUILD', step: 'POLISH' },
+    { phase: 'BUILD', step: 'DEBUG' },
     { phase: 'SHIP', step: 'REVIEW' },
     { phase: 'SHIP', step: 'DEPLOY' },
     { phase: 'SHIP', step: 'MONITOR' },
@@ -217,10 +226,13 @@ export function getPrevPhase(current: Phase): Phase {
     { phase: 'EAGLE_SIGHT', step: 'BRAINLIFT' },
     { phase: 'EAGLE_SIGHT', step: 'PRD' },
     { phase: 'EAGLE_SIGHT', step: 'GAMEPLAN' },
-    { phase: 'BUILD', step: 'SCAFFOLD' },
+    { phase: 'BUILD', step: 'RULES' },
+    { phase: 'BUILD', step: 'INDEX' },
+    { phase: 'BUILD', step: 'READ' },
+    { phase: 'BUILD', step: 'RESEARCH' },
     { phase: 'BUILD', step: 'IMPLEMENT' },
     { phase: 'BUILD', step: 'TEST' },
-    { phase: 'BUILD', step: 'POLISH' },
+    { phase: 'BUILD', step: 'DEBUG' },
     { phase: 'SHIP', step: 'REVIEW' },
     { phase: 'SHIP', step: 'DEPLOY' },
     { phase: 'SHIP', step: 'MONITOR' },
