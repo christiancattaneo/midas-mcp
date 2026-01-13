@@ -12,24 +12,34 @@ async function callClaude(prompt: string, systemPrompt?: string): Promise<string
   const maxTokens = 16000;
   const thinkingBudget = 10000;
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-opus-4-20250514',
-      max_tokens: maxTokens,
-      thinking: {
-        type: 'enabled',
-        budget_tokens: thinkingBudget,
+  // Add timeout protection (60 seconds)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+  let response: Response;
+  try {
+    response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
       },
-      system: systemPrompt || 'You are Midas, a Golden Code coach. Be concise and actionable.',
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
+      body: JSON.stringify({
+        model: 'claude-opus-4-20250514',
+        max_tokens: maxTokens,
+        thinking: {
+          type: 'enabled',
+          budget_tokens: thinkingBudget,
+        },
+        system: systemPrompt || 'You are Midas, a Golden Code coach. Be concise and actionable.',
+        messages: [{ role: 'user', content: prompt }],
+      }),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const error = await response.text();

@@ -449,6 +449,15 @@ export async function runInteractive(): Promise<void> {
     console.error('Uncaught exception:', err);
     process.exit(1);
   });
+  process.on('unhandledRejection', (reason) => {
+    cleanup();
+    console.error('Unhandled rejection:', reason);
+    process.exit(1);
+  });
+  
+  // Debounce tracking for rapid key presses
+  let lastKeyTime = 0;
+  const DEBOUNCE_MS = 50;
 
   // Start a new session for metrics tracking
   const currentPhase = loadState(projectPath).current;
@@ -475,14 +484,30 @@ export async function runInteractive(): Promise<void> {
   };
 
   const render = () => {
-    // Hide cursor, clear, draw, show cursor - prevents flicker
-    process.stdout.write(hideCursor + clearScreen);
-    process.stdout.write(drawUI(tuiState, projectPath));
-    if (tuiState.message) {
-      process.stdout.write(`\n  ${tuiState.message}`);
-      tuiState.message = '';
+    try {
+      // Hide cursor, clear, draw, show cursor - prevents flicker
+      process.stdout.write(hideCursor + clearScreen);
+      process.stdout.write(drawUI(tuiState, projectPath));
+      if (tuiState.message) {
+        process.stdout.write(`\n  ${tuiState.message}`);
+        tuiState.message = '';
+      }
+      process.stdout.write(showCursor);
+    } catch (error) {
+      // Attempt recovery
+      process.stdout.write(clearScreen + showCursor);
+      console.error('Render error:', error);
     }
-    process.stdout.write(showCursor);
+  };
+  
+  // Reset state to recover from bad state
+  const resetState = () => {
+    tuiState.analysis = null;
+    tuiState.isAnalyzing = false;
+    tuiState.showingSessionStart = false;
+    tuiState.showingRejectionInput = false;
+    tuiState.message = `${yellow}!${reset} State reset. Press [r] to re-analyze.`;
+    tuiState.filesChanged = false;
   };
 
   const runAnalysis = async () => {
@@ -531,6 +556,8 @@ export async function runInteractive(): Promise<void> {
   };
 
   const promptForRejectionReason = async (): Promise<string> => {
+    const TIMEOUT_MS = 60000; // 60 second timeout
+    
     return new Promise((resolve) => {
       console.log(`\n  ${yellow}Why are you declining this suggestion?${reset}`);
       console.log(`  ${dim}(This helps Midas learn. Press Enter to skip.)${reset}\n`);
@@ -544,7 +571,17 @@ export async function runInteractive(): Promise<void> {
         output: process.stdout,
       });
       
+      // Timeout protection
+      const timeout = setTimeout(() => {
+        rl.close();
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
+        }
+        resolve(''); // Timeout = no reason given
+      }, TIMEOUT_MS);
+      
       rl.question('  > ', (answer) => {
+        clearTimeout(timeout);
         rl.close();
         if (process.stdin.isTTY) {
           process.stdin.setRawMode(true);
@@ -556,6 +593,8 @@ export async function runInteractive(): Promise<void> {
 
   // Multi-line input for pasting AI responses
   const promptForResponse = async (): Promise<{ userPrompt: string; aiResponse: string } | null> => {
+    const TIMEOUT_MS = 120000; // 2 minute timeout for pasting
+    
     return new Promise((resolve) => {
       // Exit alternate screen temporarily for input
       process.stdout.write(exitAltScreen);
@@ -574,8 +613,20 @@ export async function runInteractive(): Promise<void> {
       
       const lines: string[] = [];
       let emptyLineCount = 0;
+      let timeoutId: NodeJS.Timeout | null = null;
+      
+      // Timeout protection - auto-cancel after 2 minutes
+      timeoutId = setTimeout(() => {
+        rl.close();
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(true);
+        }
+        process.stdout.write(enterAltScreen);
+        resolve(null);
+      }, TIMEOUT_MS);
       
       const finishInput = () => {
+        if (timeoutId) clearTimeout(timeoutId);
         rl.close();
         if (process.stdin.isTTY) {
           process.stdin.setRawMode(true);
@@ -701,20 +752,33 @@ export async function runInteractive(): Promise<void> {
   });
 
   process.stdin.on('data', async (key: string) => {
-    if (key === 'q' || key === '\u0003') {
-      // End session and save metrics
-      const endPhase = tuiState.analysis?.currentPhase || { phase: 'IDLE' as const };
-      endSession(projectPath, tuiState.sessionId, endPhase);
+    // Debounce rapid key presses
+    const now = Date.now();
+    if (now - lastKeyTime < DEBOUNCE_MS) return;
+    lastKeyTime = now;
+    
+    try {
+      // Shift+R for hard reset (recovery from bad state)
+      if (key === 'R') {
+        resetState();
+        render();
+        return;
+      }
       
-      clearInterval(activityInterval);
-      stopWatchingEvents();
-      cleanup();  // Restore terminal state
-      console.log(`\n  ${cyan}Midas${reset} signing off. Session saved. Happy vibecoding!\n`);
-      process.exit(0);
-    }
+      if (key === 'q' || key === '\u0003') {
+        // End session and save metrics
+        const endPhase = tuiState.analysis?.currentPhase || { phase: 'IDLE' as const };
+        endSession(projectPath, tuiState.sessionId, endPhase);
+        
+        clearInterval(activityInterval);
+        stopWatchingEvents();
+        cleanup();  // Restore terminal state
+        console.log(`\n  ${cyan}Midas${reset} signing off. Session saved. Happy vibecoding!\n`);
+        process.exit(0);
+      }
 
-    // Session start screen handling
-    if (tuiState.showingSessionStart) {
+      // Session start screen handling
+      if (tuiState.showingSessionStart) {
       if (key === 'c') {
         try {
           await copyToClipboard(tuiState.sessionStarterPrompt);
@@ -914,6 +978,11 @@ export async function runInteractive(): Promise<void> {
         tuiState.message = `${red}!${reset} Failed to analyze response.`;
         render();
       }
+    }
+    } catch (error) {
+      // Global error handler for key processing
+      tuiState.message = `${red}!${reset} Error processing key. Press Shift+R to reset.`;
+      try { render(); } catch { /* ignore render errors */ }
     }
   });
 }
