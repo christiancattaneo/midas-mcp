@@ -124,27 +124,54 @@ function truncate(str: string, len: number): string {
   return str.slice(0, len - 3) + '...';
 }
 
+/**
+ * Strip ANSI escape codes to get visible text
+ */
+function stripAnsi(str: string): string {
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+}
+
+/**
+ * Get visible width (excluding ANSI codes)
+ */
+function visibleWidth(str: string): number {
+  return stripAnsi(str).length;
+}
+
+/**
+ * Wrap text to max width (uses visible width calculation)
+ */
 function wrapText(text: string, maxWidth: number): string[] {
   const words = text.split(' ');
   const lines: string[] = [];
   let current = '';
   
   for (const word of words) {
-    if (current.length + word.length + 1 <= maxWidth) {
-      current += (current ? ' ' : '') + word;
+    const testLine = current ? current + ' ' + word : word;
+    if (visibleWidth(testLine) <= maxWidth) {
+      current = testLine;
     } else {
       if (current) lines.push(current);
-      current = word.length > maxWidth ? word.slice(0, maxWidth) : word;
+      // Handle words longer than maxWidth
+      if (visibleWidth(word) > maxWidth) {
+        current = stripAnsi(word).slice(0, maxWidth);
+      } else {
+        current = word;
+      }
     }
   }
   if (current) lines.push(current);
   return lines.length ? lines : [''];
 }
 
-function pad(text: string, width: number): string {
-  const len = text.length;
-  if (len >= width) return text;
-  return text + ' '.repeat(width - len);
+/**
+ * Pad text to exact visible width (handles ANSI codes correctly)
+ */
+function padRight(text: string, width: number): string {
+  const visible = visibleWidth(text);
+  if (visible >= width) return text;
+  return text + ' '.repeat(width - visible);
 }
 
 function phaseLabel(phase: Phase): string {
@@ -167,9 +194,10 @@ function drawUI(state: TUIState, _projectPath: string): string {
   const hLine = '═'.repeat(W - 2);
   const hLineLight = '─'.repeat(I);
   
-  const row = (content: string, visibleLen: number) => {
-    const padding = ' '.repeat(Math.max(0, I - visibleLen));
-    return `${cyan}║${reset}  ${content}${padding}${cyan}║${reset}`;
+  // Row with automatic padding - calculates visible width automatically
+  const row = (content: string) => {
+    const padded = padRight(content, I);
+    return `${cyan}║${reset} ${padded} ${cyan}║${reset}`;
   };
   
   const emptyRow = () => `${cyan}║${reset}${' '.repeat(W - 2)}${cyan}║${reset}`;
@@ -180,38 +208,38 @@ function drawUI(state: TUIState, _projectPath: string): string {
   lines.push(`${cyan}╔${hLine}╗${reset}`);
   const streakStr = state.sessionStreak > 0 ? `${yellow}${state.sessionStreak}d streak${reset}` : '';
   const statusIcons = `${streakStr} ${state.hasApiKey ? `${green}[ok]${reset}AI` : `${dim}[--]${reset}`}`;
-  lines.push(row(`${bold}${white}MIDAS${reset} ${dim}- Golden Code Coach${reset}           ${statusIcons}`, I));
+  lines.push(row(`${bold}${white}MIDAS${reset} ${dim}- Golden Code Coach${reset}           ${statusIcons}`));
   lines.push(`${cyan}╠${hLine}╣${reset}`);
   
   // Show session starter prompt first
   if (state.showingSessionStart) {
     lines.push(emptyRow());
-    lines.push(row(`${bold}${yellow}NEW SESSION${reset}`, 12));
+    lines.push(row(`${bold}${yellow}NEW SESSION${reset}`));
     lines.push(emptyRow());
-    lines.push(row(`${dim}Paste this in your new Cursor chat:${reset}`, 36));
-    lines.push(`${cyan}║${reset}  ${dim}┌${hLineLight}┐${reset}${cyan}║${reset}`);
+    lines.push(row(`${dim}Paste this in your new Cursor chat:${reset}`));
+    lines.push(`${cyan}║${reset}  ${dim}┌${'─'.repeat(I - 4)}┐${reset} ${cyan}║${reset}`);
     
-    const promptWrapped = wrapText(state.sessionStarterPrompt, I - 4);
+    const promptWrapped = wrapText(state.sessionStarterPrompt, I - 6);
     for (const pLine of promptWrapped) {
-      lines.push(`${cyan}║${reset}  ${dim}│${reset} ${pad(pLine, I - 4)}${dim}│${reset}${cyan}║${reset}`);
+      lines.push(`${cyan}║${reset}  ${dim}│${reset} ${padRight(pLine, I - 6)} ${dim}│${reset} ${cyan}║${reset}`);
     }
     
-    lines.push(`${cyan}║${reset}  ${dim}└${hLineLight}┘${reset}${cyan}║${reset}`);
+    lines.push(`${cyan}║${reset}  ${dim}└${'─'.repeat(I - 4)}┘${reset} ${cyan}║${reset}`);
     lines.push(emptyRow());
-    lines.push(row(`${dim}TIP: Add User Rules in Cursor Settings for auto-behavior${reset}`, 57));
-    lines.push(row(`${dim}Press ${bold}[u]${reset}${dim} to copy User Rules to clipboard${reset}`, 42));
+    lines.push(row(`${dim}TIP: Add User Rules in Cursor Settings for auto-behavior${reset}`));
+    lines.push(row(`${dim}Press ${bold}[u]${reset}${dim} to copy User Rules to clipboard${reset}`));
     lines.push(emptyRow());
     
     lines.push(`${cyan}╠${hLine}╣${reset}`);
-    lines.push(row(`${dim}[c]${reset} Copy starter  ${dim}[u]${reset} Copy User Rules  ${dim}[s]${reset} Skip  ${dim}[q]${reset} Quit`, 54));
+    lines.push(row(`${dim}[c]${reset} Copy starter  ${dim}[u]${reset} Copy User Rules  ${dim}[s]${reset} Skip  ${dim}[q]${reset} Quit`));
     lines.push(`${cyan}╚${hLine}╝${reset}`);
     return lines.join('\n');
   }
 
   if (state.isAnalyzing) {
     lines.push(emptyRow());
-    lines.push(row(`${magenta}...${reset} ${bold}Analyzing project${reset}`, 22));
-    lines.push(row(`${dim}Reading codebase, chat history, docs...${reset}`, 40));
+    lines.push(row(`${magenta}...${reset} ${bold}Analyzing project${reset}`));
+    lines.push(row(`${dim}Reading codebase, chat history, docs...${reset}`));
     lines.push(emptyRow());
     lines.push(`${cyan}╚${hLine}╝${reset}`);
     return lines.join('\n');
@@ -219,10 +247,10 @@ function drawUI(state: TUIState, _projectPath: string): string {
 
   if (!state.analysis) {
     lines.push(emptyRow());
-    lines.push(row(`${yellow}!${reset} No analysis yet. Press ${bold}[r]${reset} to analyze.`, 44));
+    lines.push(row(`${yellow}!${reset} No analysis yet. Press ${bold}[r]${reset} to analyze.`));
     lines.push(emptyRow());
     lines.push(`${cyan}╠${hLine}╣${reset}`);
-    lines.push(row(`${dim}[r]${reset} Analyze  ${dim}[q]${reset} Quit`, 22));
+    lines.push(row(`${dim}[r]${reset} Analyze  ${dim}[q]${reset} Quit`));
     lines.push(`${cyan}╚${hLine}╝${reset}`);
     return lines.join('\n');
   }
@@ -231,11 +259,11 @@ function drawUI(state: TUIState, _projectPath: string): string {
 
   // Project summary (wrapped)
   for (const line of wrapText(a.summary, I)) {
-    lines.push(row(`${bold}${line}${reset}`, line.length));
+    lines.push(row(`${bold}${line}${reset}`));
   }
   if (a.techStack.length > 0) {
     const stack = a.techStack.slice(0, 5).join(' · ');
-    lines.push(row(`${dim}${stack}${reset}`, stack.length));
+    lines.push(row(`${dim}${stack}${reset}`));
   }
   lines.push(emptyRow());
 
@@ -246,7 +274,6 @@ function drawUI(state: TUIState, _projectPath: string): string {
   const currentPhaseIdx = a.currentPhase.phase === 'IDLE' ? -1 : phases.indexOf(a.currentPhase.phase as typeof phases[number]);
   
   let phaseBarText = '';
-  let phaseBarLen = 0;
   for (let i = 0; i < phases.length; i++) {
     const p = phases[i];
     const info = PHASE_INFO[p];
@@ -259,23 +286,21 @@ function drawUI(state: TUIState, _projectPath: string): string {
     } else {
       phaseBarText += `${dim}[ ] ${info.name}${reset}${sep}`;
     }
-    phaseBarLen += 2 + info.name.length + sep.length;
   }
-  lines.push(row(phaseBarText, phaseBarLen));
+  lines.push(row(phaseBarText));
   lines.push(emptyRow());
 
   // Current phase with confidence
   const confColor = a.confidence >= 70 ? green : a.confidence >= 40 ? yellow : red;
-  const phaseStr = phaseLabelSimple(a.currentPhase);
-  lines.push(row(`${bold}PHASE:${reset} ${phaseLabel(a.currentPhase)}  ${confColor}${a.confidence}%${reset}`, 8 + phaseStr.length + 2 + String(a.confidence).length + 1));
+  lines.push(row(`${bold}PHASE:${reset} ${phaseLabel(a.currentPhase)}  ${confColor}${a.confidence}%${reset}`));
   lines.push(emptyRow());
 
   // What's done
   if (a.whatsDone.length > 0) {
-    lines.push(row(`${dim}Completed:${reset}`, 10));
+    lines.push(row(`${dim}Completed:${reset}`));
     for (const done of a.whatsDone.slice(0, 4)) {
       const t = done.length > I - 4 ? done.slice(0, I - 7) + '...' : done;
-      lines.push(row(`${green}[x]${reset} ${dim}${t}${reset}`, 4 + t.length));
+      lines.push(row(`${green}[x]${reset} ${dim}${t}${reset}`));
     }
     lines.push(emptyRow());
   }
@@ -284,25 +309,25 @@ function drawUI(state: TUIState, _projectPath: string): string {
 
   // What's next (wrapped)
   const nextLines = wrapText(a.whatsNext, I - 6);
-  lines.push(row(`${bold}${yellow}NEXT:${reset} ${nextLines[0]}`, 6 + nextLines[0].length));
+  lines.push(row(`${bold}${yellow}NEXT:${reset} ${nextLines[0]}`));
   for (let i = 1; i < nextLines.length; i++) {
-    lines.push(row(`      ${nextLines[i]}`, 6 + nextLines[i].length));
+    lines.push(row(`      ${nextLines[i]}`));
   }
   lines.push(emptyRow());
 
   // Suggested prompt - full display
   if (a.suggestedPrompt) {
-    lines.push(row(`${dim}Paste this in Cursor:${reset}`, 21));
-    lines.push(`${cyan}║${reset}  ${dim}┌${hLineLight}┐${reset}${cyan}║${reset}`);
+    lines.push(row(`${dim}Paste this in Cursor:${reset}`));
+    lines.push(`${cyan}║${reset}  ${dim}┌${'─'.repeat(I - 4)}┐${reset} ${cyan}║${reset}`);
     
     // Show full prompt, wrapped
     const promptText = a.suggestedPrompt.replace(/\n/g, ' ');
-    const promptWrapped = wrapText(promptText, I - 4);
+    const promptWrapped = wrapText(promptText, I - 6);
     for (const pLine of promptWrapped) {
-      lines.push(`${cyan}║${reset}  ${dim}│${reset} ${pad(pLine, I - 4)}${dim}│${reset}${cyan}║${reset}`);
+      lines.push(`${cyan}║${reset}  ${dim}│${reset} ${padRight(pLine, I - 6)} ${dim}│${reset} ${cyan}║${reset}`);
     }
     
-    lines.push(`${cyan}║${reset}  ${dim}└${hLineLight}┘${reset}${cyan}║${reset}`);
+    lines.push(`${cyan}║${reset}  ${dim}└${'─'.repeat(I - 4)}┘${reset} ${cyan}║${reset}`);
   }
 
   // Show gates status if available
@@ -310,40 +335,40 @@ function drawUI(state: TUIState, _projectPath: string): string {
     lines.push(emptyRow());
     const gs = state.gatesStatus;
     if (gs.allPass) {
-      lines.push(row(`${green}[GATES]${reset} All passing (build, tests, lint)`, 37));
+      lines.push(row(`${green}[GATES]${reset} All passing (build, tests, lint)`));
     } else if (gs.failing.length > 0) {
-      lines.push(row(`${red}[GATES]${reset} Failing: ${gs.failing.join(', ')}`, 20 + gs.failing.join(', ').length));
+      lines.push(row(`${red}[GATES]${reset} Failing: ${gs.failing.join(', ')}`));
     }
     if (gs.stale) {
-      lines.push(row(`${yellow}!${reset} ${dim}Gates are stale - consider running midas_verify${reset}`, 47));
+      lines.push(row(`${yellow}!${reset} ${dim}Gates are stale - consider running midas_verify${reset}`));
     }
   }
 
   // Show if files changed since last analysis
   if (state.filesChanged) {
-    lines.push(row(`${yellow}!${reset} ${dim}Files changed since analysis - press [r] to refresh${reset}`, 51));
+    lines.push(row(`${yellow}!${reset} ${dim}Files changed since analysis - press [r] to refresh${reset}`));
   }
 
   // Show recent MCP events (real-time from Cursor)
   if (state.recentEvents.length > 0) {
     lines.push(emptyRow());
-    lines.push(row(`${dim}Recent MCP Activity:${reset}`, 20));
+    lines.push(row(`${dim}Recent MCP Activity:${reset}`));
     for (const evt of state.recentEvents.slice(-3)) {
       const icon = evt.type === 'tool_called' ? `${green}>${reset}` : `${dim}-${reset}`;
       const label = evt.tool || evt.type;
       const time = new Date(evt.timestamp).toLocaleTimeString().slice(0, 5);
-      lines.push(row(`${icon} ${label} ${dim}(${time})${reset}`, 3 + label.length + 2 + time.length + 2));
+      lines.push(row(`${icon} ${label} ${dim}(${time})${reset}`));
     }
   }
 
   // Show suggestion acceptance rate
   if (state.suggestionAcceptanceRate > 0) {
-    lines.push(row(`${dim}Suggestion acceptance: ${state.suggestionAcceptanceRate}%${reset}`, 24 + String(state.suggestionAcceptanceRate).length));
+    lines.push(row(`${dim}Suggestion acceptance: ${state.suggestionAcceptanceRate}%${reset}`));
   }
 
   lines.push(emptyRow());
   lines.push(`${cyan}╠${hLine}╣${reset}`);
-  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[x]${reset} Decline  ${dim}[r]${reset} Re-analyze  ${dim}[v]${reset} Verify  ${dim}[q]${reset} Quit`, 56));
+  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[x]${reset} Decline  ${dim}[r]${reset} Re-analyze  ${dim}[v]${reset} Verify  ${dim}[q]${reset} Quit`));
   lines.push(`${cyan}╚${hLine}╝${reset}`);
 
   return lines.join('\n');
