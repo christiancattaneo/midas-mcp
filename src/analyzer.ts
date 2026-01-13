@@ -248,33 +248,33 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
   const hasCI = existsSync(join(safePath, '.github', 'workflows'));
   const hasTests = files.some(f => f.includes('.test.') || f.includes('.spec.') || f.includes('__tests__'));
 
-  // Detect PROJECT TYPE - critical for appropriate suggestions
-  let projectType = 'unknown';
-  let deployMethod = 'unknown';
+  // Extract package.json for AI to analyze (let AI determine project type dynamically)
+  let packageJsonContent = '';
   const packageJsonPath = join(safePath, 'package.json');
   if (existsSync(packageJsonPath)) {
     try {
       const pkg = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
-      if (pkg.bin) {
-        projectType = 'npm-cli-tool';
-        deployMethod = 'npm publish';
-      } else if (pkg.main || pkg.exports) {
-        projectType = 'npm-library';
-        deployMethod = 'npm publish';
-      } else if (pkg.scripts?.start || pkg.scripts?.dev) {
-        projectType = 'web-app';
-        deployMethod = hasDockerfile ? 'Docker' : 'platform (Vercel/Railway/etc)';
-      }
+      // Include key fields that indicate project type
+      packageJsonContent = JSON.stringify({
+        name: pkg.name,
+        version: pkg.version,
+        description: pkg.description,
+        bin: pkg.bin,
+        main: pkg.main,
+        exports: pkg.exports,
+        type: pkg.type,
+        scripts: pkg.scripts,
+        dependencies: Object.keys(pkg.dependencies || {}),
+        devDependencies: Object.keys(pkg.devDependencies || {}),
+      }, null, 2);
     } catch { /* ignore parse errors */ }
   }
-  if (existsSync(join(safePath, 'Cargo.toml'))) {
-    projectType = 'rust-crate';
-    deployMethod = 'cargo publish';
-  }
-  if (existsSync(join(safePath, 'pyproject.toml')) || existsSync(join(safePath, 'setup.py'))) {
-    projectType = 'python-package';
-    deployMethod = 'pip/PyPI';
-  }
+  
+  // Check for other project indicators (raw data for AI)
+  const hasCargoToml = existsSync(join(safePath, 'Cargo.toml'));
+  const hasPyproject = existsSync(join(safePath, 'pyproject.toml'));
+  const hasSetupPy = existsSync(join(safePath, 'setup.py'));
+  const hasGoMod = existsSync(join(safePath, 'go.mod'));
   
   // Get activity context (replaces broken chat history)
   const activityContext = getActivityContext(safePath);
@@ -365,14 +365,14 @@ Purpose: Code methodically with verification at each step.
 Steps: REVIEW → DEPLOY → MONITOR
 Purpose: Get code into production safely.
 - REVIEW: Code review, security audit, performance check
-- DEPLOY: Use the CORRECT method based on project type:
-  * npm-cli-tool / npm-library → npm publish (NOT Docker - these are local tools!)
-  * web-app → Docker/Vercel/Railway
-  * rust-crate → cargo publish
-  * python-package → PyPI
+- DEPLOY: Analyze package.json/config to determine the RIGHT deployment method:
+  * Has "bin" field? → CLI tool → npm/cargo/pip publish (NOT Docker!)
+  * Has "main"/"exports" only? → Library → package registry publish
+  * Has web framework deps (react, next, express)? → Web app → hosting platform
+  * MCP servers are LOCAL tools - they run with the IDE, not on servers
 - MONITOR: Watch for errors, performance issues
 
-CRITICAL: CLI tools and libraries deploy to package registries, NOT containers. Check project type!
+CRITICAL: Analyze the actual project config to determine deployment. Don't assume Docker - many projects deploy to package registries.
 
 ### GROW (Iteration Phase)
 Steps: MONITOR → COLLECT → TRIAGE → RETROSPECT → PLAN_NEXT → LOOP
@@ -437,9 +437,14 @@ ${prdContent ? `## prd.md (full):\n${prdContent}` : ''}
 
 ${gameplanContent ? `## gameplan.md (full):\n${gameplanContent}` : ''}
 
-## Project Type & Deployment:
-- Type: ${projectType}
-- Deploy method: ${deployMethod}
+## Project Configuration (use this to determine project type and deployment):
+${packageJsonContent ? `package.json:\n${packageJsonContent}` : 'No package.json'}
+${hasCargoToml ? '- Has Cargo.toml (Rust)' : ''}
+${hasPyproject ? '- Has pyproject.toml (Python)' : ''}
+${hasSetupPy ? '- Has setup.py (Python)' : ''}
+${hasGoMod ? '- Has go.mod (Go)' : ''}
+
+## Infrastructure:
 - Tests: ${hasTests ? 'yes' : 'no'} (found ${files.filter(f => f.includes('.test.') || f.includes('.spec.')).length} test files)
 - Dockerfile/compose: ${hasDockerfile ? 'yes' : 'no'}
 - CI/CD: ${hasCI ? 'yes' : 'no'}
