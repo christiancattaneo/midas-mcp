@@ -1,0 +1,289 @@
+# Midas MCP Server - Cursor Rules
+
+## Project Overview
+This is an MCP (Model Context Protocol) server that coaches developers through the Elite Vibecoding methodology. It provides AI-powered project analysis, phase tracking, and context-aware prompts.
+
+## Architecture
+
+### Directory Structure
+```
+src/
+├── index.ts          # Entry point, CLI routing
+├── server.ts         # MCP server setup
+├── cli.ts            # CLI commands (status, init, audit)
+├── tui.ts            # Terminal UI for interactive coaching
+├── analyzer.ts       # AI-powered project analysis
+├── config.ts         # API key and config management
+├── cursor.ts         # Cursor IDE integration
+├── events.ts         # Event logging for MCP-TUI sync
+├── state/
+│   └── phase.ts      # Phase state machine and persistence
+├── tools/            # MCP tool implementations
+├── prompts/          # MCP prompt definitions
+└── resources/        # MCP resource handlers
+```
+
+### Key Modules
+- **state/phase.ts**: Single source of truth for development lifecycle phases
+- **analyzer.ts**: Calls Claude API to analyze project context
+- **tools/**: Each tool is a separate file with schema + handler
+- **prompts/**: Expert prompts exposed via MCP protocol
+
+## TypeScript Standards
+
+### Strict Mode
+- Use `strict: true` in tsconfig
+- No `any` types - use `unknown` and narrow with type guards
+- Explicit return types on all exported functions
+- Use `type` imports: `import type { Phase } from './state/phase.js'`
+
+### File Extensions
+- Always use `.js` extension in imports (ESM requirement)
+- Example: `import { loadState } from './state/phase.js'`
+
+### Naming Conventions
+- Files: kebab-case (`phase-state.ts`)
+- Types/Interfaces: PascalCase (`PhaseState`, `BuildStep`)
+- Functions: camelCase (`getPhaseGuidance`, `analyzeProject`)
+- Constants: SCREAMING_SNAKE_CASE (`PHASE_INFO`, `STATE_DIR`)
+
+### Type Definitions
+```typescript
+// Prefer discriminated unions for state
+type Phase =
+  | { phase: 'IDLE' }
+  | { phase: 'EAGLE_SIGHT'; step: EagleSightStep }
+  | { phase: 'BUILD'; step: BuildStep };
+
+// Use Zod for runtime validation (MCP tool schemas)
+const schema = z.object({
+  projectPath: z.string().optional().describe('Path to project root'),
+});
+```
+
+## MCP Protocol Requirements
+
+### Tool Implementation Pattern
+```typescript
+// 1. Define Zod schema with descriptions
+export const toolSchema = z.object({
+  param: z.string().describe('Clear description for AI'),
+});
+
+// 2. Export type from schema
+export type ToolInput = z.infer<typeof toolSchema>;
+
+// 3. Implement handler with explicit return type
+export function toolHandler(input: ToolInput): ToolResult {
+  // Implementation
+}
+```
+
+### Tool Registration (server.ts)
+```typescript
+server.tool(
+  'tool_name',
+  'Description shown to AI',
+  { schema: zodToJsonSchema(toolSchema) },
+  async (params) => ({
+    content: [{ type: 'text', text: JSON.stringify(result) }],
+  })
+);
+```
+
+### Resource Pattern
+- Resources serve static content (docs, methodology)
+- Use `file://` URIs for local files
+- Return proper MIME types
+
+### Prompt Pattern
+- Prompts are templates with optional arguments
+- Keep prompts focused and actionable
+- Include context requirements in description
+
+## Error Handling
+
+### Patterns
+```typescript
+// Use try-catch with specific error types
+try {
+  const data = JSON.parse(raw);
+} catch {
+  return getDefaultState(); // Graceful fallback
+}
+
+// Return error info, don't throw in tools
+export function toolHandler(input: Input): { success: boolean; error?: string } {
+  if (!valid) {
+    return { success: false, error: 'Specific error message' };
+  }
+}
+```
+
+### File Operations
+- Always check `existsSync` before reading
+- Use `mkdirSync({ recursive: true })` for directory creation
+- Handle missing files gracefully with defaults
+
+### API Calls
+```typescript
+const response = await fetch(url, options);
+if (!response.ok) {
+  throw new Error(`API error: ${response.status}`);
+}
+```
+
+## State Management
+
+### Phase State Machine
+The development lifecycle has 4 phases, each with steps:
+
+1. **EAGLE_SIGHT** (Planning): IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN
+2. **BUILD** (Development): RULES → INDEX → READ → RESEARCH → IMPLEMENT → TEST → DEBUG
+3. **SHIP** (Deployment): REVIEW → DEPLOY → MONITOR
+4. **GROW** (Iteration): FEEDBACK → ANALYZE → ITERATE
+
+### State Persistence
+- State stored in `.midas/state.json` per project
+- Always load fresh state before modifications
+- Include history array for phase transitions
+
+## AI Integration
+
+### Claude API Calls
+```typescript
+// Use structured prompts with clear instructions
+const response = await fetch('https://api.anthropic.com/v1/messages', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': '2023-06-01',
+  },
+  body: JSON.stringify({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 2048,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: prompt }],
+  }),
+});
+```
+
+### Prompt Engineering
+- Request JSON output with explicit schema
+- Parse response defensively (handle markdown code blocks)
+- Include confidence scores for AI decisions
+
+## CLI/TUI Standards
+
+### ANSI Codes
+```typescript
+const ESC = '\x1b';
+const reset = `${ESC}[0m`;
+const bold = `${ESC}[1m`;
+const green = `${ESC}[32m`;
+```
+
+### TUI Layout
+- Fixed width (70 chars) for consistent rendering
+- Use box-drawing characters: ╔ ╗ ╚ ╝ ║ ═ ─ ┌ ┐ └ ┘ │
+- Word-wrap long content, never truncate prompts
+- Calculate visible length separately from string length (ANSI codes = 0 width)
+
+### User Input
+- Use raw mode for single-key input
+- Always provide quit option (q or Ctrl+C)
+- Show clear keybindings at bottom
+
+## Testing Approach
+
+### Test Strategy
+- Unit tests for pure functions (state transitions, text processing)
+- Integration tests for file I/O operations
+- Mock external APIs (Claude, Cursor chat history)
+
+### What to Test
+- Phase transitions (getNextPhase, getPrevPhase)
+- State persistence (loadState, saveState)
+- Tool input validation (Zod schemas)
+- Error handling paths
+
+## Security Constraints
+
+### API Keys
+- Never commit API keys
+- Store in `~/.midas/config.json` (user home, not project)
+- Validate key exists before API calls
+- Prompt user for key on first run
+
+### File Access
+- Only read/write within project directory
+- Use `.midas/` for all generated state
+- Respect `.gitignore` patterns
+
+## Build & Publish
+
+### Build Process
+```bash
+npm run build  # tsc && cp -r docs dist/
+```
+
+### Package.json Requirements
+- `"type": "module"` for ESM
+- `"bin": { "midas-mcp": "dist/index.js" }` for CLI
+- Include `"files": ["dist", "docs"]` for npm publish
+
+## Code Style
+
+### Formatting
+- 2-space indentation
+- Single quotes for strings
+- No semicolons (optional, be consistent)
+- Max line length: 100 chars
+
+### Comments
+- JSDoc for exported functions
+- Inline comments for complex logic
+- No commented-out code in commits
+
+### Imports Order
+1. Node.js built-ins
+2. External packages
+3. Internal modules (absolute paths)
+4. Relative imports
+
+## Common Patterns
+
+### Defensive Defaults
+```typescript
+const projectPath = input.projectPath || process.cwd();
+const step = (input.step as BuildStep) || 'RULES';
+```
+
+### Type Guards
+```typescript
+function isPhaseWithStep(p: Phase): p is { phase: string; step: string } {
+  return 'step' in p;
+}
+```
+
+### Result Pattern
+```typescript
+interface Result<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+```
+
+## Methodology Alignment
+
+This tool teaches the Elite Vibecoding methodology:
+
+1. **Eagle Sight First**: Always plan before coding
+2. **7-Step Build Cycle**: Rules → Index → Read → Research → Implement → Test → Debug
+3. **Tornado Debugging**: Research + Logs + Tests when stuck
+4. **Oneshot Paradigm**: One clear task per prompt
+5. **Horizon Thinking**: Expand context when output doesn't fit
+
+Keep all prompts and suggestions aligned with these principles.
