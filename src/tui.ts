@@ -260,28 +260,14 @@ function drawUI(state: TUIState, projectPath: string): string {
   
   const lines: string[] = [];
   
-  // Header with right-aligned status
+  // Header - minimal
   lines.push(`${cyan}╔${hLine}╗${reset}`);
-  const title = `${bold}${white}MIDAS${reset} ${dim}- Golden Code Coach${reset}`;
-  const streakStr = state.sessionStreak > 0 ? `${yellow}${state.sessionStreak}d${reset} ` : '';
-  const apiStatus = state.hasApiKey ? `${green}OK${reset}` : `${dim}--${reset}`;
-  // Activity pulse: count recent events (last 5 min)
-  const fiveMinAgo = Date.now() - 5 * 60 * 1000;
-  const recentCount = state.recentEvents.filter(e => new Date(e.timestamp).getTime() > fiveMinAgo).length;
-  const activityPulse = recentCount > 0 ? `${magenta}${recentCount}${reset} ` : '';
-  // Skill level indicator (B/I/A) - press 'l' to cycle
-  const skillLevel = getSkillLevel() || 'intermediate';
-  const skillChar = skillLevel[0].toUpperCase();
-  const skillColor = skillLevel === 'beginner' ? cyan : skillLevel === 'advanced' ? green : dim;
-  const skillIndicator = `${skillColor}${skillChar}${reset} `;
-  // Hotfix mode indicator
-  const hotfixStatus = getHotfixStatus({ projectPath });
-  const hotfixIndicator = hotfixStatus.active ? `${red}[HF]${reset} ` : '';
-  const statusIcons = `${hotfixIndicator}${activityPulse}${skillIndicator}${streakStr}${apiStatus}`;
+  const title = `${bold}${white}MIDAS${reset}`;
+  const status = `${dim}MCP${reset}`;
   const titleWidth = visibleWidth(title);
-  const statusWidth = visibleWidth(statusIcons);
+  const statusWidth = visibleWidth(status);
   const headerPadding = Math.max(1, I - titleWidth - statusWidth);
-  lines.push(row(`${title}${' '.repeat(headerPadding)}${statusIcons}`));
+  lines.push(row(`${title}${' '.repeat(headerPadding)}${status}`));
   lines.push(`${cyan}╠${hLine}╣${reset}`);
   
   // Show session starter - ultra minimal
