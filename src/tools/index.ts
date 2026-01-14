@@ -61,6 +61,8 @@ export {
   recordFixSchema,
   getStuck,
   getStuckSchema,
+  unstuck,
+  unstuckSchema,
 } from './verify.js';
 
 // Provider/config tools

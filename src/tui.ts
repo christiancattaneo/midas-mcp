@@ -17,6 +17,8 @@ import {
   recordSuggestion,
   recordSuggestionOutcome,
   getSuggestionAcceptanceRate,
+  checkIfStuck,
+  formatDuration,
 } from './tracker.js';
 import { getJournalEntries } from './tools/journal.js';
 import { showExample } from './tools/examples.js';
@@ -218,7 +220,7 @@ function phaseLabelSimple(phase: Phase): string {
   return `${info.name} → ${phase.step}`;
 }
 
-function drawUI(state: TUIState, _projectPath: string): string {
+function drawUI(state: TUIState, projectPath: string): string {
   const W = 70; // total width
   const I = W - 4; // inner content width (between ║ and ║)
   
@@ -439,6 +441,16 @@ function drawUI(state: TUIState, _projectPath: string): string {
     }
     if (gs.stale) {
       lines.push(row(`${yellow}!${reset} ${dim}Gates are stale - consider running midas_verify${reset}`));
+    }
+  }
+  
+  // Show stuck indicator if user has been in same phase without progress for 2+ hours
+  const stuckInfo = checkIfStuck(projectPath);
+  if (stuckInfo?.isStuck) {
+    lines.push(emptyRow());
+    lines.push(row(`${red}[STUCK?]${reset} No progress for ${formatDuration(stuckInfo.timeSinceProgress)}`));
+    if (stuckInfo.suggestions.length > 0) {
+      lines.push(row(`${dim}Try: ${stuckInfo.suggestions[0]}${reset}`));
     }
   }
 

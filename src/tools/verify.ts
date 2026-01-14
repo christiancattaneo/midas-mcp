@@ -221,3 +221,95 @@ export function getStuck(input: GetStuckInput): ErrorMemory[] {
   const projectPath = sanitizePath(input.projectPath);
   return getStuckErrors(projectPath);
 }
+
+// ============================================================================
+// midas_unstuck - Intervention options when stuck
+// ============================================================================
+
+export const unstuckSchema = z.object({
+  projectPath: z.string().optional().describe('Path to project root'),
+  action: z.enum(['diagnose', 'simplify', 'pivot', 'break']).optional().describe(
+    'Action to take: diagnose (analyze what\'s blocking), simplify (cut scope), pivot (try different approach), break (take a break)'
+  ),
+});
+
+export type UnstuckInput = z.infer<typeof unstuckSchema>;
+
+export interface UnstuckResult {
+  isStuck: boolean;
+  timeInPhase: string;
+  timeSinceProgress: string;
+  unresolvedErrors: number;
+  failingGates: string[];
+  action: string;
+  guidance: string;
+  suggestedPrompt: string;
+}
+
+export function unstuck(input: UnstuckInput): UnstuckResult {
+  const projectPath = sanitizePath(input.projectPath);
+  const action = input.action || 'diagnose';
+  
+  // Import tracker functions
+  const { checkIfStuck, formatDuration, loadTracker, getGatesStatus } = require('../tracker.js');
+  
+  const stuckInfo = checkIfStuck(projectPath);
+  const tracker = loadTracker(projectPath);
+  const gates = getGatesStatus(projectPath);
+  
+  const isStuck = stuckInfo?.isStuck ?? false;
+  const timeInPhase = formatDuration(stuckInfo?.timeInPhase ?? 0);
+  const timeSinceProgress = formatDuration(stuckInfo?.timeSinceProgress ?? 0);
+  const unresolvedErrors = tracker.errorMemory?.filter((e: ErrorMemory) => !e.resolved).length ?? 0;
+  const failingGates = gates.failing;
+  
+  // Generate guidance based on action
+  let guidance = '';
+  let suggestedPrompt = '';
+  
+  switch (action) {
+    case 'diagnose':
+      guidance = 'Let\'s understand what\'s blocking you. Check the error memory and failing gates.';
+      if (failingGates.length > 0) {
+        suggestedPrompt = `Focus on fixing the failing ${failingGates[0]} gate first. Show me the specific error and let's work through it systematically.`;
+      } else if (unresolvedErrors > 0) {
+        suggestedPrompt = `I've had ${unresolvedErrors} unresolved errors. Let's use the Tornado approach: Research + Logs + Tests to solve the most recent one.`;
+      } else {
+        suggestedPrompt = 'I feel stuck but no specific errors. Let me describe what I\'m trying to do and what\'s not working...';
+      }
+      break;
+      
+    case 'simplify':
+      guidance = 'Cut scope to the minimum viable feature. Ship something small that works.';
+      suggestedPrompt = 'Let\'s simplify. What\'s the absolute minimum version of this feature that would still be useful? Help me identify what I can defer to v2.';
+      break;
+      
+    case 'pivot':
+      guidance = 'Maybe the current approach isn\'t working. Consider a completely different solution.';
+      suggestedPrompt = 'I\'ve been stuck on this approach. What are 3 completely different ways to solve this problem? Let\'s evaluate the tradeoffs.';
+      break;
+      
+    case 'break':
+      guidance = 'Step away from the keyboard. Fresh eyes often see solutions immediately.';
+      suggestedPrompt = 'I\'m going to take a 15-minute break. Before I go, write a summary of where I am so I can pick up easily when I return.';
+      break;
+  }
+  
+  // Log event
+  logEvent(projectPath, {
+    type: 'tool_called',
+    tool: 'midas_unstuck',
+    data: { action, isStuck },
+  });
+  
+  return {
+    isStuck,
+    timeInPhase,
+    timeSinceProgress,
+    unresolvedErrors,
+    failingGates,
+    action,
+    guidance,
+    suggestedPrompt,
+  };
+}

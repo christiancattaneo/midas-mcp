@@ -45,6 +45,8 @@ import {
   recordFixSchema,
   getStuck,
   getStuckSchema,
+  unstuck,
+  unstuckSchema,
   // Provider config tools
   getProvider,
   getProviderSchema,
@@ -303,6 +305,13 @@ export function createServer(): McpServer {
     'Get errors that have had multiple failed fix attempts. These are candidates for Tornado debugging.',
     getStuckSchema.shape,
     wrapTool('midas_get_stuck', getStuck)
+  );
+
+  server.tool(
+    'midas_unstuck',
+    'Get intervention options when stuck: diagnose, simplify, pivot, or take a break. Returns guidance and suggested prompts.',
+    unstuckSchema.shape,
+    wrapTool('midas_unstuck', unstuck)
   );
 
   // Provider configuration tools

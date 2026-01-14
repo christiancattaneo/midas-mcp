@@ -109,6 +109,10 @@ export interface TrackerState {
   suggestionHistory: SuggestionHistory[];
   fileSnapshot: FileSnapshot[];
   lastAnalysis: number | null;
+  
+  // Stuck detection
+  phaseEnteredAt: number | null;  // When we entered current phase/step
+  lastProgressAt: number | null;  // When we last made meaningful progress (commit, test pass, etc.)
 }
 
 // ============================================================================
@@ -173,6 +177,8 @@ function getDefaultTracker(): TrackerState {
     suggestionHistory: [],
     fileSnapshot: [],
     lastAnalysis: null,
+    phaseEnteredAt: null,
+    lastProgressAt: null,
   };
 }
 
@@ -1036,4 +1042,102 @@ export function getActivitySummary(projectPath: string): string {
   }
   
   return lines.join(' | ') || 'No recent activity';
+}
+
+// ============================================================================
+// STUCK DETECTION
+// ============================================================================
+
+const STUCK_THRESHOLD_MS = 2 * 60 * 60 * 1000;  // 2 hours
+
+/**
+ * Record that the user has entered a new phase/step
+ */
+export function recordPhaseEntry(projectPath: string): void {
+  const tracker = loadTracker(projectPath);
+  tracker.phaseEnteredAt = Date.now();
+  tracker.lastProgressAt = Date.now();
+  saveTracker(projectPath, tracker);
+}
+
+/**
+ * Record that meaningful progress was made (commit, test pass, etc.)
+ */
+export function recordProgress(projectPath: string): void {
+  const tracker = loadTracker(projectPath);
+  tracker.lastProgressAt = Date.now();
+  saveTracker(projectPath, tracker);
+}
+
+/**
+ * Check if the user appears to be stuck
+ * Returns stuck info if stuck, null otherwise
+ */
+export function checkIfStuck(projectPath: string): {
+  isStuck: boolean;
+  timeInPhase: number;
+  timeSinceProgress: number;
+  suggestions: string[];
+} | null {
+  const tracker = loadTracker(projectPath);
+  const now = Date.now();
+  
+  // Calculate time in phase
+  const phaseEnteredAt = tracker.phaseEnteredAt || now;
+  const timeInPhase = now - phaseEnteredAt;
+  
+  // Calculate time since last progress
+  const lastProgressAt = tracker.lastProgressAt || phaseEnteredAt;
+  const timeSinceProgress = now - lastProgressAt;
+  
+  // Not stuck if we've made progress recently
+  if (timeSinceProgress < STUCK_THRESHOLD_MS) {
+    return null;
+  }
+  
+  // Check for repeated errors
+  const unresolvedErrors = tracker.errorMemory.filter(e => !e.resolved);
+  const repeatedErrors = unresolvedErrors.filter(e => e.fixAttempts.length >= 3);
+  
+  // Generate suggestions based on context
+  const suggestions: string[] = [];
+  
+  if (repeatedErrors.length > 0) {
+    suggestions.push('Use Tornado debugging: Research + Logs + Tests to systematically solve this error');
+  }
+  
+  if (tracker.gates.testsPass === false) {
+    suggestions.push('Focus on fixing the failing tests before adding new features');
+  }
+  
+  if (tracker.gates.compiles === false) {
+    suggestions.push('Get the build passing first - comment out broken code if needed');
+  }
+  
+  // Generic suggestions
+  suggestions.push('Take a 15-minute break - fresh eyes help');
+  suggestions.push('Simplify: cut scope to minimum viable feature');
+  suggestions.push('Ask for help: describe the problem to someone else');
+  suggestions.push('Pivot: maybe there\'s a simpler approach you haven\'t considered');
+  
+  return {
+    isStuck: true,
+    timeInPhase,
+    timeSinceProgress,
+    suggestions: suggestions.slice(0, 4),  // Max 4 suggestions
+  };
+}
+
+/**
+ * Format time duration in human-readable form
+ */
+export function formatDuration(ms: number): string {
+  const minutes = Math.floor(ms / (1000 * 60));
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  
+  if (hours > 0) {
+    return `${hours}h ${remainingMinutes}m`;
+  }
+  return `${minutes}m`;
 }
