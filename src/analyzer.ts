@@ -355,45 +355,50 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
 ### PLAN (Planning Phase)
 Steps: IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN
 Purpose: Understand the problem before writing code.
-- IDEA: Capture the core concept and motivation
-- RESEARCH: Study existing solutions, dependencies, constraints
-- BRAINLIFT: Extract key decisions and mental models
-- PRD: Define requirements, scope, success criteria
-- GAMEPLAN: Break into ordered implementation tasks
+WHY: Code without context is just syntax. The AI doesn't know your domain, constraints, or users. You do.
+- IDEA: Capture the core concept and motivation (WHY: Most projects fail from solving the wrong problem)
+- RESEARCH: Study existing solutions, dependencies, constraints (WHY: Someone has solved 80% of this already)
+- BRAINLIFT: Extract key decisions and mental models (WHY: AI read the internet. You have specific context it doesn't)
+- PRD: Define requirements, scope, success criteria (WHY: "I'll know it when I see it" means you'll never finish)
+- GAMEPLAN: Break into ordered implementation tasks (WHY: Sequence work so you're never blocked waiting for yourself)
 
 ### BUILD (Implementation Phase)
 Steps: RULES → INDEX → READ → RESEARCH → IMPLEMENT → TEST → DEBUG
 Purpose: Code methodically with verification at each step.
-- RULES: Set up .cursorrules with project conventions
-- INDEX: Understand codebase structure
-- READ: Study relevant existing code
-- RESEARCH: Look up APIs, patterns, best practices
-- IMPLEMENT: Write the code
-- TEST: Verify with automated tests
-- DEBUG: Fix any issues (use Tornado if stuck)
+WHY: Jumping straight to code means hours of debugging. Each step reduces the blast radius of mistakes.
+- RULES: Set up .cursorrules with project conventions (WHY: Reading first prevents "works but doesn't fit" code)
+- INDEX: Understand codebase structure (WHY: You can't extend what you don't understand)
+- READ: Study relevant existing code (WHY: Understand before touching to avoid breaking things)
+- RESEARCH: Look up APIs, patterns, best practices (WHY: The right library can turn 200 lines into 5)
+- IMPLEMENT: Write the code (WHY: Test-first defines "working" before you code)
+- TEST: Verify with automated tests (WHY: Full suite catches regressions before production)
+- DEBUG: Fix any issues using Tornado (WHY: When stuck, random changes make it worse. Tornado systematically narrows possibilities)
 
 ### SHIP (Deployment Phase)
 Steps: REVIEW → DEPLOY → MONITOR
 Purpose: Get code into production safely.
-- REVIEW: Code review, security audit, performance check
+WHY: "Works on my machine" isn't deployment. Production has constraints, users, and consequences dev doesn't.
+- REVIEW: Code review, security audit, performance check (WHY: Fresh eyes catch what tired eyes miss)
 - DEPLOY: Analyze package.json/config to determine the RIGHT deployment method:
   * Has "bin" field? → CLI tool → npm/cargo/pip publish (NOT Docker!)
   * Has "main"/"exports" only? → Library → package registry publish
   * Has web framework deps (react, next, express)? → Web app → hosting platform
   * MCP servers are LOCAL tools - they run with the IDE, not on servers
-- MONITOR: Watch for errors, performance issues
+  (WHY: Manual deployment is error-prone. CI/CD ensures same steps every time)
+- MONITOR: Watch for errors, performance issues (WHY: Users don't file bug reports. They leave.)
 
 CRITICAL: Analyze the actual project config to determine deployment. Don't assume Docker - many projects deploy to package registries.
 
 ### GROW (Iteration Phase)
 Steps: MONITOR → COLLECT → TRIAGE → RETROSPECT → PLAN_NEXT → LOOP
 Purpose: Learn from production and improve.
-- MONITOR: Track error rates, performance, engagement
-- COLLECT: Gather user feedback, bug reports
-- TRIAGE: Prioritize by impact/effort
-- RETROSPECT: What worked, what didn't
-- PLAN_NEXT: Define next iteration scope
-- LOOP: Return to PLAN with new context
+WHY: Version 1 is never right. Growth comes from learning what users actually do, not what you imagined.
+- MONITOR: Track error rates, performance, engagement (WHY: Real load reveals real problems)
+- COLLECT: Gather user feedback, bug reports (WHY: Users have needs they can't articulate)
+- TRIAGE: Prioritize by impact/effort (WHY: Everything can't be priority 1)
+- RETROSPECT: What worked, what didn't (WHY: Teams repeat mistakes they don't acknowledge)
+- PLAN_NEXT: Define next iteration scope (WHY: Unbounded work never ships)
+- LOOP: Return to PLAN with new context (WHY: Each cycle teaches you something. Carry it forward)
 
 ## Key Rules:
 1. GATES MUST PASS: Build, tests, and lint must pass before advancing

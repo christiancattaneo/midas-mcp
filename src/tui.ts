@@ -142,6 +142,19 @@ function truncate(str: string, len: number): string {
 }
 
 /**
+ * Get the 'why' explanation for the current phase and step
+ */
+function getStepWhy(phase: Phase): string | null {
+  if (phase.phase === 'IDLE') return null;
+  
+  const phaseInfo = PHASE_INFO[phase.phase];
+  if (!phaseInfo) return null;
+  
+  const stepInfo = (phaseInfo.steps as Record<string, { why?: string }>)?.[phase.step];
+  return stepInfo?.why || phaseInfo.why || null;
+}
+
+/**
  * Strip ANSI escape codes to get visible text
  */
 function stripAnsi(str: string): string {
@@ -358,6 +371,13 @@ function drawUI(state: TUIState, _projectPath: string): string {
   // Current phase with confidence
   const confColor = a.confidence >= 70 ? green : a.confidence >= 40 ? yellow : red;
   lines.push(row(`${bold}PHASE:${reset} ${phaseLabel(a.currentPhase)}  ${confColor}${a.confidence}%${reset}`));
+  
+  // Show 'why' explanation for current step (helps users understand the methodology)
+  const stepWhy = getStepWhy(a.currentPhase);
+  if (stepWhy) {
+    const whyText = truncate(stepWhy, I - 4);
+    lines.push(row(`${dim}${whyText}${reset}`));
+  }
   lines.push(emptyRow());
 
   // What's done
