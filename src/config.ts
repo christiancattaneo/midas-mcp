@@ -9,6 +9,9 @@ const CONFIG_FILE = join(CONFIG_DIR, 'config.json');
 // Supported AI providers
 export type AIProvider = 'anthropic' | 'openai' | 'google' | 'xai';
 
+// Skill levels - adjusts prompt verbosity and detail
+export type SkillLevel = 'beginner' | 'intermediate' | 'advanced';
+
 export interface MidasConfig {
   // Active provider
   provider: AIProvider;
@@ -18,6 +21,9 @@ export interface MidasConfig {
   openaiApiKey?: string;
   googleApiKey?: string;      // Gemini
   xaiApiKey?: string;         // Grok
+  
+  // Skill level - affects prompt verbosity
+  skillLevel: SkillLevel;
   
   // Metadata
   createdAt: string;
@@ -36,6 +42,7 @@ export function loadConfig(): MidasConfig {
   if (!existsSync(CONFIG_FILE)) {
     return {
       provider: 'anthropic',
+      skillLevel: 'intermediate',
       createdAt: new Date().toISOString(),
       lastUsed: new Date().toISOString(),
     };
@@ -48,10 +55,15 @@ export function loadConfig(): MidasConfig {
     if (!parsed.provider) {
       parsed.provider = 'anthropic';
     }
+    // Ensure skillLevel field exists (migration)
+    if (!parsed.skillLevel) {
+      parsed.skillLevel = 'intermediate';
+    }
     return parsed;
   } catch {
     return {
       provider: 'anthropic',
+      skillLevel: 'intermediate',
       createdAt: new Date().toISOString(),
       lastUsed: new Date().toISOString(),
     };
@@ -223,4 +235,41 @@ export async function ensureApiKey(): Promise<string | undefined> {
 export function listConfiguredProviders(): AIProvider[] {
   const providers: AIProvider[] = ['anthropic', 'openai', 'google', 'xai'];
   return providers.filter(p => !!getProviderApiKey(p));
+}
+
+// ============================================================================
+// SKILL LEVEL
+// ============================================================================
+
+export function getSkillLevel(): SkillLevel {
+  const config = loadConfig();
+  return config.skillLevel;
+}
+
+export function setSkillLevel(level: SkillLevel): void {
+  const config = loadConfig();
+  config.skillLevel = level;
+  saveConfig(config);
+}
+
+export function cycleSkillLevel(): SkillLevel {
+  const levels: SkillLevel[] = ['beginner', 'intermediate', 'advanced'];
+  const current = getSkillLevel();
+  const currentIdx = levels.indexOf(current);
+  const nextIdx = (currentIdx + 1) % levels.length;
+  const next = levels[nextIdx];
+  setSkillLevel(next);
+  return next;
+}
+
+// Get description for skill level
+export function getSkillLevelDescription(level: SkillLevel): string {
+  switch (level) {
+    case 'beginner':
+      return 'Verbose prompts with explanations and examples';
+    case 'intermediate':
+      return 'Balanced prompts with key context';
+    case 'advanced':
+      return 'Terse prompts, skip obvious steps';
+  }
 }

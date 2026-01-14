@@ -248,7 +248,13 @@ function drawUI(state: TUIState, projectPath: string): string {
   const fiveMinAgo = Date.now() - 5 * 60 * 1000;
   const recentCount = state.recentEvents.filter(e => new Date(e.timestamp).getTime() > fiveMinAgo).length;
   const activityPulse = recentCount > 0 ? `${magenta}${recentCount}${reset} ` : '';
-  const statusIcons = `${activityPulse}${streakStr}${apiStatus}`;
+  // Skill level indicator (B/I/A) - press 'l' to cycle
+  const { getSkillLevel } = require('./config.js');
+  const skillLevel = getSkillLevel?.() || 'intermediate';
+  const skillChar = skillLevel[0].toUpperCase();
+  const skillColor = skillLevel === 'beginner' ? cyan : skillLevel === 'advanced' ? green : dim;
+  const skillIndicator = `${skillColor}${skillChar}${reset} `;
+  const statusIcons = `${activityPulse}${skillIndicator}${streakStr}${apiStatus}`;
   const titleWidth = visibleWidth(title);
   const statusWidth = visibleWidth(statusIcons);
   const headerPadding = Math.max(1, I - titleWidth - statusWidth);
@@ -1088,6 +1094,14 @@ export async function runInteractive(): Promise<void> {
         tuiState.message = `${red}!${reset} Validation failed.`;
         render();
       }
+    }
+
+    if (key === 'l') {
+      // Toggle skill level
+      const { cycleSkillLevel, getSkillLevelDescription } = await import('./config.js');
+      const newLevel = cycleSkillLevel();
+      tuiState.message = `${green}OK${reset} Skill level: ${bold}${newLevel}${reset} - ${getSkillLevelDescription(newLevel)}`;
+      render();
     }
 
     if (key === 'a') {
