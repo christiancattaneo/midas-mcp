@@ -138,3 +138,11 @@ export {
   getHotfixStatus,
   getHotfixStatusSchema,
 } from './hotfix.js';
+
+// Tech debt cleanup
+export {
+  scanDebt,
+  scanDebtSchema,
+  getCleanupSuggestion,
+  getCleanupSuggestionSchema,
+} from './cleanup.js';

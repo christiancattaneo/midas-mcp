@@ -98,6 +98,11 @@ import {
   cancelHotfixSchema,
   getHotfixStatus,
   getHotfixStatusSchema,
+  // Tech debt cleanup
+  scanDebt,
+  scanDebtSchema,
+  getCleanupSuggestion,
+  getCleanupSuggestionSchema,
 } from './tools/index.js';
 import { registerAllPrompts } from './prompts/index.js';
 import { registerAllResources } from './resources/index.js';
@@ -491,6 +496,21 @@ export function createServer(): McpServer {
     'Check if currently in hotfix mode and get details.',
     getHotfixStatusSchema.shape,
     wrapTool('midas_hotfix_status', getHotfixStatus)
+  );
+
+  // Tech debt cleanup
+  server.tool(
+    'midas_scan_debt',
+    'Scan codebase for TODO/FIXME/HACK comments, prioritized by file churn.',
+    scanDebtSchema.shape,
+    wrapTool('midas_scan_debt', scanDebt)
+  );
+
+  server.tool(
+    'midas_cleanup_suggestion',
+    'Get a cleanup-focused suggestion for refactoring (not feature building).',
+    getCleanupSuggestionSchema.shape,
+    wrapTool('midas_cleanup_suggestion', getCleanupSuggestion)
   );
 
   // Register prompts
