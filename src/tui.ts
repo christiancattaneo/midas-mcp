@@ -91,15 +91,17 @@ const MIDAS_USER_RULES = `# Golden Code Methodology (via Midas MCP)
 RULES → INDEX → READ → RESEARCH → IMPLEMENT → TEST → DEBUG
 `;
 
-// Session starter prompt
+// Session starter prompt - simplified, no longer asks user to call tools manually
+// The TUI calls analyzeProject directly, and Cursor should auto-call tools via MIDAS_USER_RULES
 function getSessionStarterPrompt(projectPath: string): string {
   const journalEntries = getJournalEntries({ projectPath, limit: 3 });
   const hasJournal = journalEntries.length > 0;
   
+  // Give a simple, actionable prompt instead of tool-call instructions
   if (hasJournal) {
-    return `Before we begin, please call midas_journal_list to load context from my previous ${journalEntries.length} journal entries, then call midas_analyze to understand where we are in the project.`;
+    return `Continue where we left off. I have ${journalEntries.length} journal entries with context from previous sessions.`;
   }
-  return `Before we begin, please call midas_analyze to understand where we are in the project and what to do next.`;
+  return `Let's get started! Press [p] to analyze the project and get your first suggested action.`;
 }
 
 // Copy User Rules to clipboard for pasting into Cursor Settings
@@ -253,36 +255,24 @@ function drawUI(state: TUIState, projectPath: string): string {
   lines.push(row(`${title}${' '.repeat(headerPadding)}${statusIcons}`));
   lines.push(`${cyan}╠${hLine}╣${reset}`);
   
-  // Show session starter prompt first
+  // Show session starter - simplified welcome
   if (state.showingSessionStart) {
     lines.push(emptyRow());
-    lines.push(row(`${bold}${yellow}NEW SESSION${reset}`));
+    lines.push(row(`${bold}${yellow}WELCOME${reset}`));
     lines.push(emptyRow());
-    lines.push(row(`${dim}Paste this in your new Cursor chat:${reset}`));
-    
-    // Inner box with proper alignment
-    const boxWidth = I - 4;
-    const contentWidth = boxWidth - 4;
-    
-    const topBorder = `  ${dim}┌${'─'.repeat(boxWidth - 2)}┐${reset}`;
-    lines.push(row(topBorder));
-    
-    const promptWrapped = wrapText(state.sessionStarterPrompt, contentWidth);
-    for (const pLine of promptWrapped) {
-      const paddedContent = padRight(pLine, contentWidth);
-      const boxRow = `  ${dim}│${reset} ${paddedContent} ${dim}│${reset}`;
-      lines.push(row(boxRow));
-    }
-    
-    const bottomBorder = `  ${dim}└${'─'.repeat(boxWidth - 2)}┘${reset}`;
-    lines.push(row(bottomBorder));
+    lines.push(row(state.sessionStarterPrompt));
     lines.push(emptyRow());
-    lines.push(row(`${dim}TIP: Add User Rules in Cursor Settings for auto-behavior${reset}`));
-    lines.push(row(`${dim}Press ${bold}[u]${reset}${dim} to copy User Rules to clipboard${reset}`));
+    
+    // Quick start info
+    lines.push(row(`${dim}The Golden Code methodology:${reset}`));
+    lines.push(row(`${cyan}PLAN${reset} → ${blue}BUILD${reset} → ${green}SHIP${reset} → ${magenta}GROW${reset}`));
+    lines.push(emptyRow());
+    lines.push(row(`${dim}Press ${bold}[p]${reset}${dim} to analyze your project and get started.${reset}`));
+    lines.push(row(`${dim}Press ${bold}[u]${reset}${dim} to copy User Rules for Cursor auto-behavior.${reset}`));
     lines.push(emptyRow());
     
     lines.push(`${cyan}╠${hLine}╣${reset}`);
-    lines.push(row(`${dim}[c]${reset} Copy starter  ${dim}[u]${reset} Copy User Rules  ${dim}[p]${reset} Proceed  ${dim}[q]${reset} Quit`));
+    lines.push(row(`${dim}[p]${reset} Start  ${dim}[u]${reset} Copy Rules  ${dim}[?]${reset} Help  ${dim}[q]${reset} Quit`));
     lines.push(`${cyan}╚${hLine}╝${reset}`);
     return lines.join('\n');
   }
@@ -924,39 +914,34 @@ export async function runInteractive(): Promise<void> {
 
       // Session start screen handling
       if (tuiState.showingSessionStart) {
-      if (key === 'c') {
-        try {
-          await copyToClipboard(tuiState.sessionStarterPrompt);
-          tuiState.message = `${green}OK${reset} Session starter copied! Paste it in your new Cursor chat.`;
-        } catch {
-          tuiState.message = `${yellow}!${reset} Could not copy.`;
+        if (key === 'p') {
+          tuiState.showingSessionStart = false;
+          render();
+          if (tuiState.hasApiKey) {
+            await runAnalysis();
+          }
+          return;
         }
-        render();
-        return;
-      }
-      
-      if (key === 'p') {
-        tuiState.showingSessionStart = false;
-        render();
-        if (tuiState.hasApiKey) {
-          await runAnalysis();
+        
+        if (key === 'u') {
+          try {
+            await copyUserRules();
+            tuiState.message = `${green}OK${reset} User Rules copied! Paste in Cursor Settings -> Rules for AI`;
+          } catch {
+            tuiState.message = `${yellow}!${reset} Could not copy.`;
+          }
+          render();
+          return;
         }
-        return;
-      }
-      
-      if (key === 'u') {
-        try {
-          await copyUserRules();
-          tuiState.message = `${green}OK${reset} User Rules copied! Paste in Cursor Settings -> Rules for AI`;
-        } catch {
-          tuiState.message = `${yellow}!${reset} Could not copy.`;
+        
+        if (key === '?') {
+          tuiState.showingHelp = true;
+          render();
+          return;
         }
-        render();
-        return;
+        
+        return; // Ignore other keys on session start screen
       }
-      
-      return; // Ignore other keys on session start screen
-    }
 
     if (key === 'c') {
       if (tuiState.analysis?.suggestedPrompt) {
