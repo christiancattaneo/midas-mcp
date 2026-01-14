@@ -284,28 +284,18 @@ function drawUI(state: TUIState, projectPath: string): string {
   lines.push(row(`${title}${' '.repeat(headerPadding)}${statusIcons}`));
   lines.push(`${cyan}╠${hLine}╣${reset}`);
   
-  // Show session starter - simplified welcome
+  // Show session starter - ultra minimal
   if (state.showingSessionStart) {
     lines.push(emptyRow());
-    lines.push(row(`${bold}${yellow}WELCOME${reset}`));
     lines.push(emptyRow());
-    // Wrap session prompt to fit within box
-    const wrappedPrompt = wrapText(state.sessionStarterPrompt, I - 2);
-    for (const line of wrappedPrompt) {
-      lines.push(row(line));
-    }
-    lines.push(emptyRow());
-    
-    // Quick start info
-    lines.push(row(`${dim}The Golden Code methodology:${reset}`));
     lines.push(row(`${cyan}PLAN${reset} → ${blue}BUILD${reset} → ${green}SHIP${reset} → ${magenta}GROW${reset}`));
     lines.push(emptyRow());
-    lines.push(row(`${dim}Press ${bold}[p]${reset}${dim} to analyze your project and get started.${reset}`));
-    lines.push(row(`${dim}Press ${bold}[u]${reset}${dim} to copy User Rules for Cursor auto-behavior.${reset}`));
+    lines.push(row(`${dim}Press${reset} ${bold}[p]${reset} ${dim}to start${reset}`));
+    lines.push(emptyRow());
     lines.push(emptyRow());
     
     lines.push(`${cyan}╠${hLine}╣${reset}`);
-    lines.push(row(`${dim}[p]${reset} Start  ${dim}[u]${reset} Copy Rules  ${dim}[?]${reset} Help  ${dim}[q]${reset} Quit`));
+    lines.push(row(`${dim}[p]${reset} Start  ${dim}[?]${reset} Help  ${dim}[q]${reset} Quit`));
     lines.push(`${cyan}╚${hLine}╝${reset}`);
     return lines.join('\n');
   }
