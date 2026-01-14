@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { createInterface } from 'readline';
 import { loadState, saveState, type Phase, PHASE_INFO } from './state/phase.js';
-import { hasApiKey, ensureApiKey } from './config.js';
+import { hasApiKey, ensureApiKey, getSkillLevel } from './config.js';
 import { logEvent, watchEvents, type MidasEvent } from './events.js';
 import { analyzeProject, analyzeResponse, type ProjectAnalysis } from './analyzer.js';
 import { saveToJournal } from './tools/journal.js';
@@ -23,6 +23,7 @@ import {
 import { getJournalEntries } from './tools/journal.js';
 import { showExample } from './tools/examples.js';
 import { checkScopeCreep, type ScopeMetrics } from './tools/scope.js';
+import { getHotfixStatus } from './tools/hotfix.js';
 import { startSession, endSession, recordPromptCopied, recordPhaseChange, loadMetrics } from './metrics.js';
 
 // ANSI codes
@@ -251,14 +252,12 @@ function drawUI(state: TUIState, projectPath: string): string {
   const recentCount = state.recentEvents.filter(e => new Date(e.timestamp).getTime() > fiveMinAgo).length;
   const activityPulse = recentCount > 0 ? `${magenta}${recentCount}${reset} ` : '';
   // Skill level indicator (B/I/A) - press 'l' to cycle
-  const { getSkillLevel } = require('./config.js');
-  const skillLevel = getSkillLevel?.() || 'intermediate';
+  const skillLevel = getSkillLevel() || 'intermediate';
   const skillChar = skillLevel[0].toUpperCase();
   const skillColor = skillLevel === 'beginner' ? cyan : skillLevel === 'advanced' ? green : dim;
   const skillIndicator = `${skillColor}${skillChar}${reset} `;
   // Hotfix mode indicator
-  const { getHotfixStatus } = require('./tools/hotfix.js');
-  const hotfixStatus = getHotfixStatus?.({ projectPath }) || { active: false };
+  const hotfixStatus = getHotfixStatus({ projectPath });
   const hotfixIndicator = hotfixStatus.active ? `${red}[HF]${reset} ` : '';
   const statusIcons = `${hotfixIndicator}${activityPulse}${skillIndicator}${streakStr}${apiStatus}`;
   const titleWidth = visibleWidth(title);

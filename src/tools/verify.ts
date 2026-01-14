@@ -6,6 +6,9 @@ import {
   recordError,
   getSmartPromptSuggestion,
   markAnalysisComplete,
+  checkIfStuck,
+  formatDuration,
+  loadTracker,
   type VerificationGates,
 } from '../tracker.js';
 import { sanitizePath } from '../security.js';
@@ -249,9 +252,6 @@ export interface UnstuckResult {
 export function unstuck(input: UnstuckInput): UnstuckResult {
   const projectPath = sanitizePath(input.projectPath);
   const action = input.action || 'diagnose';
-  
-  // Import tracker functions
-  const { checkIfStuck, formatDuration, loadTracker, getGatesStatus } = require('../tracker.js');
   
   const stuckInfo = checkIfStuck(projectPath);
   const tracker = loadTracker(projectPath);

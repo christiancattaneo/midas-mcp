@@ -1,4 +1,7 @@
-import { loadState, type Phase } from './state/phase.js';
+import { existsSync, readdirSync } from 'fs';
+import { join } from 'path';
+import { execSync } from 'child_process';
+import { loadState, setPhase, type Phase } from './state/phase.js';
 import { startProject } from './tools/phase.js';
 import { audit } from './tools/audit.js';
 import { checkDocs } from './tools/docs.js';
@@ -213,9 +216,6 @@ export function runExistingProjectSetup(): void {
   console.log(`  ${dim}Scanning ${projectName}...${reset}`);
   
   // Check for existing code, tests, docs
-  const { existsSync, readdirSync } = require('fs');
-  const { join } = require('path');
-  
   const hasPackageJson = existsSync(join(cwd, 'package.json'));
   const hasSrc = existsSync(join(cwd, 'src'));
   const hasTests = existsSync(join(cwd, 'src', 'tests')) || existsSync(join(cwd, 'tests'));
@@ -232,12 +232,12 @@ export function runExistingProjectSetup(): void {
   console.log(`  ${hasDocs ? green + '[x]' : dim + '[ ]'} ${reset}docs/ directory`);
   console.log('');
   
-  // Infer phase
-  let inferredPhase = 'IDLE';
-  let inferredStep = '';
+  // Infer phase (using internal phase names)
+  let inferredPhase: 'IDLE' | 'EAGLE_SIGHT' | 'BUILD' | 'SHIP' | 'GROW' = 'IDLE';
+  let inferredStep: string = '';
   
   if (!hasPackageJson && !hasSrc) {
-    inferredPhase = 'PLAN';
+    inferredPhase = 'EAGLE_SIGHT';  // User-facing name is "PLAN"
     inferredStep = 'IDEA';
   } else if (hasSrc && !hasTests) {
     inferredPhase = 'BUILD';
@@ -246,7 +246,6 @@ export function runExistingProjectSetup(): void {
     // Check git for version tags
     if (hasGit) {
       try {
-        const { execSync } = require('child_process');
         const tags = execSync('git tag -l "v*"', { encoding: 'utf-8', cwd });
         if (tags.trim()) {
           inferredPhase = 'GROW';
@@ -275,9 +274,12 @@ export function runExistingProjectSetup(): void {
     
     // Set the inferred phase
     if (inferredPhase !== 'IDLE') {
-      const { setPhase } = require('./state/phase.js');
-      setPhase(cwd, { phase: inferredPhase as 'EAGLE_SIGHT' | 'BUILD' | 'SHIP' | 'GROW', step: inferredStep });
-      console.log(`  ${green}[x]${reset} Set phase to ${inferredPhase}:${inferredStep}`);
+      // Build the Phase object with proper typing
+      type ValidPhase = 'EAGLE_SIGHT' | 'BUILD' | 'SHIP' | 'GROW';
+      const phaseObj = { phase: inferredPhase as ValidPhase, step: inferredStep } as Phase;
+      setPhase(cwd, phaseObj);
+      const displayPhase = inferredPhase === 'EAGLE_SIGHT' ? 'PLAN' : inferredPhase;
+      console.log(`  ${green}[x]${reset} Set phase to ${displayPhase}:${inferredStep}`);
     }
   }
   

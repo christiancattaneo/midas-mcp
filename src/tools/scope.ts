@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, statSync, mkdirSync, writeFileSync } from 'fs';
 import { join, relative } from 'path';
 import { execSync } from 'child_process';
 import { logger } from '../logger.js';
@@ -306,7 +306,6 @@ export type SetScopeBaselineInput = z.infer<typeof setScopeBaselineSchema>;
 
 export function setScopeBaseline(input: SetScopeBaselineInput): { success: boolean; message: string } {
   const projectPath = sanitizePath(input.projectPath);
-  const { mkdirSync, writeFileSync } = require('fs');
   
   const metrics = countCodeMetrics(projectPath);
   const baselinePath = join(projectPath, '.midas', 'scope-baseline.json');
