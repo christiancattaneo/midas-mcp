@@ -38,6 +38,14 @@ export type Phase =
   | { phase: 'SHIP'; step: ShipStep }
   | { phase: 'GROW'; step: GrowStep };
 
+// Hotfix mode - for emergency bug fixes without disrupting normal workflow
+export interface HotfixState {
+  active: boolean;
+  description?: string;
+  previousPhase?: Phase;  // Phase to return to when hotfix complete
+  startedAt?: string;
+}
+
 export interface PhaseState {
   current: Phase;
   history: Phase[];
@@ -47,6 +55,8 @@ export interface PhaseState {
     prd: boolean;
     gameplan: boolean;
   };
+  // Hotfix mode - allows quick fixes without disrupting normal phase
+  hotfix?: HotfixState;
 }
 
 const STATE_DIR = '.midas';

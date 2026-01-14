@@ -126,3 +126,15 @@ export {
   validatePlanningDocs,
   validatePlanningDocsSchema,
 } from './validate-docs.js';
+
+// Hotfix mode - emergency bug fixes
+export {
+  startHotfix,
+  startHotfixSchema,
+  completeHotfix,
+  completeHotfixSchema,
+  cancelHotfix,
+  cancelHotfixSchema,
+  getHotfixStatus,
+  getHotfixStatusSchema,
+} from './hotfix.js';

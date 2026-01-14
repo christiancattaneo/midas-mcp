@@ -254,7 +254,11 @@ function drawUI(state: TUIState, projectPath: string): string {
   const skillChar = skillLevel[0].toUpperCase();
   const skillColor = skillLevel === 'beginner' ? cyan : skillLevel === 'advanced' ? green : dim;
   const skillIndicator = `${skillColor}${skillChar}${reset} `;
-  const statusIcons = `${activityPulse}${skillIndicator}${streakStr}${apiStatus}`;
+  // Hotfix mode indicator
+  const { getHotfixStatus } = require('./tools/hotfix.js');
+  const hotfixStatus = getHotfixStatus?.({ projectPath }) || { active: false };
+  const hotfixIndicator = hotfixStatus.active ? `${red}[HF]${reset} ` : '';
+  const statusIcons = `${hotfixIndicator}${activityPulse}${skillIndicator}${streakStr}${apiStatus}`;
   const titleWidth = visibleWidth(title);
   const statusWidth = visibleWidth(statusIcons);
   const headerPadding = Math.max(1, I - titleWidth - statusWidth);
@@ -1102,6 +1106,25 @@ export async function runInteractive(): Promise<void> {
       const newLevel = cycleSkillLevel();
       tuiState.message = `${green}OK${reset} Skill level: ${bold}${newLevel}${reset} - ${getSkillLevelDescription(newLevel)}`;
       render();
+    }
+
+    if (key === 'h') {
+      // Toggle hotfix mode
+      const { getHotfixStatus, completeHotfix, startHotfix } = await import('./tools/hotfix.js');
+      const status = getHotfixStatus({ projectPath });
+      
+      if (status.active) {
+        // End hotfix mode
+        const result = completeHotfix({ projectPath, summary: 'Hotfix completed via TUI' });
+        tuiState.message = result.success 
+          ? `${green}OK${reset} ${result.message}` 
+          : `${yellow}!${reset} ${result.message}`;
+        await runAnalysis();
+      } else {
+        // Start hotfix mode - prompt for description
+        tuiState.message = `${yellow}!${reset} To start hotfix, use: midas_start_hotfix with a description`;
+        render();
+      }
     }
 
     if (key === 'a') {

@@ -89,6 +89,15 @@ import {
   validateGameplanSchema,
   validatePlanningDocs,
   validatePlanningDocsSchema,
+  // Hotfix mode
+  startHotfix,
+  startHotfixSchema,
+  completeHotfix,
+  completeHotfixSchema,
+  cancelHotfix,
+  cancelHotfixSchema,
+  getHotfixStatus,
+  getHotfixStatusSchema,
 } from './tools/index.js';
 import { registerAllPrompts } from './prompts/index.js';
 import { registerAllResources } from './resources/index.js';
@@ -453,6 +462,35 @@ export function createServer(): McpServer {
     'Validate all planning docs. Returns overall score and blockers. Use before advancing from PLAN to BUILD.',
     validatePlanningDocsSchema.shape,
     wrapTool('midas_validate_planning', validatePlanningDocs)
+  );
+
+  // Hotfix mode - emergency bug fixes
+  server.tool(
+    'midas_start_hotfix',
+    'Start hotfix mode for emergency bug fixes. Saves current phase and jumps to BUILD/DEBUG.',
+    startHotfixSchema.shape,
+    wrapTool('midas_start_hotfix', startHotfix)
+  );
+
+  server.tool(
+    'midas_complete_hotfix',
+    'Complete hotfix mode and return to previous phase.',
+    completeHotfixSchema.shape,
+    wrapTool('midas_complete_hotfix', completeHotfix)
+  );
+
+  server.tool(
+    'midas_cancel_hotfix',
+    'Cancel hotfix mode and return to previous phase without completion.',
+    cancelHotfixSchema.shape,
+    wrapTool('midas_cancel_hotfix', cancelHotfix)
+  );
+
+  server.tool(
+    'midas_hotfix_status',
+    'Check if currently in hotfix mode and get details.',
+    getHotfixStatusSchema.shape,
+    wrapTool('midas_hotfix_status', getHotfixStatus)
   );
 
   // Register prompts
