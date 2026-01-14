@@ -276,12 +276,12 @@ function drawUI(state: TUIState, projectPath: string): string {
     lines.push(emptyRow());
     lines.push(row(`${cyan}PLAN${reset} → ${blue}BUILD${reset} → ${green}SHIP${reset} → ${magenta}GROW${reset}`));
     lines.push(emptyRow());
-    lines.push(row(`${dim}Press${reset} ${bold}[p]${reset} ${dim}to start${reset}`));
+    lines.push(row(`${dim}Press${reset} ${bold}Enter${reset} ${dim}to start${reset}`));
     lines.push(emptyRow());
     lines.push(emptyRow());
     
     lines.push(`${cyan}╠${hLine}╣${reset}`);
-    lines.push(row(`${dim}[p]${reset} Start  ${dim}[?]${reset} Help  ${dim}[q]${reset} Quit`));
+    lines.push(row(`${bold}Enter${reset} Start  ${dim}[?]${reset} Help  ${dim}[q]${reset} Quit`));
     lines.push(`${cyan}╚${hLine}╝${reset}`);
     return lines.join('\n');
   }
@@ -1013,7 +1013,8 @@ export async function runInteractive(): Promise<void> {
 
       // Session start screen handling
       if (tuiState.showingSessionStart) {
-        if (key === 'p') {
+        if (key === '\r' || key === '\n') {
+          // Enter to start
           tuiState.showingSessionStart = false;
           render();
           if (tuiState.hasApiKey) {
