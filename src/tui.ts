@@ -3,10 +3,11 @@ import { existsSync, readFileSync, appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { createInterface } from 'readline';
 
-// Debug logging for animation issues
+// Debug logging for animation issues - only enabled via MIDAS_DEBUG=true
+const DEBUG_MODE = process.env.MIDAS_DEBUG === 'true';
 let debugLogPath: string | null = null;
 function debugLog(msg: string): void {
-  if (!debugLogPath) return;
+  if (!DEBUG_MODE || !debugLogPath) return;
   try {
     appendFileSync(debugLogPath, `${Date.now()} | ${msg}\n`);
   } catch { /* ignore */ }
@@ -641,16 +642,17 @@ function drawUI(state: TUIState, projectPath: string): string {
 export async function runInteractive(): Promise<void> {
   const projectPath = process.cwd();
   
-  // Set up debug logging
-  const midasDir = join(projectPath, '.midas');
-  if (!existsSync(midasDir)) {
-    mkdirSync(midasDir, { recursive: true });
+  // Set up debug logging (only if MIDAS_DEBUG=true)
+  if (DEBUG_MODE) {
+    const midasDir = join(projectPath, '.midas');
+    if (!existsSync(midasDir)) {
+      mkdirSync(midasDir, { recursive: true });
+    }
+    debugLogPath = join(midasDir, 'tui-debug.log');
+    try {
+      appendFileSync(debugLogPath, `\n=== TUI Session Started ${new Date().toISOString()} ===\n`);
+    } catch { /* ignore */ }
   }
-  debugLogPath = join(midasDir, 'tui-debug.log');
-  // Clear previous log
-  try {
-    appendFileSync(debugLogPath, `\n=== TUI Session Started ${new Date().toISOString()} ===\n`);
-  } catch { /* ignore */ }
   
   // Check for API key on first run
   await ensureApiKey();
