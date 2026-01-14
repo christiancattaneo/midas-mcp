@@ -75,6 +75,9 @@ import {
   validateGatesSchema,
   enforceGatesAndAdvance,
   enforceGatesSchema,
+  // Examples
+  showExample,
+  showExampleSchema,
 } from './tools/index.js';
 import { registerAllPrompts } from './prompts/index.js';
 import { registerAllResources } from './resources/index.js';
@@ -395,6 +398,14 @@ export function createServer(): McpServer {
     'Advance phase only if gates pass. Blocks BUILD->SHIP if tests fail.',
     enforceGatesSchema.shape,
     wrapTool('midas_enforce_advance', enforceGatesAndAdvance)
+  );
+
+  // Example documents for coaching
+  server.tool(
+    'midas_show_example',
+    'Show example document for a planning step (brainlift, prd, gameplan). Helps users understand what good artifacts look like.',
+    showExampleSchema.shape,
+    wrapTool('midas_show_example', showExample)
   );
 
   // Register prompts

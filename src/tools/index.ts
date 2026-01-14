@@ -105,3 +105,10 @@ export {
   enforceGatesAndAdvance,
   enforceGatesSchema,
 } from './validate.js';
+
+// Example documents for coaching
+export {
+  showExample,
+  showExampleSchema,
+  listExamples,
+} from './examples.js';
