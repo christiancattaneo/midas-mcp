@@ -429,14 +429,7 @@ function drawUI(state: TUIState, projectPath: string): string {
 
   const a = state.analysis;
 
-  // Project summary - single line, clean
-  const summaryLine = wrapText(a.summary, I)[0];
-  lines.push(row(`${bold}${summaryLine}${reset}`));
-  lines.push(emptyRow());
-
-  lines.push(`${cyan}╠${hLine}╣${reset}`);
-
-  // Phase lifecycle bar
+  // Phase lifecycle bar (no project summary - keep it clean)
   const phases = ['EAGLE_SIGHT', 'BUILD', 'SHIP', 'GROW'] as const;
   const currentPhaseIdx = a.currentPhase.phase === 'IDLE' ? -1 : phases.indexOf(a.currentPhase.phase as typeof phases[number]);
   
@@ -460,6 +453,7 @@ function drawUI(state: TUIState, projectPath: string): string {
   // Current phase with confidence
   const confColor = a.confidence >= 70 ? green : a.confidence >= 40 ? yellow : red;
   lines.push(row(`${bold}PHASE:${reset} ${phaseLabel(a.currentPhase)}  ${confColor}${a.confidence}%${reset}`));
+  lines.push(emptyRow());
   
   // Show step progress bar within current phase (visual aesthetic - keep)
   if (a.currentPhase.phase !== 'IDLE') {
@@ -479,11 +473,19 @@ function drawUI(state: TUIState, projectPath: string): string {
 
   lines.push(`${cyan}╠${hLine}╣${reset}`);
 
+  // Show brief "why" for current step
+  const stepWhy = getStepWhy(a.currentPhase);
+  if (stepWhy) {
+    const whyText = truncate(stepWhy, I - 2);
+    lines.push(row(`${dim}${whyText}${reset}`));
+    lines.push(emptyRow());
+  }
+
   // What's next (wrapped)
   const nextLines = wrapText(a.whatsNext, I - 6);
-  lines.push(row(`${bold}${yellow}NEXT:${reset} ${nextLines[0]}`));
+  lines.push(row(`${bold}${yellow}DO:${reset} ${nextLines[0]}`));
   for (let i = 1; i < nextLines.length; i++) {
-    lines.push(row(`      ${nextLines[i]}`));
+    lines.push(row(`    ${nextLines[i]}`));
   }
   lines.push(emptyRow());
 
@@ -539,8 +541,8 @@ function drawUI(state: TUIState, projectPath: string): string {
 
   lines.push(emptyRow());
   lines.push(`${cyan}╠${hLine}╣${reset}`);
-  // Clean single-row menu with essentials
-  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[x]${reset} Decline  ${dim}[r]${reset} Analyze  ${dim}[i]${reset} Info  ${dim}[h]${reset} History  ${dim}[?]${reset} Help  ${dim}[q]${reset} Quit`));
+  // Minimal menu - fits in one row
+  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[x]${reset} Skip  ${dim}[r]${reset} Refresh  ${dim}[i]${reset} Info  ${dim}[?]${reset} Help  ${dim}[q]${reset} Quit`));
   lines.push(`${cyan}╚${hLine}╝${reset}`);
 
   return lines.join('\n');
