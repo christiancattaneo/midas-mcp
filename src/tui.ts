@@ -832,13 +832,9 @@ export async function runInteractive(): Promise<void> {
         }
       }
       
-      // Auto-run gates during analysis to keep them fresh
-      try {
-        const { verify } = await import('./tools/verify.js');
-        verify({ projectPath, runTests: false }); // Quick verify (build + lint, skip slow tests)
-      } catch {
-        // Gates verification is optional - don't fail analysis
-      }
+      // NOTE: Removed sync gate verification here - it used execSync which blocked
+      // the event loop and froze the spinner. Gates are run on-demand via 'g' key.
+      debugLog('Analysis promise resolved, skipping sync verify');
       
       // Get smart suggestion and gates status
       tuiState.smartSuggestion = getSmartPromptSuggestion(projectPath);
