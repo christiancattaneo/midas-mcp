@@ -477,17 +477,222 @@ export function getProviderCapabilities(provider: AIProvider): {
   thinking: boolean;
   caching: boolean;
   maxContext: number;
+  streaming: boolean;
 } {
   switch (provider) {
     case 'anthropic':
-      return { thinking: true, caching: true, maxContext: 200000 };
+      return { thinking: true, caching: true, maxContext: 200000, streaming: true };
     case 'openai':
-      return { thinking: false, caching: false, maxContext: 128000 };
+      return { thinking: false, caching: false, maxContext: 128000, streaming: true };
     case 'google':
-      return { thinking: false, caching: false, maxContext: 1000000 };
+      return { thinking: false, caching: false, maxContext: 1000000, streaming: false };
     case 'xai':
-      return { thinking: false, caching: false, maxContext: 100000 };
+      return { thinking: false, caching: false, maxContext: 100000, streaming: true };
     default:
-      return { thinking: false, caching: false, maxContext: 8000 };
+      return { thinking: false, caching: false, maxContext: 8000, streaming: false };
   }
+}
+
+// ============================================================================
+// STREAMING API
+// ============================================================================
+
+export interface StreamProgress {
+  stage: 'connecting' | 'thinking' | 'streaming' | 'complete';
+  tokensReceived: number;
+  partialContent: string;
+  elapsedMs: number;
+}
+
+export type StreamCallback = (progress: StreamProgress) => void;
+
+/**
+ * Stream chat response with progress callback
+ * Currently only supports Anthropic (best streaming support)
+ */
+export async function chatStream(
+  prompt: string,
+  options: ChatOptions & { onProgress?: StreamCallback }
+): Promise<ChatResponse> {
+  const provider = getActiveProvider();
+  const apiKey = getProviderApiKey(provider);
+  
+  if (!apiKey) {
+    throw new Error(`No API key configured for ${provider}`);
+  }
+  
+  // Only Anthropic has good streaming support for our use case
+  if (provider !== 'anthropic') {
+    // Fall back to non-streaming for other providers
+    return chat(prompt, options);
+  }
+  
+  const config = PROVIDER_CONFIGS.anthropic;
+  const useThinking = options.useThinking ?? true;
+  const maxTokens = options.maxTokens ?? config.maxTokens;
+  const onProgress = options.onProgress;
+  const startTime = Date.now();
+  
+  const body: Record<string, unknown> = {
+    model: config.model,
+    max_tokens: maxTokens,
+    stream: true,  // Enable streaming
+    messages: [{ role: 'user', content: prompt }],
+  };
+  
+  if (options.systemPrompt) {
+    body.system = [
+      {
+        type: 'text',
+        text: options.systemPrompt,
+        cache_control: { type: 'ephemeral' },
+      },
+    ];
+  }
+  
+  if (useThinking) {
+    body.thinking = {
+      type: 'enabled',
+      budget_tokens: config.thinkingBudget,
+    };
+  }
+  
+  // Notify connecting
+  onProgress?.({
+    stage: 'connecting',
+    tokensReceived: 0,
+    partialContent: '',
+    elapsedMs: Date.now() - startTime,
+  });
+  
+  const response = await fetch(config.url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      [config.authHeader]: apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'prompt-caching-2024-07-31,token-efficient-tools-2025-02-19',
+    },
+    body: JSON.stringify(body),
+  });
+  
+  if (!response.ok) {
+    const error = await response.text();
+    if (response.status === 429) {
+      throw new Error(`Rate limited by Anthropic. Wait a moment and try again.`);
+    }
+    if (response.status === 401) {
+      throw new Error(`Invalid API key for Anthropic.`);
+    }
+    throw new Error(`Anthropic API error (${response.status}): ${error.slice(0, 200)}`);
+  }
+  
+  if (!response.body) {
+    throw new Error('No response body');
+  }
+  
+  // Parse SSE stream
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let content = '';
+  let tokensReceived = 0;
+  let inThinking = false;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cached = false;
+  
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';  // Keep incomplete line in buffer
+      
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6);
+        if (data === '[DONE]') continue;
+        
+        try {
+          const event = JSON.parse(data) as {
+            type: string;
+            delta?: { type: string; text?: string };
+            content_block?: { type: string };
+            usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number };
+            message?: { usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number } };
+          };
+          
+          // Track thinking vs text blocks
+          if (event.type === 'content_block_start') {
+            inThinking = event.content_block?.type === 'thinking';
+          }
+          
+          // Accumulate text content (skip thinking blocks)
+          if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta' && !inThinking) {
+            const text = event.delta.text || '';
+            content += text;
+            tokensReceived += Math.ceil(text.length / 4);  // Rough token estimate
+            
+            onProgress?.({
+              stage: 'streaming',
+              tokensReceived,
+              partialContent: content,
+              elapsedMs: Date.now() - startTime,
+            });
+          }
+          
+          // Track if we're in thinking mode
+          if (event.type === 'content_block_delta' && inThinking) {
+            onProgress?.({
+              stage: 'thinking',
+              tokensReceived: 0,
+              partialContent: '',
+              elapsedMs: Date.now() - startTime,
+            });
+          }
+          
+          // Capture usage from message_delta or message_stop
+          if (event.type === 'message_delta' && event.usage) {
+            outputTokens = event.usage.output_tokens ?? 0;
+          }
+          if (event.type === 'message_start' && event.message?.usage) {
+            inputTokens = event.message.usage.input_tokens ?? 0;
+            cached = (event.message.usage.cache_read_input_tokens ?? 0) > 0;
+          }
+        } catch {
+          // Skip malformed JSON
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  
+  // Final progress notification
+  onProgress?.({
+    stage: 'complete',
+    tokensReceived,
+    partialContent: content,
+    elapsedMs: Date.now() - startTime,
+  });
+  
+  // Record metrics
+  recordTokens(inputTokens, outputTokens, { provider: 'anthropic', cached });
+  try {
+    recordCost(process.cwd(), 'anthropic', inputTokens, outputTokens, cached);
+  } catch {
+    // Cost tracking is optional
+  }
+  
+  return {
+    content,
+    provider: 'anthropic',
+    model: config.model,
+    inputTokens,
+    outputTokens,
+    cached,
+  };
 }

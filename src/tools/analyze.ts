@@ -129,7 +129,7 @@ export function suggestPrompt(input: SuggestPromptInput): PromptSuggestion {
     },
     GROW: {
       DONE: {
-        prompt: 'You shipped! Follow the graduation checklist: 1) ANNOUNCE to 3 communities, 2) NETWORK with 10 potential users, 3) FEEDBACK from 5 real users, 4) PROOF via testimonials, 5) ITERATE on feedback, 6) CONTENT to build authority.',
+        prompt: 'You shipped! Follow the graduation checklist: 1) ANNOUNCE to 3 communities, 2) NETWORK with 10 potential users, 3) FEEDBACK from 5 users, 4) PROOF via testimonials, 5) ITERATE on feedback, 6) CONTENT to build authority, 7) MEASURE your key metric, 8) AUTOMATE a growth loop.',
         explanation: 'Project is shipped. Time to grow usage with deliberate external actions.',
       },
     },

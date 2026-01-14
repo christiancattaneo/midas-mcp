@@ -161,7 +161,7 @@ export const PHASE_INFO = {
         why: 'Most projects die after launch. Growth requires deliberate effort outside the codebase.',
       },
     },
-    // The 6-step graduation checklist (external actions, not AI-driven)
+    // The 8-step graduation checklist (external actions, not AI-driven)
     checklist: [
       { key: 'ANNOUNCE', name: 'Announce', action: 'Post to 3 communities', detail: 'Reddit, Discord, Twitter, Hacker News, Product Hunt - wherever your users hang out' },
       { key: 'NETWORK', name: 'Network', action: 'DM 10 people who would find this useful', detail: 'Personal outreach converts 10x better than public posts' },
@@ -169,6 +169,8 @@ export const PHASE_INFO = {
       { key: 'PROOF', name: 'Proof', action: 'Get 3 testimonials, screenshot your metrics', detail: 'Social proof compounds - collect it early' },
       { key: 'ITERATE', name: 'Iterate', action: 'Ship one improvement based on feedback', detail: 'Show users you listen - fastest way to build loyalty' },
       { key: 'CONTENT', name: 'Content', action: 'Write "what I learned building X" post', detail: 'Teaching builds authority and attracts users who trust you' },
+      { key: 'MEASURE', name: 'Measure', action: 'Set up analytics for your key metric', detail: 'Users, downloads, revenue - you can\'t improve what you don\'t measure' },
+      { key: 'AUTOMATE', name: 'Automate', action: 'Set up one recurring growth loop', detail: 'Newsletter, social schedule, referral system - consistency compounds' },
     ],
   },
 };

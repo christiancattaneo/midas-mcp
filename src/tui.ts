@@ -5,7 +5,7 @@ import { createInterface } from 'readline';
 import { loadState, saveState, setPhase, type Phase, PHASE_INFO, getGraduationChecklist, formatGraduationChecklist } from './state/phase.js';
 import { hasApiKey, ensureApiKey, getSkillLevel } from './config.js';
 import { logEvent, watchEvents, type MidasEvent } from './events.js';
-import { analyzeProject, analyzeResponse, type ProjectAnalysis } from './analyzer.js';
+import { analyzeProject, analyzeProjectStreaming, analyzeResponse, type ProjectAnalysis, type AnalysisProgress } from './analyzer.js';
 import { saveToJournal } from './tools/journal.js';
 import { 
   getActivitySummary, 
@@ -114,6 +114,7 @@ function copyUserRules(): Promise<void> {
 interface TUIState {
   analysis: ProjectAnalysis | null;
   isAnalyzing: boolean;
+  analysisProgress: AnalysisProgress | null;  // Real-time streaming progress
   activitySummary: string;
   recentToolCalls: string[];
   recentEvents: MidasEvent[];
@@ -410,7 +411,7 @@ function drawUI(state: TUIState, projectPath: string): string {
     lines.push(row(`${bold}Now grow your project:${reset}`));
     lines.push(emptyRow());
     
-    // Show the 6-step graduation checklist
+    // Show the 8-step graduation checklist
     const checklist = getGraduationChecklist();
     for (let i = 0; i < checklist.length; i++) {
       const item = checklist[i];
@@ -431,8 +432,33 @@ function drawUI(state: TUIState, projectPath: string): string {
 
   if (state.isAnalyzing) {
     lines.push(emptyRow());
-    lines.push(row(`${magenta}...${reset} ${bold}Analyzing project${reset}`));
-    lines.push(row(`${dim}Reading codebase, chat history, docs...${reset}`));
+    
+    // Show real streaming progress
+    const progress = state.analysisProgress;
+    const elapsed = progress ? `${(progress.elapsedMs / 1000).toFixed(1)}s` : '0s';
+    
+    // Spinner frames
+    const spinners = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    const spinnerFrame = spinners[Math.floor(Date.now() / 100) % spinners.length];
+    
+    if (!progress || progress.stage === 'gathering') {
+      lines.push(row(`${magenta}${spinnerFrame}${reset} ${bold}Reading files...${reset} ${dim}${elapsed}${reset}`));
+      lines.push(row(`${dim}Gathering context from codebase${reset}`));
+    } else if (progress.stage === 'connecting') {
+      lines.push(row(`${magenta}${spinnerFrame}${reset} ${bold}Connecting to AI...${reset} ${dim}${elapsed}${reset}`));
+      lines.push(row(`${dim}Establishing connection${reset}`));
+    } else if (progress.stage === 'thinking') {
+      lines.push(row(`${yellow}${spinnerFrame}${reset} ${bold}AI is thinking...${reset} ${dim}${elapsed}${reset}`));
+      lines.push(row(`${dim}Extended reasoning mode active${reset}`));
+    } else if (progress.stage === 'streaming') {
+      const tokens = progress.tokensReceived || 0;
+      lines.push(row(`${green}${spinnerFrame}${reset} ${bold}Receiving response...${reset} ${dim}${elapsed}${reset}`));
+      lines.push(row(`${dim}${tokens} tokens received${reset}`));
+    } else if (progress.stage === 'parsing') {
+      lines.push(row(`${cyan}${spinnerFrame}${reset} ${bold}Parsing response...${reset} ${dim}${elapsed}${reset}`));
+      lines.push(row(`${dim}Almost done${reset}`));
+    }
+    
     lines.push(emptyRow());
     lines.push(`${cyan}╚${hLine}╝${reset}`);
     return lines.join('\n');
@@ -625,6 +651,7 @@ export async function runInteractive(): Promise<void> {
   const tuiState: TUIState = {
     analysis: null,
     isAnalyzing: false,
+    analysisProgress: null,    // Real-time streaming progress
     activitySummary: getActivitySummary(projectPath),
     recentToolCalls: [],
     recentEvents: [],
@@ -681,14 +708,27 @@ export async function runInteractive(): Promise<void> {
     }
     
     tuiState.isAnalyzing = true;
+    tuiState.analysisProgress = null;
     render();
+    
+    // Set up progress update interval for spinner animation
+    const progressInterval = setInterval(() => {
+      if (tuiState.isAnalyzing) {
+        render();
+      }
+    }, 100);  // Update every 100ms for smooth spinner
     
     // Timeout protection for analysis (90 seconds max)
     const ANALYSIS_TIMEOUT = 90000;
     let timeoutId: NodeJS.Timeout | null = null;
     
     try {
-      const analysisPromise = analyzeProject(projectPath);
+      // Use streaming analysis with progress callback
+      const analysisPromise = analyzeProjectStreaming(projectPath, (progress) => {
+        tuiState.analysisProgress = progress;
+        // render() is called by the interval
+      });
+      
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => reject(new Error('Analysis timeout')), ANALYSIS_TIMEOUT);
       });
@@ -768,7 +808,9 @@ export async function runInteractive(): Promise<void> {
       tuiState.message = `${red}!${reset} ${msg}`;
     }
     
+    clearInterval(progressInterval);
     tuiState.isAnalyzing = false;
+    tuiState.analysisProgress = null;
     render();
   };
 

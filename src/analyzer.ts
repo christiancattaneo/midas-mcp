@@ -1,5 +1,5 @@
 import { getApiKey, getActiveProvider, getSkillLevel, type SkillLevel } from './config.js';
-import { chat, getProviderCapabilities, getCurrentModel } from './providers.js';
+import { chat, chatStream, getProviderCapabilities, getCurrentModel, type StreamProgress } from './providers.js';
 import { readdirSync, readFileSync, existsSync } from 'fs';
 import { join, extname } from 'path';
 import type { Phase, EagleSightStep, BuildStep, ShipStep, GrowStep } from './state/phase.js';
@@ -470,6 +470,8 @@ The GROW phase is a graduation checklist, not a coached phase:
 4. PROOF - Get 3 testimonials, screenshot your metrics
 5. ITERATE - Ship one improvement based on feedback
 6. CONTENT - Write "what I learned building X" post
+7. MEASURE - Set up analytics for your key metric
+8. AUTOMATE - Set up one recurring growth loop
 
 When user is in GROW, congratulate them and remind them of the checklist. Use 'n' to start a new cycle.
 
@@ -601,6 +603,387 @@ Analyze this project and provide the JSON response.`;
       techStack: [],
     };
   }
+}
+
+// ============================================================================
+// STREAMING ANALYSIS (with progress feedback)
+// ============================================================================
+
+export interface AnalysisProgress {
+  stage: 'gathering' | 'connecting' | 'thinking' | 'streaming' | 'parsing' | 'complete';
+  message: string;
+  elapsedMs: number;
+  tokensReceived?: number;
+}
+
+export type AnalysisProgressCallback = (progress: AnalysisProgress) => void;
+
+/**
+ * Analyze project with real-time streaming progress
+ * Use this for TUI to show accurate progress feedback
+ */
+export async function analyzeProjectStreaming(
+  projectPath: string,
+  onProgress?: AnalysisProgressCallback
+): Promise<ProjectAnalysis> {
+  const startTime = Date.now();
+  const elapsed = () => Date.now() - startTime;
+  
+  // Stage 1: Gathering context (fast, sync)
+  onProgress?.({
+    stage: 'gathering',
+    message: 'Reading files and context...',
+    elapsedMs: elapsed(),
+  });
+  
+  const safePath = sanitizePath(projectPath);
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    return {
+      currentPhase: { phase: 'IDLE' },
+      summary: 'No API key - cannot analyze',
+      whatsDone: [],
+      whatsNext: 'Add API key to ~/.midas/config.json',
+      suggestedPrompt: '',
+      confidence: 0,
+      techStack: [],
+    };
+  }
+
+  // Gather all context (same as analyzeProject)
+  const files = scanFiles(safePath);
+  const fileList = files.map(f => f.replace(safePath + '/', '')).join('\n');
+  
+  const hasbrainlift = existsSync(join(safePath, 'docs', 'brainlift.md'));
+  const hasPrd = existsSync(join(safePath, 'docs', 'prd.md'));
+  const hasGameplan = existsSync(join(safePath, 'docs', 'gameplan.md'));
+  
+  const brainliftContent = hasbrainlift ? readFile(join(safePath, 'docs', 'brainlift.md')) : '';
+  const prdContent = hasPrd ? readFile(join(safePath, 'docs', 'prd.md')) : '';
+  const gameplanContent = hasGameplan ? readFile(join(safePath, 'docs', 'gameplan.md')) : '';
+  
+  const hasDockerfile = existsSync(join(safePath, 'Dockerfile')) || existsSync(join(safePath, 'docker-compose.yml'));
+  const hasCI = existsSync(join(safePath, '.github', 'workflows'));
+  const hasTests = files.some(f => f.includes('.test.') || f.includes('.spec.') || f.includes('__tests__'));
+
+  let packageJsonContent = '';
+  const packageJsonPath = join(safePath, 'package.json');
+  if (existsSync(packageJsonPath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+      packageJsonContent = JSON.stringify({
+        name: pkg.name,
+        version: pkg.version,
+        description: pkg.description,
+        bin: pkg.bin,
+        main: pkg.main,
+        exports: pkg.exports,
+        type: pkg.type,
+        scripts: pkg.scripts,
+        dependencies: Object.keys(pkg.dependencies || {}),
+        devDependencies: Object.keys(pkg.devDependencies || {}),
+      }, null, 2);
+    } catch { /* ignore */ }
+  }
+  
+  const hasCargoToml = existsSync(join(safePath, 'Cargo.toml'));
+  const hasPyproject = existsSync(join(safePath, 'pyproject.toml'));
+  
+  const activityContext = getActivityContext(safePath);
+  const journalEntries = getJournalEntries({ projectPath: safePath, limit: 10 });
+  const journalContext = journalEntries.length > 0 
+    ? journalEntries.map(e => `### ${e.title} (${e.timestamp.slice(0, 10)})\n${limitLength(e.conversation, 2000)}`).join('\n\n')
+    : 'No journal entries yet';
+  
+  const priorityPatterns = ['.test.', '.spec.', 'index.', 'main.', 'app.', 'server.', 'config.'];
+  const priorityFiles = files.filter(f => priorityPatterns.some(p => f.includes(p))).slice(0, 10);
+  const otherFiles = files.filter(f => !priorityPatterns.some(p => f.includes(p))).slice(0, 10);
+  const sampleFiles = [...priorityFiles, ...otherFiles].slice(0, 15);
+  
+  const codeSamples = sampleFiles.map(f => {
+    const content = readFile(f, 100);
+    return `--- ${f.replace(safePath + '/', '')} ---\n${content}`;
+  }).join('\n\n');
+
+  const currentState = loadState(safePath);
+  const tracker = loadTracker(safePath);
+  const gatesStatus = getGatesStatus(safePath);
+  const unresolvedErrors = getUnresolvedErrors(safePath);
+  
+  const errorContext = unresolvedErrors.length > 0
+    ? unresolvedErrors.slice(0, 10).map(e => 
+        `- ${e.error}${e.file ? ` (${e.file}${e.line ? `:${e.line}` : ''})` : ''}${e.fixAttempts.length > 0 ? ` [tried ${e.fixAttempts.length}x]` : ''}`
+      ).join('\n')
+    : 'No unresolved errors';
+
+  const rejectedSuggestions = tracker.suggestionHistory
+    .filter(s => !s.accepted && s.rejectionReason)
+    .slice(0, 3)
+    .map(s => `- "${s.suggestion.slice(0, 60)}..." → Rejected: ${s.rejectionReason}`)
+    .join('\n');
+  
+  const rejectionContext = rejectedSuggestions 
+    ? `\n## Recently Rejected Suggestions (avoid these approaches):\n${rejectedSuggestions}\n`
+    : '';
+
+  // Build prompts (same as analyzeProject)
+  const systemPrompt = buildSystemPrompt();
+  const skillLevel = getSkillLevel() || 'intermediate';
+  const skillSuffix = getSkillPromptSuffix(skillLevel);
+  
+  const userPrompt = buildUserPrompt({
+    safePath,
+    fileList,
+    files,
+    hasbrainlift,
+    hasPrd,
+    hasGameplan,
+    brainliftContent,
+    prdContent,
+    gameplanContent,
+    hasDockerfile,
+    hasCI,
+    hasTests,
+    packageJsonContent,
+    hasCargoToml,
+    hasPyproject,
+    activityContext,
+    journalContext,
+    journalEntries,
+    codeSamples,
+    sampleFiles,
+    currentState,
+    gatesStatus,
+    errorContext,
+    rejectionContext,
+    skillSuffix,
+  });
+
+  // Stage 2: AI call with streaming
+  try {
+    const response = await chatStream(userPrompt, {
+      systemPrompt,
+      onProgress: (streamProgress) => {
+        if (streamProgress.stage === 'connecting') {
+          onProgress?.({
+            stage: 'connecting',
+            message: 'Connecting to AI...',
+            elapsedMs: elapsed(),
+          });
+        } else if (streamProgress.stage === 'thinking') {
+          onProgress?.({
+            stage: 'thinking',
+            message: 'AI is thinking...',
+            elapsedMs: elapsed(),
+          });
+        } else if (streamProgress.stage === 'streaming') {
+          onProgress?.({
+            stage: 'streaming',
+            message: `Receiving response...`,
+            elapsedMs: elapsed(),
+            tokensReceived: streamProgress.tokensReceived,
+          });
+        }
+      },
+    });
+    
+    // Stage 3: Parsing
+    onProgress?.({
+      stage: 'parsing',
+      message: 'Parsing response...',
+      elapsedMs: elapsed(),
+    });
+    
+    let jsonStr = response.content;
+    if (response.content.includes('```')) {
+      const match = response.content.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (match) jsonStr = match[1];
+    }
+    
+    const data = JSON.parse(jsonStr.trim());
+    
+    let currentPhase: Phase;
+    if (data.phase === 'IDLE' || !data.phase) {
+      currentPhase = { phase: 'IDLE' };
+    } else if (data.phase === 'EAGLE_SIGHT') {
+      currentPhase = { phase: 'EAGLE_SIGHT', step: data.step as EagleSightStep };
+    } else if (data.phase === 'BUILD') {
+      currentPhase = { phase: 'BUILD', step: data.step as BuildStep };
+    } else if (data.phase === 'SHIP') {
+      currentPhase = { phase: 'SHIP', step: data.step as ShipStep };
+    } else if (data.phase === 'GROW') {
+      currentPhase = { phase: 'GROW', step: data.step as GrowStep };
+    } else {
+      currentPhase = { phase: 'IDLE' };
+    }
+    
+    markAnalysisComplete(safePath);
+    
+    // Stage 4: Complete
+    onProgress?.({
+      stage: 'complete',
+      message: 'Analysis complete',
+      elapsedMs: elapsed(),
+    });
+    
+    return {
+      currentPhase,
+      summary: data.summary || 'Project analyzed',
+      whatsDone: data.whatsDone || [],
+      whatsNext: data.whatsNext || 'Continue development',
+      suggestedPrompt: data.suggestedPrompt || '',
+      confidence: data.confidence || 50,
+      techStack: data.techStack || [],
+    };
+  } catch (error) {
+    logger.error('Streaming analysis failed', error as unknown);
+    
+    // Fall back to non-streaming analysis
+    return analyzeProject(projectPath);
+  }
+}
+
+// Helper to build system prompt (extracted for reuse)
+function buildSystemPrompt(): string {
+  return `You are Midas, a Golden Code coach. You analyze projects and determine their exact phase in the development lifecycle.
+
+# GOLDEN CODE METHODOLOGY (Stable Reference)
+
+## The 4 Development Phases:
+
+### PLAN (Planning Phase)
+Steps: IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN
+Purpose: Understand the problem before writing code.
+WHY: Code without context is just syntax. The AI doesn't know your domain, constraints, or users. You do.
+- IDEA: Capture the core concept and motivation (WHY: Most projects fail from solving the wrong problem)
+- RESEARCH: Study existing solutions, dependencies, constraints (WHY: Someone has solved 80% of this already)
+- BRAINLIFT: Extract key decisions and mental models (WHY: AI read the internet. You have specific context it doesn't)
+- PRD: Define requirements, scope, success criteria (WHY: "I'll know it when I see it" means you'll never finish)
+- GAMEPLAN: Break into ordered implementation tasks (WHY: Sequence work so you're never blocked waiting for yourself)
+
+### BUILD (Implementation Phase)
+Steps: RULES → INDEX → READ → RESEARCH → IMPLEMENT → TEST → DEBUG
+Purpose: Code methodically with verification at each step.
+WHY: Jumping straight to code means hours of debugging. Each step reduces the blast radius of mistakes.
+- RULES: Set up .cursorrules with project conventions
+- INDEX: Understand codebase structure
+- READ: Study relevant existing code
+- RESEARCH: Look up APIs, patterns, best practices
+- IMPLEMENT: Write the code
+- TEST: Verify with automated tests
+- DEBUG: Fix any issues using Tornado
+
+### SHIP (Deployment Phase)
+Steps: REVIEW → DEPLOY → MONITOR
+Purpose: Get code into production safely.
+- REVIEW: Code review, security audit, performance check
+- DEPLOY: Push to production with proper CI/CD
+- MONITOR: Watch for errors, performance issues
+
+### GROW (Graduation Phase)
+Step: DONE (single step - project is shipped!)
+Purpose: Celebrate and grow usage. The coding is done; now it's time for human actions.
+The GROW phase is a graduation checklist:
+1. ANNOUNCE - Post to 3 communities
+2. NETWORK - DM 10 people
+3. FEEDBACK - Ask 5 users
+4. PROOF - Get testimonials
+5. ITERATE - Ship one improvement
+6. CONTENT - Write about it
+7. MEASURE - Set up analytics
+8. AUTOMATE - Set up growth loop
+
+## Key Rules:
+1. GATES MUST PASS: Build, tests, and lint must pass before advancing
+2. ONE TASK PER PROMPT: Each suggested prompt should be specific and actionable
+3. AUTO-ADVANCE: Use midas_advance_phase tool - never suggest "advance me to X phase"
+4. PHASE FROM GIT: Version bump/publish commits → SHIP or GROW phase
+
+## Response Format:
+Respond ONLY with valid JSON matching this schema:
+{
+  "phase": "EAGLE_SIGHT" | "BUILD" | "SHIP" | "GROW" | "IDLE",
+  "step": "string (step within phase)",
+  "summary": "1-2 sentence project summary",
+  "whatsDone": ["array of completed items"],
+  "whatsNext": "single next action",
+  "suggestedPrompt": "specific prompt to paste in Cursor",
+  "confidence": 0-100,
+  "techStack": ["array of detected technologies"]
+}`;
+}
+
+// Helper to build user prompt (extracted for reuse)
+function buildUserPrompt(ctx: {
+  safePath: string;
+  fileList: string;
+  files: string[];
+  hasbrainlift: boolean;
+  hasPrd: boolean;
+  hasGameplan: boolean;
+  brainliftContent: string;
+  prdContent: string;
+  gameplanContent: string;
+  hasDockerfile: boolean;
+  hasCI: boolean;
+  hasTests: boolean;
+  packageJsonContent: string;
+  hasCargoToml: boolean;
+  hasPyproject: boolean;
+  activityContext: string;
+  journalContext: string;
+  journalEntries: Array<{ title: string; timestamp: string; conversation: string }>;
+  codeSamples: string;
+  sampleFiles: string[];
+  currentState: { current: Phase };
+  gatesStatus: ReturnType<typeof getGatesStatus>;
+  errorContext: string;
+  rejectionContext: string;
+  skillSuffix: string;
+}): string {
+  return `Analyze this project:
+
+## Project Structure (${ctx.files.length} files):
+${ctx.fileList.slice(0, 3000)}
+
+## Planning Docs:
+- brainlift.md: ${ctx.hasbrainlift ? 'exists' : 'missing'}
+- prd.md: ${ctx.hasPrd ? 'exists' : 'missing'}
+- gameplan.md: ${ctx.hasGameplan ? 'exists' : 'missing'}
+
+${ctx.brainliftContent ? `## Brainlift Content:\n${ctx.brainliftContent.slice(0, 2000)}\n` : ''}
+${ctx.prdContent ? `## PRD Content:\n${ctx.prdContent.slice(0, 2000)}\n` : ''}
+${ctx.gameplanContent ? `## Gameplan Content:\n${ctx.gameplanContent.slice(0, 2000)}\n` : ''}
+
+## Project Config:
+${ctx.packageJsonContent ? `package.json:\n${ctx.packageJsonContent}\n` : ''}
+${ctx.hasCargoToml ? 'Cargo.toml: exists (Rust project)\n' : ''}
+${ctx.hasPyproject ? 'pyproject.toml: exists (Python project)\n' : ''}
+
+## Current State:
+- Phase: ${ctx.currentState.current.phase}${'step' in ctx.currentState.current ? ` → ${ctx.currentState.current.step}` : ''}
+- Gates: ${ctx.gatesStatus.allPass ? 'all passing' : `failing: ${ctx.gatesStatus.failing.join(', ')}`}
+- Errors: ${ctx.errorContext}
+
+## Recent Activity:
+${ctx.activityContext}
+${ctx.rejectionContext}
+
+## Infrastructure:
+- Dockerfile: ${ctx.hasDockerfile ? 'yes' : 'no'}
+- CI/CD: ${ctx.hasCI ? 'yes' : 'no'}
+
+## Code Samples (${ctx.sampleFiles.length} files):
+${ctx.codeSamples || 'No code files yet'}
+
+## Recent Conversations (${ctx.journalEntries.length} entries):
+${ctx.journalContext}
+
+${ctx.skillSuffix}
+
+---
+
+Analyze this project and provide the JSON response.`;
 }
 
 // ============================================================================

@@ -90,6 +90,8 @@ Graduation checklist:
 4. PROOF - Collect testimonials
 5. ITERATE - Ship one improvement
 6. CONTENT - Write about what you learned
+7. MEASURE - Set up analytics
+8. AUTOMATE - Set up growth loop
 
 ## Key Rules:
 1. GATES MUST PASS: Build, tests, and lint must pass before advancing
