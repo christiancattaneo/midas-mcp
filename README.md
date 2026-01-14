@@ -1,5 +1,8 @@
 # midas-mcp
 
+[![CI](https://github.com/christiancattaneo/midas-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/christiancattaneo/midas-mcp/actions/workflows/ci.yml)
+[![npm version](https://badge.fury.io/js/midas-mcp.svg)](https://www.npmjs.com/package/midas-mcp)
+
 **Everything you vibecode turns to gold.**
 
 An MCP server that brings the Golden Code methodology into Cursor as an interactive coach. Guides users through the two-phase process, provides expert prompts, and audits projects against the 12 ingredients of production readiness.
