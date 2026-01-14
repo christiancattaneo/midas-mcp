@@ -365,6 +365,21 @@ function drawUI(state: TUIState, projectPath: string): string {
   const confColor = a.confidence >= 70 ? green : a.confidence >= 40 ? yellow : red;
   lines.push(row(`${bold}PHASE:${reset} ${phaseLabel(a.currentPhase)}  ${confColor}${a.confidence}%${reset}`));
   
+  // Show step progress bar within current phase
+  if (a.currentPhase.phase !== 'IDLE') {
+    const phaseInfo = PHASE_INFO[a.currentPhase.phase];
+    const steps = Object.keys(phaseInfo.steps);
+    const currentStepIdx = steps.indexOf(a.currentPhase.step);
+    const progress = Math.round(((currentStepIdx + 1) / steps.length) * 100);
+    
+    // Visual progress bar: [████░░░░░░] 40%
+    const barWidth = 20;
+    const filled = Math.round((progress / 100) * barWidth);
+    const empty = barWidth - filled;
+    const progressBar = `${green}${'█'.repeat(filled)}${reset}${dim}${'░'.repeat(empty)}${reset}`;
+    lines.push(row(`${dim}Progress:${reset} [${progressBar}] ${progress}%`));
+  }
+  
   // Show 'why' explanation for current step (helps users understand the methodology)
   const stepWhy = getStepWhy(a.currentPhase);
   if (stepWhy) {
