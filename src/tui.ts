@@ -205,11 +205,27 @@ function wrapText(text: string, maxWidth: number): string[] {
 
 /**
  * Pad text to exact visible width (handles ANSI codes correctly)
+ * Truncates if text exceeds width
  */
 function padRight(text: string, width: number): string {
   const visible = visibleWidth(text);
-  if (visible >= width) return text;
+  if (visible > width) {
+    // Need to truncate - strip ANSI, truncate, add ellipsis
+    const stripped = stripAnsi(text);
+    return stripped.slice(0, width - 3) + '...';
+  }
+  if (visible === width) return text;
   return text + ' '.repeat(width - visible);
+}
+
+/**
+ * Truncate text with ANSI-aware width calculation
+ */
+function truncateText(text: string, maxWidth: number): string {
+  const visible = visibleWidth(text);
+  if (visible <= maxWidth) return text;
+  const stripped = stripAnsi(text);
+  return stripped.slice(0, maxWidth - 3) + '...';
 }
 
 function phaseLabel(phase: Phase): string {
@@ -271,7 +287,11 @@ function drawUI(state: TUIState, projectPath: string): string {
     lines.push(emptyRow());
     lines.push(row(`${bold}${yellow}WELCOME${reset}`));
     lines.push(emptyRow());
-    lines.push(row(state.sessionStarterPrompt));
+    // Wrap session prompt to fit within box
+    const wrappedPrompt = wrapText(state.sessionStarterPrompt, I - 2);
+    for (const line of wrappedPrompt) {
+      lines.push(row(line));
+    }
     lines.push(emptyRow());
     
     // Quick start info
@@ -287,6 +307,9 @@ function drawUI(state: TUIState, projectPath: string): string {
     lines.push(`${cyan}╚${hLine}╝${reset}`);
     return lines.join('\n');
   }
+
+  // Consistency check: validate all row content fits
+  // The row() function now truncates automatically via padRight()
 
   // Help screen
   if (state.showingHelp) {
@@ -473,7 +496,10 @@ function drawUI(state: TUIState, projectPath: string): string {
   // Show scope drift indicator if project has grown significantly
   if (state.scopeDrift && state.scopeDrift.warning) {
     const driftColor = state.scopeDrift.driftPercentage > 100 ? red : yellow;
-    lines.push(row(`${driftColor}[SCOPE +${state.scopeDrift.driftPercentage}%]${reset} ${dim}${state.scopeDrift.message}${reset}`));
+    const shortMsg = state.scopeDrift.driftPercentage > 100 
+      ? 'Consider: split project, defer features' 
+      : 'Review if all features are in PRD';
+    lines.push(row(`${driftColor}[SCOPE +${state.scopeDrift.driftPercentage}%]${reset} ${dim}${shortMsg}${reset}`));
   }
 
   // Show if files changed since last analysis
@@ -500,7 +526,9 @@ function drawUI(state: TUIState, projectPath: string): string {
 
   lines.push(emptyRow());
   lines.push(`${cyan}╠${hLine}╣${reset}`);
-  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[x]${reset} Decline  ${dim}[e]${reset} Example  ${dim}[d]${reset} Validate Docs  ${dim}[r]${reset} Analyze  ${dim}[v]${reset} Verify  ${dim}[?]${reset} Help  ${dim}[q]${reset} Quit`));
+  // Two-row menu to fit within width
+  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[x]${reset} Decline  ${dim}[e]${reset} Example  ${dim}[d]${reset} Docs  ${dim}[r]${reset} Analyze  ${dim}[v]${reset} Verify`));
+  lines.push(row(`${dim}[l]${reset} Level  ${dim}[h]${reset} Hotfix  ${dim}[k]${reset} Cleanup  ${dim}[?]${reset} Help  ${dim}[q]${reset} Quit`));
   lines.push(`${cyan}╚${hLine}╝${reset}`);
 
   return lines.join('\n');
