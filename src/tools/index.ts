@@ -114,3 +114,15 @@ export {
   showExampleSchema,
   listExamples,
 } from './examples.js';
+
+// Document validation - quality gates for planning docs
+export {
+  validateBrainlift,
+  validateBrainliftSchema,
+  validatePRD,
+  validatePRDSchema,
+  validateGameplan,
+  validateGameplanSchema,
+  validatePlanningDocs,
+  validatePlanningDocsSchema,
+} from './validate-docs.js';

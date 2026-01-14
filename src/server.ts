@@ -80,6 +80,15 @@ import {
   // Examples
   showExample,
   showExampleSchema,
+  // Document validation
+  validateBrainlift,
+  validateBrainliftSchema,
+  validatePRD,
+  validatePRDSchema,
+  validateGameplan,
+  validateGameplanSchema,
+  validatePlanningDocs,
+  validatePlanningDocsSchema,
 } from './tools/index.js';
 import { registerAllPrompts } from './prompts/index.js';
 import { registerAllResources } from './resources/index.js';
@@ -415,6 +424,35 @@ export function createServer(): McpServer {
     'Show example document for a planning step (brainlift, prd, gameplan). Helps users understand what good artifacts look like.',
     showExampleSchema.shape,
     wrapTool('midas_show_example', showExample)
+  );
+
+  // Document validation - quality gates for planning docs
+  server.tool(
+    'midas_validate_brainlift',
+    'Validate brainlift.md has required sections: problem, audience, unique context.',
+    validateBrainliftSchema.shape,
+    wrapTool('midas_validate_brainlift', validateBrainlift)
+  );
+
+  server.tool(
+    'midas_validate_prd',
+    'Validate prd.md has required sections: goals, non-goals, requirements.',
+    validatePRDSchema.shape,
+    wrapTool('midas_validate_prd', validatePRD)
+  );
+
+  server.tool(
+    'midas_validate_gameplan',
+    'Validate gameplan.md has required sections: tech stack, ordered tasks.',
+    validateGameplanSchema.shape,
+    wrapTool('midas_validate_gameplan', validateGameplan)
+  );
+
+  server.tool(
+    'midas_validate_planning',
+    'Validate all planning docs. Returns overall score and blockers. Use before advancing from PLAN to BUILD.',
+    validatePlanningDocsSchema.shape,
+    wrapTool('midas_validate_planning', validatePlanningDocs)
   );
 
   // Register prompts
