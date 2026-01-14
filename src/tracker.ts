@@ -456,6 +456,77 @@ export function getSuggestionAcceptanceRate(projectPath: string): number {
   return Math.round((accepted / recent.length) * 100);
 }
 
+/**
+ * Get weekly summary of suggestion patterns
+ */
+export interface WeeklySummary {
+  totalSuggestions: number;
+  accepted: number;
+  declined: number;
+  acceptanceRate: number;
+  topDeclineReasons: string[];
+  patternsToAvoid: string[];
+}
+
+export function getWeeklySummary(projectPath: string): WeeklySummary {
+  const safePath = sanitizePath(projectPath);
+  const tracker = loadTracker(safePath);
+  
+  // Get suggestions from last 7 days
+  const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const weekSuggestions = tracker.suggestionHistory.filter(s => s.timestamp > oneWeekAgo);
+  
+  const accepted = weekSuggestions.filter(s => s.accepted).length;
+  const declined = weekSuggestions.filter(s => !s.accepted && s.rejectionReason).length;
+  
+  // Count decline reasons
+  const reasonCounts: Record<string, number> = {};
+  for (const s of weekSuggestions) {
+    if (!s.accepted && s.rejectionReason) {
+      const reason = s.rejectionReason.toLowerCase();
+      // Categorize reasons
+      if (reason.includes('already') || reason.includes('exist')) {
+        reasonCounts['Already exists'] = (reasonCounts['Already exists'] || 0) + 1;
+      } else if (reason.includes('wrong') || reason.includes('incorrect')) {
+        reasonCounts['Wrong approach'] = (reasonCounts['Wrong approach'] || 0) + 1;
+      } else if (reason.includes('scope') || reason.includes('later')) {
+        reasonCounts['Out of scope'] = (reasonCounts['Out of scope'] || 0) + 1;
+      } else if (reason.includes('irrelevant') || reason.includes('not needed')) {
+        reasonCounts['Not relevant'] = (reasonCounts['Not relevant'] || 0) + 1;
+      } else {
+        reasonCounts['Other'] = (reasonCounts['Other'] || 0) + 1;
+      }
+    }
+  }
+  
+  // Sort reasons by count
+  const topDeclineReasons = Object.entries(reasonCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([reason, count]) => `${reason} (${count})`);
+  
+  // Generate patterns to avoid
+  const patternsToAvoid: string[] = [];
+  if (reasonCounts['Already exists'] > 2) {
+    patternsToAvoid.push('Check for existing code before suggesting implementations');
+  }
+  if (reasonCounts['Out of scope'] > 2) {
+    patternsToAvoid.push('Focus on current phase tasks, not future features');
+  }
+  if (reasonCounts['Not relevant'] > 2) {
+    patternsToAvoid.push('Consider project type when suggesting steps');
+  }
+  
+  return {
+    totalSuggestions: weekSuggestions.length,
+    accepted,
+    declined,
+    acceptanceRate: weekSuggestions.length > 0 ? Math.round((accepted / weekSuggestions.length) * 100) : 0,
+    topDeclineReasons,
+    patternsToAvoid,
+  };
+}
+
 // ============================================================================
 // FILE CHANGE DETECTION
 // ============================================================================

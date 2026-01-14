@@ -3,6 +3,7 @@ import { startProject } from './tools/phase.js';
 import { audit } from './tools/audit.js';
 import { checkDocs } from './tools/docs.js';
 import { loadMetrics } from './metrics.js';
+import { getWeeklySummary } from './tracker.js';
 
 // ANSI colors
 const reset = '\x1b[0m';
@@ -45,6 +46,7 @@ ${bold}Usage:${reset}
   npx midas-mcp init -e      Analyze existing project and infer phase
   npx midas-mcp audit        Audit project against 12 ingredients
   npx midas-mcp docs         Check planning docs completeness
+  npx midas-mcp weekly       Show weekly summary of suggestion patterns
   npx midas-mcp server       Start MCP server (for Cursor integration)
   npx midas-mcp help         Show this help
 
@@ -415,6 +417,46 @@ export function showMetrics(): void {
   console.log('');
 }
 
+export function showWeeklySummary(): void {
+  const projectPath = process.cwd();
+  const summary = getWeeklySummary(projectPath);
+  
+  console.log(`\n${bold}${cyan}WEEKLY SUMMARY${reset}\n`);
+  
+  if (summary.totalSuggestions === 0) {
+    console.log(`  ${dim}No suggestions recorded this week.${reset}`);
+    console.log(`  ${dim}Run 'midas-mcp' and analyze your project to get started.${reset}\n`);
+    return;
+  }
+  
+  // Stats
+  console.log(box([
+    `${bold}Suggestions${reset}`,
+    `  Total: ${summary.totalSuggestions}`,
+    `  Accepted: ${green}${summary.accepted}${reset}`,
+    `  Declined: ${summary.declined > 0 ? yellow : dim}${summary.declined}${reset}`,
+    `  Rate: ${summary.acceptanceRate >= 70 ? green : summary.acceptanceRate >= 50 ? yellow : dim}${summary.acceptanceRate}%${reset}`,
+  ].join('\n'), 40));
+  
+  // Decline reasons
+  if (summary.topDeclineReasons.length > 0) {
+    console.log(`\n${bold}Top Decline Reasons:${reset}`);
+    for (const reason of summary.topDeclineReasons) {
+      console.log(`  ${dim}-${reset} ${reason}`);
+    }
+  }
+  
+  // Patterns to avoid
+  if (summary.patternsToAvoid.length > 0) {
+    console.log(`\n${bold}Patterns to Improve:${reset}`);
+    for (const pattern of summary.patternsToAvoid) {
+      console.log(`  ${yellow}!${reset} ${pattern}`);
+    }
+  }
+  
+  console.log('');
+}
+
 export function runCLI(args: string[]): 'interactive' | 'server' | 'handled' {
   const command = args[0];
 
@@ -449,6 +491,10 @@ export function runCLI(args: string[]): 'interactive' | 'server' | 'handled' {
 
     case 'metrics':
       showMetrics();
+      return 'handled';
+
+    case 'weekly':
+      showWeeklySummary();
       return 'handled';
 
     case 'server':

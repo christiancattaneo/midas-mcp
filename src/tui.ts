@@ -632,11 +632,31 @@ export async function runInteractive(): Promise<void> {
       tuiState.analysis = await Promise.race([analysisPromise, timeoutPromise]);
       if (timeoutId) clearTimeout(timeoutId);
       
-      // Save phase to state
+      // Save phase to state and check for milestones
       if (tuiState.analysis.currentPhase) {
         const state = loadState(projectPath);
+        const previousPhase = state.current;
         state.current = tuiState.analysis.currentPhase;
         saveState(projectPath, state);
+        
+        // Check for phase completion milestone
+        const newPhase = tuiState.analysis.currentPhase;
+        if ('phase' in previousPhase && 'phase' in newPhase) {
+          if (previousPhase.phase !== newPhase.phase) {
+            // Phase changed - show milestone message
+            const milestones: Record<string, string> = {
+              'PLAN': `${green}MILESTONE${reset} Planning complete. Ready to build!`,
+              'BUILD': `${green}MILESTONE${reset} Build complete. Time to ship!`,
+              'SHIP': `${green}MILESTONE${reset} Shipped! Now collect feedback and grow.`,
+              'GROW': `${green}MILESTONE${reset} Growth cycle started. Monitor and iterate.`,
+            };
+            const milestone = milestones[newPhase.phase];
+            if (milestone) {
+              tuiState.message = milestone;
+              recordPhaseChange(projectPath, newPhase);
+            }
+          }
+        }
       }
       
       // Get smart suggestion and gates status
