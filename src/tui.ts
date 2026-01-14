@@ -19,6 +19,7 @@ import {
   getSuggestionAcceptanceRate,
 } from './tracker.js';
 import { getJournalEntries } from './tools/journal.js';
+import { showExample } from './tools/examples.js';
 import { startSession, endSession, recordPromptCopied, recordPhaseChange, loadMetrics } from './metrics.js';
 
 // ANSI codes
@@ -465,7 +466,7 @@ function drawUI(state: TUIState, _projectPath: string): string {
 
   lines.push(emptyRow());
   lines.push(`${cyan}╠${hLine}╣${reset}`);
-  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[x]${reset} Decline  ${dim}[r]${reset} Analyze  ${dim}[v]${reset} Verify  ${dim}[?]${reset} Help  ${dim}[q]${reset} Quit`));
+  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[x]${reset} Decline  ${dim}[e]${reset} Example  ${dim}[r]${reset} Analyze  ${dim}[v]${reset} Verify  ${dim}[?]${reset} Help  ${dim}[q]${reset} Quit`));
   lines.push(`${cyan}╚${hLine}╝${reset}`);
 
   return lines.join('\n');
@@ -963,6 +964,23 @@ export async function runInteractive(): Promise<void> {
 
     if (key === 'r') {
       await runAnalysis();
+    }
+
+    if (key === 'e') {
+      // Show example for current step
+      const phase = tuiState.analysis?.currentPhase || loadState(projectPath).current;
+      const step = 'step' in phase ? phase.step : 'BRAINLIFT';
+      const example = showExample({ step, projectPath });
+      
+      // Copy example summary to clipboard, show message
+      try {
+        await copyToClipboard(example.content);
+        tuiState.message = `${green}OK${reset} ${example.exampleFile} copied! (${example.summary.slice(0, 40)}...)`;
+      } catch {
+        tuiState.message = `${yellow}!${reset} Example for ${step}: see docs/examples/${example.exampleFile}`;
+      }
+      render();
+      return;
     }
 
     if (key === '?') {
