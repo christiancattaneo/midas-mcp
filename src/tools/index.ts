@@ -146,3 +146,13 @@ export {
   getCleanupSuggestion,
   getCleanupSuggestionSchema,
 } from './cleanup.js';
+
+// Project type detection and scope tracking
+export {
+  detectProjectType,
+  detectProjectTypeSchema,
+  checkScopeCreep,
+  checkScopeCreepSchema,
+  setScopeBaseline,
+  setScopeBaselineSchema,
+} from './scope.js';

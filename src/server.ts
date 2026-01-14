@@ -103,6 +103,13 @@ import {
   scanDebtSchema,
   getCleanupSuggestion,
   getCleanupSuggestionSchema,
+  // Project type and scope tracking
+  detectProjectType,
+  detectProjectTypeSchema,
+  checkScopeCreep,
+  checkScopeCreepSchema,
+  setScopeBaseline,
+  setScopeBaselineSchema,
 } from './tools/index.js';
 import { registerAllPrompts } from './prompts/index.js';
 import { registerAllResources } from './resources/index.js';
@@ -511,6 +518,28 @@ export function createServer(): McpServer {
     'Get a cleanup-focused suggestion for refactoring (not feature building).',
     getCleanupSuggestionSchema.shape,
     wrapTool('midas_cleanup_suggestion', getCleanupSuggestion)
+  );
+
+  // Project type detection and scope tracking
+  server.tool(
+    'midas_detect_project_type',
+    'Detect project type (cli, library, web-app, api, mobile) from config files.',
+    detectProjectTypeSchema.shape,
+    wrapTool('midas_detect_project_type', detectProjectType)
+  );
+
+  server.tool(
+    'midas_check_scope_creep',
+    'Check if project scope has grown beyond initial PRD baseline.',
+    checkScopeCreepSchema.shape,
+    wrapTool('midas_check_scope_creep', checkScopeCreep)
+  );
+
+  server.tool(
+    'midas_set_scope_baseline',
+    'Set current project size as the baseline for scope tracking.',
+    setScopeBaselineSchema.shape,
+    wrapTool('midas_set_scope_baseline', setScopeBaseline)
   );
 
   // Register prompts

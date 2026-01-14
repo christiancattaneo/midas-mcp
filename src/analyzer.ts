@@ -1,4 +1,4 @@
-import { getApiKey, getActiveProvider } from './config.js';
+import { getApiKey, getActiveProvider, getSkillLevel, type SkillLevel } from './config.js';
 import { chat, getProviderCapabilities, getCurrentModel } from './providers.js';
 import { readdirSync, readFileSync, existsSync } from 'fs';
 import { join, extname } from 'path';
@@ -9,6 +9,53 @@ import { getJournalEntries } from './tools/journal.js';
 import { sanitizePath, limitLength, LIMITS } from './security.js';
 import { logger } from './logger.js';
 import { buildCompressedContext, contextToString, estimateTokens } from './context.js';
+
+// ============================================================================
+// SKILL LEVEL ADAPTERS
+// ============================================================================
+
+/**
+ * Get skill-specific prompt suffix based on user level
+ */
+function getSkillPromptSuffix(skillLevel: SkillLevel): string {
+  switch (skillLevel) {
+    case 'beginner':
+      return `
+
+## SKILL LEVEL: BEGINNER
+When generating suggestedPrompt:
+- Be VERBOSE - explain what to do AND why
+- Include command examples with explanations
+- Break complex tasks into smaller steps
+- Add context about what files/tools will be used
+- Explain any jargon or technical terms
+Example format: "Create a test file for the auth module. Tests go in src/tests/. Use 'describe' blocks to group related tests. Start with a simple test that checks if the module exports correctly."`;
+    
+    case 'advanced':
+      return `
+
+## SKILL LEVEL: ADVANCED
+When generating suggestedPrompt:
+- Be TERSE - assume deep technical knowledge
+- Skip obvious steps (setup, imports, boilerplate)
+- Focus on edge cases and optimization
+- Reference patterns by name without explanation
+- Use technical shorthand
+Example format: "Add property-based tests for auth edge cases. Cover: token expiry, concurrent sessions, CSRF vectors."`;
+    
+    case 'intermediate':
+    default:
+      return `
+
+## SKILL LEVEL: INTERMEDIATE
+When generating suggestedPrompt:
+- Balance detail with conciseness
+- Include key steps but skip obvious ones
+- Mention tools/patterns by name
+- Focus on the "what" and "how" - assume basic "why" is understood
+Example format: "Write integration tests for the API endpoints. Cover happy path, validation errors, and auth failures."`;
+  }
+}
 
 // ============================================================================
 // AI PROVIDER ABSTRACTION
@@ -420,7 +467,7 @@ Respond ONLY with valid JSON matching this schema:
   "whatsNext": "specific next action description",
   "suggestedPrompt": "exact actionable prompt for Cursor",
   "confidence": 0-100
-}`;
+}${getSkillPromptSuffix(getSkillLevel())}`;
 
   // USER PROMPT - Minimal, dynamic content only (NOT cached)
   const userPrompt = `# CURRENT PROJECT STATE
