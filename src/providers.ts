@@ -63,7 +63,15 @@ const PROVIDER_CONFIGS = {
 } as const;
 
 /**
+ * Sleep helper for retry backoff
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
  * Main chat function - routes to appropriate provider
+ * Includes retry logic for rate limiting (429) and overload (529)
  */
 export async function chat(prompt: string, options: ChatOptions = {}): Promise<ChatResponse> {
   const provider = getActiveProvider();
@@ -74,25 +82,56 @@ export async function chat(prompt: string, options: ChatOptions = {}): Promise<C
   }
   
   const timeout = options.timeout ?? 60000;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  const maxRetries = 3;
+  let lastError: Error | null = null;
   
-  try {
-    switch (provider) {
-      case 'anthropic':
-        return await chatAnthropic(apiKey, prompt, options, controller.signal);
-      case 'openai':
-        return await chatOpenAI(apiKey, prompt, options, controller.signal);
-      case 'google':
-        return await chatGoogle(apiKey, prompt, options, controller.signal);
-      case 'xai':
-        return await chatXAI(apiKey, prompt, options, controller.signal);
-      default:
-        throw new Error(`Unsupported provider: ${provider}`);
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    try {
+      let result: ChatResponse;
+      switch (provider) {
+        case 'anthropic':
+          result = await chatAnthropic(apiKey, prompt, options, controller.signal);
+          break;
+        case 'openai':
+          result = await chatOpenAI(apiKey, prompt, options, controller.signal);
+          break;
+        case 'google':
+          result = await chatGoogle(apiKey, prompt, options, controller.signal);
+          break;
+        case 'xai':
+          result = await chatXAI(apiKey, prompt, options, controller.signal);
+          break;
+        default:
+          throw new Error(`Unsupported provider: ${provider}`);
+      }
+      clearTimeout(timeoutId);
+      return result;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      lastError = error instanceof Error ? error : new Error(String(error));
+      
+      // Retry on rate limit (429) or overload (529)
+      const isRetryable = lastError.message.includes('Rate limited') || 
+                          lastError.message.includes('overloaded') ||
+                          lastError.message.includes('429') ||
+                          lastError.message.includes('529');
+      
+      if (isRetryable && attempt < maxRetries - 1) {
+        // Exponential backoff: 2s, 4s, 8s
+        const backoffMs = Math.pow(2, attempt + 1) * 1000;
+        logger.info(`Rate limited, retrying in ${backoffMs/1000}s (attempt ${attempt + 1}/${maxRetries})`);
+        await sleep(backoffMs);
+        continue;
+      }
+      
+      throw lastError;
     }
-  } finally {
-    clearTimeout(timeoutId);
   }
+  
+  throw lastError || new Error('Chat failed after retries');
 }
 
 /**
@@ -152,7 +191,17 @@ async function chatAnthropic(
   
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`Anthropic API error: ${response.status} - ${error}`);
+    // Handle specific error codes
+    if (response.status === 429) {
+      throw new Error(`Rate limited by Anthropic. Wait a moment and try again. Details: ${error}`);
+    }
+    if (response.status === 401) {
+      throw new Error(`Invalid API key for Anthropic. Check your ~/.midas/config.json`);
+    }
+    if (response.status === 529) {
+      throw new Error(`Anthropic API overloaded. Try again in a few seconds.`);
+    }
+    throw new Error(`Anthropic API error (${response.status}): ${error.slice(0, 200)}`);
   }
   
   const data = await response.json() as {

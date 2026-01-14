@@ -601,9 +601,21 @@ export async function runInteractive(): Promise<void> {
       
     } catch (error) {
       if (timeoutId) clearTimeout(timeoutId);
-      const msg = error instanceof Error && error.message === 'Analysis timeout'
-        ? 'Analysis timed out. Project may be too large.'
-        : 'Analysis failed. Check API key.';
+      let msg = 'Analysis failed. Check API key.';
+      if (error instanceof Error) {
+        if (error.message === 'Analysis timeout') {
+          msg = 'Analysis timed out. Project may be too large.';
+        } else if (error.message.includes('Rate limited')) {
+          msg = 'Rate limited. Wait a moment and try again.';
+        } else if (error.message.includes('Invalid API key')) {
+          msg = 'Invalid API key. Check ~/.midas/config.json';
+        } else if (error.message.includes('overloaded')) {
+          msg = 'API overloaded. Try again in a few seconds.';
+        } else {
+          // Show the actual error for debugging
+          msg = error.message.slice(0, 60);
+        }
+      }
       tuiState.message = `${red}!${reset} ${msg}`;
     }
     
