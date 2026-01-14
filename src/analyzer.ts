@@ -458,16 +458,20 @@ WHY: "Works on my machine" isn't deployment. Production has constraints, users, 
 
 CRITICAL: Analyze the actual project config to determine deployment. Don't assume Docker - many projects deploy to package registries.
 
-### GROW (Iteration Phase)
-Steps: MONITOR → COLLECT → TRIAGE → RETROSPECT → PLAN_NEXT → LOOP
-Purpose: Learn from production and improve.
-WHY: Version 1 is never right. Growth comes from learning what users actually do, not what you imagined.
-- MONITOR: Track error rates, performance, engagement (WHY: Real load reveals real problems)
-- COLLECT: Gather user feedback, bug reports (WHY: Users have needs they can't articulate)
-- TRIAGE: Prioritize by impact/effort (WHY: Everything can't be priority 1)
-- RETROSPECT: What worked, what didn't (WHY: Teams repeat mistakes they don't acknowledge)
-- PLAN_NEXT: Define next iteration scope (WHY: Unbounded work never ships)
-- LOOP: Return to PLAN with new context (WHY: Each cycle teaches you something. Carry it forward)
+### GROW (Graduation Phase)
+Step: DONE (single step - project is shipped!)
+Purpose: Celebrate and grow usage. The coding is done; now it's time for human actions.
+WHY: Most projects die after launch. Growth requires deliberate effort outside the codebase.
+
+The GROW phase is a graduation checklist, not a coached phase:
+1. ANNOUNCE - Post to 3 communities (Reddit, Discord, Twitter, Hacker News)
+2. NETWORK - DM 10 people who would find this useful
+3. FEEDBACK - Ask 5 users: what's confusing? what's missing?
+4. PROOF - Get 3 testimonials, screenshot your metrics
+5. ITERATE - Ship one improvement based on feedback
+6. CONTENT - Write "what I learned building X" post
+
+When user is in GROW, congratulate them and remind them of the checklist. Use 'n' to start a new cycle.
 
 ## Key Rules:
 1. GATES MUST PASS: Build, tests, and lint must pass before advancing

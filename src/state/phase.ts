@@ -23,13 +23,7 @@ export type ShipStep =
   | 'DEPLOY'
   | 'MONITOR';
 
-export type GrowStep =
-  | 'MONITOR'      // Track error rates, performance, engagement
-  | 'COLLECT'      // Gather user feedback, bug reports, reviews
-  | 'TRIAGE'       // Prioritize by impact/effort
-  | 'RETROSPECT'   // What worked, what didn't
-  | 'PLAN_NEXT'    // Define next iteration scope
-  | 'LOOP';        // Return to PLAN with new context
+export type GrowStep = 'DONE';  // Graduation - project shipped, here's what's next
 
 export type Phase =
   | { phase: 'IDLE' }
@@ -155,18 +149,27 @@ export const PHASE_INFO = {
     },
   },
   GROW: {
-    name: 'Grow',
-    description: 'Learn from production and iterate',
-    why: 'Version 1 is never right. Growth comes from learning what users actually do, not what you imagined.',
+    name: 'Done',
+    description: 'You shipped! Now grow your project.',
+    why: 'Code is done. Time to get users, feedback, and traction.',
     color: 'magenta',
     steps: {
-      MONITOR: { name: 'Monitor', action: 'Track production health', prompt: 'Error rates, latency, uptime, resource usage', why: 'Real load reveals real problems. Continuous monitoring catches degradation before failure.' },
-      COLLECT: { name: 'Collect', action: 'Gather feedback', prompt: 'User reviews, bug reports, feature requests, analytics', why: 'Users have needs they can\'t articulate. Collecting all signals gives the full picture.' },
-      TRIAGE: { name: 'Triage', action: 'Prioritize issues', prompt: 'Impact vs effort matrix, quick wins, critical bugs', why: 'Everything can\'t be priority 1. Fix the right things first, not whatever\'s loudest.' },
-      RETROSPECT: { name: 'Retrospect', action: 'Review the cycle', prompt: 'What worked? What broke? What surprised us?', why: 'Teams repeat mistakes they don\'t acknowledge. Retrospectives surface lessons.' },
-      PLAN_NEXT: { name: 'Plan Next', action: 'Scope next iteration', prompt: 'Define hypothesis, success metrics, scope boundaries', why: 'Unbounded work never ships. Defining scope creates a finish line.' },
-      LOOP: { name: 'Loop', action: 'Return to Plan', prompt: 'Carry context forward, update brainlift, start new cycle', why: 'Each cycle teaches you something. Carry context forward so v2 builds on v1\'s lessons.' },
+      DONE: { 
+        name: 'Shipped', 
+        action: 'Follow the graduation checklist', 
+        prompt: 'You built something. Now make people use it.',
+        why: 'Most projects die after launch. Growth requires deliberate effort outside the codebase.',
+      },
     },
+    // The 6-step graduation checklist (external actions, not AI-driven)
+    checklist: [
+      { key: 'ANNOUNCE', name: 'Announce', action: 'Post to 3 communities', detail: 'Reddit, Discord, Twitter, Hacker News, Product Hunt - wherever your users hang out' },
+      { key: 'NETWORK', name: 'Network', action: 'DM 10 people who would find this useful', detail: 'Personal outreach converts 10x better than public posts' },
+      { key: 'FEEDBACK', name: 'Feedback', action: 'Ask 5 users: what\'s confusing? what\'s missing?', detail: 'Real users reveal blind spots you can\'t see' },
+      { key: 'PROOF', name: 'Proof', action: 'Get 3 testimonials, screenshot your metrics', detail: 'Social proof compounds - collect it early' },
+      { key: 'ITERATE', name: 'Iterate', action: 'Ship one improvement based on feedback', detail: 'Show users you listen - fastest way to build loyalty' },
+      { key: 'CONTENT', name: 'Content', action: 'Write "what I learned building X" post', detail: 'Teaching builds authority and attracts users who trust you' },
+    ],
   },
 };
 
@@ -211,12 +214,7 @@ export function getNextPhase(current: Phase): Phase {
     { phase: 'SHIP', step: 'REVIEW' },
     { phase: 'SHIP', step: 'DEPLOY' },
     { phase: 'SHIP', step: 'MONITOR' },
-    { phase: 'GROW', step: 'MONITOR' },
-    { phase: 'GROW', step: 'COLLECT' },
-    { phase: 'GROW', step: 'TRIAGE' },
-    { phase: 'GROW', step: 'RETROSPECT' },
-    { phase: 'GROW', step: 'PLAN_NEXT' },
-    { phase: 'GROW', step: 'LOOP' },
+    { phase: 'GROW', step: 'DONE' },  // Single graduation step
   ];
 
   if (current.phase === 'IDLE') {
@@ -259,12 +257,7 @@ export function getPrevPhase(current: Phase): Phase {
     { phase: 'SHIP', step: 'REVIEW' },
     { phase: 'SHIP', step: 'DEPLOY' },
     { phase: 'SHIP', step: 'MONITOR' },
-    { phase: 'GROW', step: 'MONITOR' },
-    { phase: 'GROW', step: 'COLLECT' },
-    { phase: 'GROW', step: 'TRIAGE' },
-    { phase: 'GROW', step: 'RETROSPECT' },
-    { phase: 'GROW', step: 'PLAN_NEXT' },
-    { phase: 'GROW', step: 'LOOP' },
+    { phase: 'GROW', step: 'DONE' },  // Single graduation step
   ];
 
   if (current.phase === 'IDLE') return { phase: 'IDLE' };
@@ -283,4 +276,36 @@ export function getPrevPhase(current: Phase): Phase {
   if (prev.phase === 'GROW') return { phase: 'GROW', step: prev.step as GrowStep };
   
   return current;
+}
+
+// Graduation checklist type
+export interface GraduationItem {
+  key: string;
+  name: string;
+  action: string;
+  detail: string;
+}
+
+/**
+ * Get the graduation checklist for projects that have shipped
+ */
+export function getGraduationChecklist(): GraduationItem[] {
+  const growInfo = PHASE_INFO.GROW as { checklist?: GraduationItem[] };
+  return growInfo.checklist || [];
+}
+
+/**
+ * Format the graduation checklist as copyable text
+ */
+export function formatGraduationChecklist(): string {
+  const items = getGraduationChecklist();
+  const lines = [
+    '🎉 YOU SHIPPED! Now grow your project:',
+    '',
+    ...items.map((item, i) => `${i + 1}. ${item.name.toUpperCase()} - ${item.action}`),
+    '',
+    'Details:',
+    ...items.map(item => `• ${item.name}: ${item.detail}`),
+  ];
+  return lines.join('\n');
 }

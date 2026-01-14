@@ -99,11 +99,11 @@ describe('Phase State Machine', () => {
 
     it('transitions from SHIP to GROW', () => {
       const next = getNextPhase({ phase: 'SHIP', step: 'MONITOR' });
-      assert.deepStrictEqual(next, { phase: 'GROW', step: 'MONITOR' });
+      assert.deepStrictEqual(next, { phase: 'GROW', step: 'DONE' });
     });
 
     it('loops back to EAGLE_SIGHT from GROW', () => {
-      const next = getNextPhase({ phase: 'GROW', step: 'LOOP' });
+      const next = getNextPhase({ phase: 'GROW', step: 'DONE' });
       assert.deepStrictEqual(next, { phase: 'EAGLE_SIGHT', step: 'IDEA' });
     });
   });

@@ -128,29 +128,9 @@ export function suggestPrompt(input: SuggestPromptInput): PromptSuggestion {
       },
     },
     GROW: {
-      MONITOR: {
-        prompt: 'Review production health: error rates, latency, uptime, resource usage. What needs immediate attention?',
-        explanation: 'Track production health and stability.',
-      },
-      COLLECT: {
-        prompt: 'Analyze user feedback from reviews, bug reports, and feature requests. Identify patterns and prioritize issues.',
-        explanation: 'Gather and categorize user feedback.',
-      },
-      TRIAGE: {
-        prompt: 'Prioritize issues by impact vs effort. Categorize into: P0 (critical), P1 (high), P2 (medium), P3 (backlog).',
-        explanation: 'Sort issues by priority for next sprint.',
-      },
-      RETROSPECT: {
-        prompt: 'Sprint retrospective: What worked well? What didn\'t work? What surprised us? Define one START, STOP, CONTINUE action.',
-        explanation: 'Reflect on the cycle to improve process.',
-      },
-      PLAN_NEXT: {
-        prompt: 'Plan next cycle: Define hypothesis, scope (in/out), success metrics. What\'s the minimum viable version?',
-        explanation: 'Scope the next iteration clearly.',
-      },
-      LOOP: {
-        prompt: 'Prepare handoff: Document learnings, update brainlift with new context, carry forward unresolved issues.',
-        explanation: 'Return to PLAN phase with accumulated knowledge.',
+      DONE: {
+        prompt: 'You shipped! Follow the graduation checklist: 1) ANNOUNCE to 3 communities, 2) NETWORK with 10 potential users, 3) FEEDBACK from 5 real users, 4) PROOF via testimonials, 5) ITERATE on feedback, 6) CONTENT to build authority.',
+        explanation: 'Project is shipped. Time to grow usage with deliberate external actions.',
       },
     },
   };

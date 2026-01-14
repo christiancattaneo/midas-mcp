@@ -391,7 +391,7 @@ export function saveRetrospective(input: RetrospectiveInput): {
       id: `retro-${Date.now()}`,
       title: `Retrospective ${timestamp.slice(0, 10)}`,
       timestamp,
-      phase: 'GROW:RETROSPECT',
+      phase: 'GROW:DONE',
       conversation: `## What Worked\n${input.worked}\n\n## What Didn't Work\n${input.didntWork}\n\n## What We Learned\n${input.learned}\n\n## Action Items\n${input.actions || 'None specified'}`,
       tags: ['retrospective', 'grow'],
     };

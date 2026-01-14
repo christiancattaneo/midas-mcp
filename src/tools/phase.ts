@@ -20,7 +20,7 @@ import { writeCursorRules, detectTechStack } from '../techstack.js';
 const EAGLE_SIGHT_STEPS = ['IDEA', 'RESEARCH', 'BRAINLIFT', 'PRD', 'GAMEPLAN'] as const;
 const BUILD_STEPS = ['RULES', 'INDEX', 'READ', 'RESEARCH', 'IMPLEMENT', 'TEST', 'DEBUG'] as const;
 const SHIP_STEPS = ['REVIEW', 'DEPLOY', 'MONITOR'] as const;
-const GROW_STEPS = ['FEEDBACK', 'ANALYZE', 'ITERATE'] as const;
+const GROW_STEPS = ['DONE'] as const;  // Single graduation step
 
 // Tool: midas_start_project
 export const startProjectSchema = z.object({

@@ -143,28 +143,12 @@ describe('Prompt Generation System', () => {
   });
 
   describe('GROW prompts', () => {
-    it('COLLECT step gathers user feedback', () => {
-      setPhase(testDir, { phase: 'GROW', step: 'COLLECT' });
+    it('DONE step shows graduation checklist', () => {
+      setPhase(testDir, { phase: 'GROW', step: 'DONE' });
       const result = suggestPrompt({ projectPath: testDir });
       
-      assert.strictEqual(result.prompt.toLowerCase().includes('feedback'), true);
-      assert.strictEqual(result.prompt.toLowerCase().includes('reviews') || result.prompt.toLowerCase().includes('prioritize'), true);
-    });
-
-    it('TRIAGE step prioritizes issues', () => {
-      setPhase(testDir, { phase: 'GROW', step: 'TRIAGE' });
-      const result = suggestPrompt({ projectPath: testDir });
-      
-      assert.strictEqual(result.prompt.toLowerCase().includes('impact'), true);
-      assert.strictEqual(result.prompt.toLowerCase().includes('effort'), true);
-    });
-
-    it('LOOP step returns to PLAN', () => {
-      setPhase(testDir, { phase: 'GROW', step: 'LOOP' });
-      const result = suggestPrompt({ projectPath: testDir });
-      
-      assert.strictEqual(result.prompt.toLowerCase().includes('handoff') || result.prompt.toLowerCase().includes('context'), true);
-      assert.strictEqual(result.prompt.toLowerCase().includes('brainlift'), true);
+      // DONE step should mention the graduation checklist
+      assert.strictEqual(result.prompt.toLowerCase().includes('shipped') || result.prompt.toLowerCase().includes('announce'), true);
     });
   });
 

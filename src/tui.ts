@@ -2,7 +2,7 @@ import { exec } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { createInterface } from 'readline';
-import { loadState, saveState, type Phase, PHASE_INFO } from './state/phase.js';
+import { loadState, saveState, setPhase, type Phase, PHASE_INFO, getGraduationChecklist, formatGraduationChecklist } from './state/phase.js';
 import { hasApiKey, ensureApiKey, getSkillLevel } from './config.js';
 import { logEvent, watchEvents, type MidasEvent } from './events.js';
 import { analyzeProject, analyzeResponse, type ProjectAnalysis } from './analyzer.js';
@@ -390,6 +390,41 @@ function drawUI(state: TUIState, projectPath: string): string {
     lines.push(emptyRow());
     lines.push(`${cyan}╠${hLine}╣${reset}`);
     lines.push(row(`${dim}Press any key to close${reset}`));
+    lines.push(`${cyan}╚${hLine}╝${reset}`);
+    return lines.join('\n');
+  }
+
+  // GRADUATION SCREEN - Show when in GROW phase
+  if (state.analysis?.currentPhase?.phase === 'GROW') {
+    lines.push(emptyRow());
+    
+    // Celebration header
+    lines.push(row(`${bold}${green}YOU SHIPPED!${reset}`));
+    lines.push(emptyRow());
+    
+    // Phase completion bar - all done
+    lines.push(row(`${green}[x]${reset} Plan  ${green}[x]${reset} Build  ${green}[x]${reset} Ship  ${green}[x]${reset} ${bold}DONE${reset}`));
+    lines.push(emptyRow());
+    
+    lines.push(`${cyan}╠${hLine}╣${reset}`);
+    lines.push(row(`${bold}Now grow your project:${reset}`));
+    lines.push(emptyRow());
+    
+    // Show the 6-step graduation checklist
+    const checklist = getGraduationChecklist();
+    for (let i = 0; i < checklist.length; i++) {
+      const item = checklist[i];
+      lines.push(row(`${yellow}${i + 1}.${reset} ${bold}${item.name.toUpperCase()}${reset} - ${item.action}`));
+    }
+    
+    lines.push(emptyRow());
+    lines.push(`${cyan}╠${hLine}╣${reset}`);
+    lines.push(row(`${dim}Ready for v2? Start a new development cycle.${reset}`));
+    lines.push(emptyRow());
+    
+    // Menu bar for graduation screen
+    lines.push(`${cyan}╠${hLine}╣${reset}`);
+    lines.push(row(`${dim}[n]${reset} New Cycle  ${dim}[c]${reset} Copy Checklist  ${dim}[i]${reset} Info  ${dim}[?]${reset} Help  ${dim}[q]${reset} Quit`));
     lines.push(`${cyan}╚${hLine}╝${reset}`);
     return lines.join('\n');
   }
@@ -1044,6 +1079,21 @@ export async function runInteractive(): Promise<void> {
       }
 
     if (key === 'c') {
+      // In GROW phase, copy the graduation checklist
+      if (tuiState.analysis?.currentPhase?.phase === 'GROW') {
+        try {
+          const checklist = formatGraduationChecklist();
+          await copyToClipboard(checklist);
+          tuiState.message = `${green}OK${reset} Graduation checklist copied!`;
+          logEvent(projectPath, { type: 'prompt_copied', message: 'Graduation checklist copied' });
+        } catch {
+          tuiState.message = `${yellow}!${reset} Could not copy.`;
+        }
+        render();
+        return;
+      }
+      
+      // Normal mode: copy suggested prompt
       if (tuiState.analysis?.suggestedPrompt) {
         try {
           await copyToClipboard(tuiState.analysis.suggestedPrompt);
@@ -1057,6 +1107,35 @@ export async function runInteractive(): Promise<void> {
         tuiState.message = `${yellow}!${reset} No prompt to copy.`;
       }
       render();
+    }
+    
+    if (key === 'n') {
+      // Start a new development cycle (return to PLAN → IDEA)
+      if (tuiState.analysis?.currentPhase?.phase === 'GROW') {
+        try {
+          // Save current cycle to journal
+          const journalTitle = 'Cycle complete - starting v2';
+          saveToJournal({
+            projectPath,
+            title: journalTitle,
+            conversation: `Completed development cycle. Starting new cycle for v2.`,
+            tags: ['cycle-complete', 'milestone'],
+          });
+          
+          // Reset to PLAN phase
+          setPhase(projectPath, { phase: 'EAGLE_SIGHT', step: 'IDEA' });
+          tuiState.message = `${green}OK${reset} New cycle started! Back to PLAN phase.`;
+          
+          // Re-analyze to get new suggestions
+          await runAnalysis();
+        } catch {
+          tuiState.message = `${red}!${reset} Could not start new cycle.`;
+          render();
+        }
+      } else {
+        tuiState.message = `${yellow}!${reset} Finish current phase first.`;
+        render();
+      }
     }
 
     if (key === 'r') {

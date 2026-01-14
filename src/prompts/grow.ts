@@ -1,119 +1,19 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
+/**
+ * GROW phase prompts - focused on the graduation checklist
+ * These help users take action on the 6 growth steps
+ */
 export function registerGrowPrompts(server: McpServer): void {
-  // MONITOR step - Production health tracking
+  // Announce - Help craft launch posts
   server.prompt(
-    'production_health',
-    'Review production health metrics and error rates',
-    { errorLogs: z.string().optional().describe('Paste recent error logs or metrics') },
-    (args) => ({
-      messages: [
-        {
-          role: 'user',
-          content: {
-            type: 'text',
-            text: `Analyze production health:
-
-${args.errorLogs ? `Recent data:\n${args.errorLogs}\n\n---` : ''}
-
-Check:
-1. **Error rates** - What's breaking? Frequency? Patterns?
-2. **Latency** - p50, p95, p99 response times
-3. **Uptime** - Any outages? Duration?
-4. **Resources** - CPU, memory, disk usage trends
-
-For each issue:
-- Severity (critical/high/medium/low)
-- Affected users/requests
-- Recommended action
-
-Output a health report with priorities.`,
-          },
-        },
-      ],
-    })
-  );
-
-  // COLLECT step - Gather feedback
-  server.prompt(
-    'collect_feedback',
-    'Analyze user feedback to identify patterns',
-    { feedback: z.string().describe('User feedback to analyze (paste reviews, comments, tickets)') },
-    (args) => ({
-      messages: [
-        {
-          role: 'user',
-          content: {
-            type: 'text',
-            text: `Analyze this user feedback:
-
-${args.feedback}
-
----
-
-1. **Categorize** each piece:
-   - Bug report
-   - Feature request
-   - UX friction
-   - Performance complaint
-   - Praise
-
-2. **Identify patterns** - Themes appearing multiple times
-
-3. **Extract quotes** - Most impactful user statements
-
-4. **Sentiment** - Overall positive/negative/neutral breakdown
-
-Output a feedback summary with key insights.`,
-          },
-        },
-      ],
-    })
-  );
-
-  // TRIAGE step - Prioritize issues
-  server.prompt(
-    'triage_bugs',
-    'Prioritize bugs and issues by impact and effort',
-    { issues: z.string().describe('List of bugs/issues to triage') },
-    (args) => ({
-      messages: [
-        {
-          role: 'user',
-          content: {
-            type: 'text',
-            text: `Triage these issues:
-
-${args.issues}
-
----
-
-For each issue, determine:
-1. **Impact** (1-5): Users affected, severity, revenue impact
-2. **Effort** (1-5): Complexity, risk, dependencies
-3. **Urgency**: Is it getting worse?
-
-Then categorize:
-- **P0 Critical**: Fix immediately (blocking users, security, data loss)
-- **P1 High**: Fix this sprint (major functionality broken)
-- **P2 Medium**: Schedule soon (degraded experience)
-- **P3 Low**: Backlog (minor annoyance)
-
-Output a prioritized list with recommended order.`,
-          },
-        },
-      ],
-    })
-  );
-
-  // RETROSPECT step - Review the cycle
-  server.prompt(
-    'sprint_retro',
-    'Conduct a sprint/cycle retrospective',
+    'announce_launch',
+    'Craft a launch announcement for your project',
     { 
-      accomplishments: z.string().optional().describe('What was shipped'),
-      issues: z.string().optional().describe('Problems encountered'),
+      projectName: z.string().describe('Name of your project'),
+      oneLiner: z.string().describe('One sentence describing what it does'),
+      platform: z.string().optional().describe('Target platform: reddit, twitter, discord, hackernews, producthunt'),
     },
     (args) => ({
       messages: [
@@ -121,162 +21,231 @@ Output a prioritized list with recommended order.`,
           role: 'user',
           content: {
             type: 'text',
-            text: `Sprint retrospective:
+            text: `Help me announce "${args.projectName}" on ${args.platform || 'social media'}.
 
-${args.accomplishments ? `Shipped:\n${args.accomplishments}\n` : ''}
-${args.issues ? `Issues:\n${args.issues}\n` : ''}
+One-liner: ${args.oneLiner}
+
+Write 3 versions:
+1. **Short** (under 280 chars for Twitter/X)
+2. **Medium** (Reddit/Discord post - 2-3 paragraphs)
+3. **Long** (Hacker News/Product Hunt - full story)
+
+Each version should:
+- Lead with the problem, not the solution
+- Be genuine, not salesy
+- Include a clear call to action
+- Avoid buzzwords and hype
+
+Match the platform's tone and culture.`,
+          },
+        },
+      ],
+    })
+  );
+
+  // Network - Help with outreach messages
+  server.prompt(
+    'outreach_message',
+    'Write a personal outreach message for potential users',
+    {
+      projectName: z.string().describe('Name of your project'),
+      targetPerson: z.string().describe('Who you are reaching out to (role/context)'),
+      connection: z.string().optional().describe('How you know them or why you chose them'),
+    },
+    (args) => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: `Write a personal DM to introduce "${args.projectName}" to ${args.targetPerson}.
+
+${args.connection ? `Connection: ${args.connection}` : ''}
+
+The message should:
+- Be genuinely helpful, not pitchy
+- Acknowledge their time is valuable
+- Explain why you thought of THEM specifically
+- Make it easy to say no
+- Be under 150 words
+
+Write 2 versions: one casual, one more professional.`,
+          },
+        },
+      ],
+    })
+  );
+
+  // Feedback - Help ask good questions
+  server.prompt(
+    'feedback_questions',
+    'Generate questions to ask early users',
+    { projectName: z.string().describe('Name of your project') },
+    (args) => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: `Create a short user feedback script for "${args.projectName}".
+
+Generate 5-7 questions that:
+1. Start with their experience (open-ended)
+2. Identify confusion points
+3. Uncover missing features
+4. Find what they love
+5. End with whether they'd recommend it
+
+Rules:
+- No leading questions
+- No yes/no questions
+- Ask about behavior, not opinions
+- Keep it under 5 minutes total
+
+Also provide 3 follow-up probes for when they give short answers.`,
+          },
+        },
+      ],
+    })
+  );
+
+  // Proof - Help collect and display social proof
+  server.prompt(
+    'testimonial_request',
+    'Write a testimonial request message',
+    {
+      projectName: z.string().describe('Name of your project'),
+      userName: z.string().optional().describe('Name of the user you are asking'),
+    },
+    (args) => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: `Write a message asking ${args.userName || 'a user'} for a testimonial about "${args.projectName}".
+
+The message should:
+- Thank them for using the product
+- Make it easy (suggest 2-3 prompts they can respond to)
+- Offer to write a draft they can edit
+- Ask permission to use their name/photo
+- Be gracious if they decline
+
+Also suggest:
+- Where to display testimonials (landing page, GitHub, etc.)
+- How to screenshot/document usage metrics`,
+          },
+        },
+      ],
+    })
+  );
+
+  // Iterate - Help prioritize feedback
+  server.prompt(
+    'prioritize_feedback',
+    'Turn user feedback into actionable improvements',
+    { feedback: z.string().describe('Raw user feedback to analyze') },
+    (args) => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: `Analyze this user feedback and prioritize improvements:
+
+${args.feedback}
+
 ---
 
-Guide me through:
+1. **Categorize** each piece:
+   - Bug (broken functionality)
+   - UX friction (confusing/hard to use)
+   - Missing feature (requested addition)
+   - Performance (slow/resource issues)
 
-1. **What worked well?**
-   - Processes that helped
-   - Tools that saved time
-   - Team dynamics that clicked
+2. **Identify the ONE thing** to fix first:
+   - Highest impact (affects most users)
+   - Lowest effort (quick win)
+   - Most urgent (blocking adoption)
 
-2. **What didn't work?**
-   - Blockers we hit
-   - Time wasted on
-   - Communication gaps
-
-3. **What surprised us?**
-   - Unexpected wins
-   - Hidden complexity
-   - User behavior we didn't expect
-
-4. **Action items**
-   - One thing to START doing
-   - One thing to STOP doing
-   - One thing to CONTINUE doing
-
-Output concrete action items for next cycle.`,
+3. **Write a specific task** for that improvement:
+   - What exactly to change
+   - How to verify it's fixed
+   - What to ignore for now`,
           },
         },
       ],
     })
   );
 
-  // PLAN_NEXT step - Scope next iteration
+  // Content - Help write about the project
   server.prompt(
-    'plan_next_cycle',
-    'Plan the next development cycle with clear scope',
-    { learnings: z.string().optional().describe('Key learnings from retro') },
+    'write_launch_post',
+    'Write a "what I learned building X" post',
+    {
+      projectName: z.string().describe('Name of your project'),
+      buildTime: z.string().optional().describe('How long it took to build'),
+      techStack: z.string().optional().describe('Main technologies used'),
+    },
     (args) => ({
       messages: [
         {
           role: 'user',
           content: {
             type: 'text',
-            text: `Plan next cycle:
+            text: `Help me write a "What I learned building ${args.projectName}" post.
 
-${args.learnings ? `Learnings:\n${args.learnings}\n\n---` : ''}
+${args.buildTime ? `Build time: ${args.buildTime}` : ''}
+${args.techStack ? `Tech stack: ${args.techStack}` : ''}
 
-Define:
+Create an outline covering:
+1. **The problem** - Why I built this
+2. **The journey** - Key decisions and pivots
+3. **Mistakes** - What I'd do differently
+4. **Wins** - What worked well
+5. **Advice** - For others building similar things
 
-1. **Hypothesis**
-   - What are we testing?
-   - What do we believe will happen?
-   - How will we validate?
+Make it:
+- Honest and vulnerable (not a humble brag)
+- Specific with concrete examples
+- Useful for readers (actionable takeaways)
+- Personal but not navel-gazing
 
-2. **Scope**
-   - Single most important thing to build
-   - Explicit non-goals (what we WON'T do)
-   - Minimum viable version
-
-3. **Success metrics**
-   - How do we measure success?
-   - Target numbers
-   - Timeline
-
-4. **Risks**
-   - What could go wrong?
-   - Mitigation strategies
-   - Kill criteria (when to pivot)
-
-Output a one-page cycle plan.`,
+Suggest 3 title options.`,
           },
         },
       ],
     })
   );
 
-  // LOOP step - Return to PLAN with context
+  // Bonus: Quick wins prompt
   server.prompt(
-    'cycle_handoff',
-    'Prepare context for next PLAN phase',
-    {},
-    () => ({
-      messages: [
-        {
-          role: 'user',
-          content: {
-            type: 'text',
-            text: `Prepare for next PLAN phase:
-
-Create handoff document:
-
-1. **Context summary**
-   - What was built this cycle
-   - Current state of the product
-   - Active users/usage metrics
-
-2. **Lessons learned**
-   - Technical decisions that worked/didn't
-   - Process improvements needed
-   - Knowledge to preserve
-
-3. **Carry forward**
-   - Unresolved bugs (prioritized)
-   - Feature requests (prioritized)
-   - Technical debt to address
-
-4. **Brainlift updates**
-   - New edge knowledge gained
-   - Updated constraints
-   - Revised assumptions
-
-Output a handoff doc ready to inform the next PLAN phase.`,
-          },
-        },
-      ],
-    })
-  );
-
-  // Performance optimization (keep existing)
-  server.prompt(
-    'optimize_performance',
-    'Identify and fix performance bottlenecks',
-    { area: z.string().optional().describe('Specific area to optimize (frontend/backend/db)') },
+    'growth_quick_wins',
+    'Get quick wins to grow your project this week',
+    { projectName: z.string().describe('Name of your project') },
     (args) => ({
       messages: [
         {
           role: 'user',
           content: {
             type: 'text',
-            text: `Optimize performance${args.area ? ` in ${args.area}` : ''}:
+            text: `Give me 5 quick wins to grow "${args.projectName}" this week.
 
-1. **Measure First**
-   - What are current response times?
-   - Where are the slowest operations?
-   - What's the baseline to beat?
+Each should be:
+- Completable in under 1 hour
+- Free (no paid ads)
+- Measurable (I can see if it worked)
 
-2. **Identify Bottlenecks**
-   - Database queries (N+1, missing indexes)
-   - Network requests (waterfalls, large payloads)
-   - Client-side (re-renders, bundle size)
-   - Server-side (blocking operations, memory)
+Focus on:
+- Places my target users already hang out
+- Ways to get feedback loops going
+- Low-effort, high-visibility actions
 
-3. **Prioritize Fixes**
-   - Focus on user-facing impact
-   - Start with biggest wins
-   - Avoid premature optimization
-
-4. **Verify Improvements**
-   - Before/after measurements
-   - No regressions introduced
-   - Document changes
-
-Analyze the codebase and provide specific optimizations.`,
+For each, give me:
+1. The action (specific, not vague)
+2. Expected outcome
+3. How to measure success`,
           },
         },
       ],

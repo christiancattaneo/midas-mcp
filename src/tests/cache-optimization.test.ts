@@ -80,15 +80,16 @@ Purpose: Get code into production safely.
 - DEPLOY: Push to production with proper CI/CD
 - MONITOR: Watch for errors, performance issues
 
-### GROW (Iteration Phase)
-Steps: MONITOR → COLLECT → TRIAGE → RETROSPECT → PLAN_NEXT → LOOP
-Purpose: Learn from production and improve.
-- MONITOR: Track error rates, performance, engagement
-- COLLECT: Gather user feedback, bug reports
-- TRIAGE: Prioritize by impact/effort
-- RETROSPECT: What worked, what didn't
-- PLAN_NEXT: Define next iteration scope
-- LOOP: Return to PLAN with new context
+### GROW (Graduation Phase)
+Step: DONE (single step - project is shipped!)
+Purpose: Celebrate and grow usage with external actions.
+Graduation checklist:
+1. ANNOUNCE - Post to 3 communities
+2. NETWORK - DM 10 potential users
+3. FEEDBACK - Ask 5 users for input
+4. PROOF - Collect testimonials
+5. ITERATE - Ship one improvement
+6. CONTENT - Write about what you learned
 
 ## Key Rules:
 1. GATES MUST PASS: Build, tests, and lint must pass before advancing
