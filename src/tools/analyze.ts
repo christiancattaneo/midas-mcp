@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { analyzeProject, type ProjectAnalysis } from '../analyzer.js';
 import { loadState, setPhase, getNextPhase } from '../state/phase.js';
 import { getApiKey } from '../config.js';
+import { validatePlanningDocs } from './validate-docs.js';
 
 // Tool: midas_analyze - AI-powered project analysis
 export const analyzeSchema = z.object({
@@ -195,6 +196,7 @@ export function suggestPrompt(input: SuggestPromptInput): PromptSuggestion {
 // Tool: midas_advance_phase - Advance to the next step
 export const advancePhaseSchema = z.object({
   projectPath: z.string().optional().describe('Path to project root'),
+  force: z.boolean().optional().describe('Force advance even if validation fails'),
 });
 
 export type AdvancePhaseInput = z.infer<typeof advancePhaseSchema>;
@@ -203,14 +205,37 @@ export interface AdvancePhaseResult {
   previous: { phase: string; step?: string };
   current: { phase: string; step?: string };
   message: string;
+  blocked?: boolean;
+  blockers?: string[];
 }
 
 export function advancePhase(input: AdvancePhaseInput): AdvancePhaseResult {
   const projectPath = input.projectPath || process.cwd();
   const state = loadState(projectPath);
   const previous = state.current;
-  
   const next = getNextPhase(previous);
+  
+  // Check if advancing from EAGLE_SIGHT (Plan) to BUILD - validate planning docs
+  if (previous.phase === 'EAGLE_SIGHT' && next.phase === 'BUILD' && !input.force) {
+    const validation = validatePlanningDocs({ projectPath });
+    
+    if (!validation.readyForBuild) {
+      return {
+        previous: {
+          phase: previous.phase,
+          step: (previous as { step: string }).step,
+        },
+        current: {
+          phase: previous.phase,
+          step: (previous as { step: string }).step,
+        },
+        message: `Cannot advance to BUILD: planning docs incomplete`,
+        blocked: true,
+        blockers: validation.blockers,
+      };
+    }
+  }
+  
   setPhase(projectPath, next);
 
   const prevStr = previous.phase === 'IDLE' 

@@ -483,7 +483,7 @@ function drawUI(state: TUIState, projectPath: string): string {
 
   lines.push(emptyRow());
   lines.push(`${cyan}╠${hLine}╣${reset}`);
-  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[x]${reset} Decline  ${dim}[e]${reset} Example  ${dim}[r]${reset} Analyze  ${dim}[v]${reset} Verify  ${dim}[?]${reset} Help  ${dim}[q]${reset} Quit`));
+  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[x]${reset} Decline  ${dim}[e]${reset} Example  ${dim}[d]${reset} Validate Docs  ${dim}[r]${reset} Analyze  ${dim}[v]${reset} Verify  ${dim}[?]${reset} Help  ${dim}[q]${reset} Quit`));
   lines.push(`${cyan}╚${hLine}╝${reset}`);
 
   return lines.join('\n');
@@ -1064,6 +1064,28 @@ export async function runInteractive(): Promise<void> {
         }
       } catch (error) {
         tuiState.message = `${red}!${reset} Verification failed.`;
+        render();
+      }
+    }
+
+    if (key === 'd') {
+      // Validate planning documents
+      tuiState.message = `${magenta}...${reset} Validating planning documents...`;
+      render();
+      
+      try {
+        const { validatePlanningDocs } = await import('./tools/validate-docs.js');
+        const result = validatePlanningDocs({ projectPath });
+        
+        if (result.readyForBuild) {
+          tuiState.message = `${green}OK${reset} Planning docs complete! Score: ${result.overallScore}%`;
+        } else {
+          const blockerText = result.blockers.slice(0, 2).join('; ');
+          tuiState.message = `${yellow}!${reset} Score: ${result.overallScore}% - ${blockerText}`;
+        }
+        render();
+      } catch (error) {
+        tuiState.message = `${red}!${reset} Validation failed.`;
         render();
       }
     }

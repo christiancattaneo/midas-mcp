@@ -87,11 +87,21 @@ describe('Analyze Tools', () => {
       assert.strictEqual(result.previous.step, 'IDEA');
     });
 
-    it('transitions from EAGLE_SIGHT to BUILD', () => {
+    it('transitions from EAGLE_SIGHT to BUILD (forced)', () => {
       setPhase(testDir, { phase: 'EAGLE_SIGHT', step: 'GAMEPLAN' });
-      const result = advancePhase({ projectPath: testDir });
+      // Force advancement since test has no planning docs
+      const result = advancePhase({ projectPath: testDir, force: true });
       assert.strictEqual(result.current.phase, 'BUILD');
       assert.strictEqual(result.current.step, 'RULES');
+    });
+
+    it('blocks EAGLE_SIGHT to BUILD without planning docs', () => {
+      setPhase(testDir, { phase: 'EAGLE_SIGHT', step: 'GAMEPLAN' });
+      const result = advancePhase({ projectPath: testDir });
+      // Should be blocked since there are no planning docs
+      assert.strictEqual(result.blocked, true);
+      assert.strictEqual(result.current.phase, 'EAGLE_SIGHT');
+      assert.ok(result.blockers && result.blockers.length > 0);
     });
 
     it('advances through BUILD steps', () => {
