@@ -22,6 +22,7 @@ import {
 } from './tracker.js';
 import { getJournalEntries } from './tools/journal.js';
 import { showExample } from './tools/examples.js';
+import { checkScopeCreep, type ScopeMetrics } from './tools/scope.js';
 import { startSession, endSession, recordPromptCopied, recordPhaseChange, loadMetrics } from './metrics.js';
 
 // ANSI codes
@@ -128,6 +129,7 @@ interface TUIState {
   gatesStatus: ReturnType<typeof getGatesStatus> | null;
   filesChanged: boolean;
   suggestionAcceptanceRate: number;
+  scopeDrift: ScopeMetrics | null;
 }
 
 function copyToClipboard(text: string): Promise<void> {
@@ -468,6 +470,12 @@ function drawUI(state: TUIState, projectPath: string): string {
       lines.push(row(`${dim}Try: ${stuckInfo.suggestions[0]}${reset}`));
     }
   }
+  
+  // Show scope drift indicator if project has grown significantly
+  if (state.scopeDrift && state.scopeDrift.warning) {
+    const driftColor = state.scopeDrift.driftPercentage > 100 ? red : yellow;
+    lines.push(row(`${driftColor}[SCOPE +${state.scopeDrift.driftPercentage}%]${reset} ${dim}${state.scopeDrift.message}${reset}`));
+  }
 
   // Show if files changed since last analysis
   if (state.filesChanged) {
@@ -571,6 +579,7 @@ export async function runInteractive(): Promise<void> {
     gatesStatus: null,
     filesChanged: false,
     suggestionAcceptanceRate: getSuggestionAcceptanceRate(projectPath),
+    scopeDrift: checkScopeCreep({ projectPath }),
   };
 
   const render = () => {
