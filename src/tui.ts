@@ -433,7 +433,7 @@ function drawUI(state: TUIState, projectPath: string): string {
   if (state.isAnalyzing) {
     lines.push(emptyRow());
     
-    // Show real streaming progress
+    // Show real streaming progress with stages
     const progress = state.analysisProgress;
     const elapsed = progress ? `${(progress.elapsedMs / 1000).toFixed(1)}s` : '0s';
     
@@ -441,22 +441,53 @@ function drawUI(state: TUIState, projectPath: string): string {
     const spinners = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
     const spinnerFrame = spinners[Math.floor(Date.now() / 100) % spinners.length];
     
-    if (!progress || progress.stage === 'gathering') {
-      lines.push(row(`${magenta}${spinnerFrame}${reset} ${bold}Reading files...${reset} ${dim}${elapsed}${reset}`));
-      lines.push(row(`${dim}Gathering context from codebase${reset}`));
-    } else if (progress.stage === 'connecting') {
-      lines.push(row(`${magenta}${spinnerFrame}${reset} ${bold}Connecting to AI...${reset} ${dim}${elapsed}${reset}`));
-      lines.push(row(`${dim}Establishing connection${reset}`));
-    } else if (progress.stage === 'thinking') {
-      lines.push(row(`${yellow}${spinnerFrame}${reset} ${bold}AI is thinking...${reset} ${dim}${elapsed}${reset}`));
-      lines.push(row(`${dim}Extended reasoning mode active${reset}`));
-    } else if (progress.stage === 'streaming') {
-      const tokens = progress.tokensReceived || 0;
-      lines.push(row(`${green}${spinnerFrame}${reset} ${bold}Receiving response...${reset} ${dim}${elapsed}${reset}`));
-      lines.push(row(`${dim}${tokens} tokens received${reset}`));
-    } else if (progress.stage === 'parsing') {
-      lines.push(row(`${cyan}${spinnerFrame}${reset} ${bold}Parsing response...${reset} ${dim}${elapsed}${reset}`));
-      lines.push(row(`${dim}Almost done${reset}`));
+    // Stage indicators: done [✓], current [○], pending [ ]
+    const stageCheck = (done: boolean, current: boolean) => 
+      done ? `${green}[✓]${reset}` : current ? `${yellow}[${spinnerFrame}]${reset}` : `${dim}[ ]${reset}`;
+    
+    const stages = ['gathering', 'connecting', 'thinking', 'streaming', 'parsing'];
+    const currentIdx = progress ? stages.indexOf(progress.stage) : 0;
+    
+    // Header with elapsed time
+    lines.push(row(`${bold}Analyzing project${reset} ${dim}${elapsed}${reset}`));
+    lines.push(emptyRow());
+    
+    // Progress stages with checkmarks
+    lines.push(row(`${stageCheck(currentIdx > 0, currentIdx === 0)} Read files and context`));
+    lines.push(row(`${stageCheck(currentIdx > 1, currentIdx === 1)} Connect to AI`));
+    lines.push(row(`${stageCheck(currentIdx > 2, currentIdx === 2)} Extended thinking`));
+    lines.push(row(`${stageCheck(currentIdx > 3, currentIdx === 3)} Receive response`));
+    lines.push(row(`${stageCheck(currentIdx > 4, currentIdx === 4)} Parse results`));
+    
+    lines.push(emptyRow());
+    
+    // Show streaming details
+    if (progress?.stage === 'streaming' && progress.tokensReceived) {
+      lines.push(row(`${dim}${progress.tokensReceived} tokens received${reset}`));
+      
+      // Try to show partial results from streamed content
+      if (progress.partialContent) {
+        // Look for early JSON fields
+        const phaseMatch = progress.partialContent.match(/"phase"\s*:\s*"([^"]+)"/);
+        const summaryMatch = progress.partialContent.match(/"summary"\s*:\s*"([^"]{10,60})/);
+        const techMatch = progress.partialContent.match(/"techStack"\s*:\s*\[([^\]]{5,50})/);
+        
+        if (phaseMatch) {
+          lines.push(row(`${green}→${reset} Phase: ${bold}${phaseMatch[1]}${reset}`));
+        }
+        if (techMatch) {
+          const techs = techMatch[1].replace(/"/g, '').split(',').slice(0, 3).join(', ');
+          lines.push(row(`${green}→${reset} Tech: ${techs}`));
+        }
+        if (summaryMatch) {
+          const summary = summaryMatch[1].slice(0, 40) + '...';
+          lines.push(row(`${green}→${reset} ${dim}${summary}${reset}`));
+        }
+      }
+    } else if (progress?.stage === 'thinking') {
+      lines.push(row(`${dim}AI is reasoning about your project...${reset}`));
+    } else if (progress?.stage === 'gathering') {
+      lines.push(row(`${dim}Reading codebase, docs, journal...${reset}`));
     }
     
     lines.push(emptyRow());

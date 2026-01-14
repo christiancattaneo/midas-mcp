@@ -614,6 +614,7 @@ export interface AnalysisProgress {
   message: string;
   elapsedMs: number;
   tokensReceived?: number;
+  partialContent?: string;  // Partial streamed content for early result preview
 }
 
 export type AnalysisProgressCallback = (progress: AnalysisProgress) => void;
@@ -782,6 +783,7 @@ export async function analyzeProjectStreaming(
             message: `Receiving response...`,
             elapsedMs: elapsed(),
             tokensReceived: streamProgress.tokensReceived,
+            partialContent: streamProgress.partialContent,  // Pass partial content for early preview
           });
         }
       },
