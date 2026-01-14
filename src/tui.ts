@@ -115,6 +115,7 @@ interface TUIState {
   analysis: ProjectAnalysis | null;
   isAnalyzing: boolean;
   analysisProgress: AnalysisProgress | null;  // Real-time streaming progress
+  analysisStartTime: number | null;           // For accurate elapsed time display
   activitySummary: string;
   recentToolCalls: string[];
   recentEvents: MidasEvent[];
@@ -435,7 +436,9 @@ function drawUI(state: TUIState, projectPath: string): string {
     
     // Show real streaming progress with stages
     const progress = state.analysisProgress;
-    const elapsed = progress ? `${(progress.elapsedMs / 1000).toFixed(1)}s` : '0s';
+    // Calculate elapsed time fresh each render (not from progress object which freezes between chunks)
+    const elapsedMs = state.analysisStartTime ? Date.now() - state.analysisStartTime : 0;
+    const elapsed = `${(elapsedMs / 1000).toFixed(1)}s`;
     
     // Spinner frames
     const spinners = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -683,6 +686,7 @@ export async function runInteractive(): Promise<void> {
     analysis: null,
     isAnalyzing: false,
     analysisProgress: null,    // Real-time streaming progress
+    analysisStartTime: null,   // For accurate elapsed time display
     activitySummary: getActivitySummary(projectPath),
     recentToolCalls: [],
     recentEvents: [],
@@ -725,6 +729,7 @@ export async function runInteractive(): Promise<void> {
   const resetState = () => {
     tuiState.analysis = null;
     tuiState.isAnalyzing = false;
+    tuiState.analysisStartTime = null;
     tuiState.showingSessionStart = false;
     tuiState.showingRejectionInput = false;
     tuiState.message = `${yellow}!${reset} State reset. Press [r] to re-analyze.`;
@@ -740,6 +745,7 @@ export async function runInteractive(): Promise<void> {
     
     tuiState.isAnalyzing = true;
     tuiState.analysisProgress = null;
+    tuiState.analysisStartTime = Date.now();  // Track start time for accurate elapsed display
     render();
     
     // Set up progress update interval for spinner animation
@@ -842,6 +848,7 @@ export async function runInteractive(): Promise<void> {
     clearInterval(progressInterval);
     tuiState.isAnalyzing = false;
     tuiState.analysisProgress = null;
+    tuiState.analysisStartTime = null;
     render();
   };
 
