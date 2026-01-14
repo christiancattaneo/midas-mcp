@@ -9,6 +9,7 @@ import { getJournalEntries } from './tools/journal.js';
 import { sanitizePath, limitLength, LIMITS } from './security.js';
 import { logger } from './logger.js';
 import { buildCompressedContext, contextToString, estimateTokens } from './context.js';
+import { isCursorAvailable, getRecentMessages, getCursorInfo } from './cursor.js';
 
 // ============================================================================
 // SKILL LEVEL ADAPTERS
@@ -211,6 +212,27 @@ function getActivityContext(projectPath: string): string {
   try {
     const tracker = updateTracker(safePath);
     const lines: string[] = [];
+    
+    // Try to get actual Cursor chat history
+    if (isCursorAvailable()) {
+      try {
+        const cursorInfo = getCursorInfo();
+        const recentMessages = getRecentMessages(10);
+        
+        if (recentMessages.length > 0) {
+          lines.push('## Recent Cursor Chat History:');
+          lines.push(`(Source: ${cursorInfo.path})`);
+          for (const msg of recentMessages.slice(-5)) {
+            const prefix = msg.type === 'user' ? 'User' : 'AI';
+            const text = msg.text.slice(0, 200) + (msg.text.length > 200 ? '...' : '');
+            lines.push(`- ${prefix}: ${text}`);
+          }
+          lines.push('');
+        }
+      } catch (error) {
+        logger.debug('Could not read Cursor chat history', { error: String(error) });
+      }
+    }
     
     // Recent file activity
     if (tracker.recentFiles.length > 0) {

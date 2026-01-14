@@ -1,18 +1,118 @@
-import { existsSync } from 'fs';
+import { existsSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
-import { homedir } from 'os';
+import { homedir, platform } from 'os';
 import { execSync } from 'child_process';
+import { logger } from './logger.js';
 
-// Cursor's state database location
-const CURSOR_DB_PATH = join(
-  homedir(),
-  'Library',
-  'Application Support',
-  'Cursor',
-  'User',
-  'globalStorage',
-  'state.vscdb'
-);
+// ============================================================================
+// DYNAMIC CURSOR DATABASE DISCOVERY
+// ============================================================================
+
+/**
+ * Find Cursor's data directory based on OS
+ * Returns multiple possible paths to try
+ */
+function getCursorDataPaths(): string[] {
+  const home = homedir();
+  const os = platform();
+  
+  const paths: string[] = [];
+  
+  if (os === 'darwin') {
+    // macOS
+    paths.push(join(home, 'Library', 'Application Support', 'Cursor'));
+    paths.push(join(home, 'Library', 'Application Support', 'cursor-ai'));
+  } else if (os === 'win32') {
+    // Windows
+    const appData = process.env.APPDATA || join(home, 'AppData', 'Roaming');
+    const localAppData = process.env.LOCALAPPDATA || join(home, 'AppData', 'Local');
+    paths.push(join(appData, 'Cursor'));
+    paths.push(join(localAppData, 'Cursor'));
+  } else {
+    // Linux
+    paths.push(join(home, '.config', 'Cursor'));
+    paths.push(join(home, '.cursor'));
+  }
+  
+  return paths;
+}
+
+/**
+ * Find the state.vscdb file dynamically
+ * Searches common locations and subdirectories
+ */
+function findCursorDatabase(): string | null {
+  const basePaths = getCursorDataPaths();
+  
+  // Common subdirectory patterns where the database might be
+  const subPaths = [
+    'User/globalStorage/state.vscdb',
+    'globalStorage/state.vscdb',
+    'state.vscdb',
+    'User/state.vscdb',
+  ];
+  
+  for (const basePath of basePaths) {
+    if (!existsSync(basePath)) continue;
+    
+    // Try known subpaths first
+    for (const subPath of subPaths) {
+      const fullPath = join(basePath, subPath);
+      if (existsSync(fullPath)) {
+        logger.debug('Found Cursor database', { path: fullPath });
+        return fullPath;
+      }
+    }
+    
+    // Fallback: recursively search for state.vscdb (limited depth)
+    const found = findFileRecursive(basePath, 'state.vscdb', 4);
+    if (found) {
+      logger.debug('Found Cursor database via search', { path: found });
+      return found;
+    }
+  }
+  
+  logger.debug('Cursor database not found');
+  return null;
+}
+
+/**
+ * Recursively search for a file with depth limit
+ */
+function findFileRecursive(dir: string, filename: string, maxDepth: number): string | null {
+  if (maxDepth <= 0) return null;
+  
+  try {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      
+      if (entry.isFile() && entry.name === filename) {
+        return fullPath;
+      }
+      
+      if (entry.isDirectory() && !entry.name.startsWith('.')) {
+        const found = findFileRecursive(fullPath, filename, maxDepth - 1);
+        if (found) return found;
+      }
+    }
+  } catch {
+    // Permission denied or other error
+  }
+  
+  return null;
+}
+
+// Cache the database path (computed once)
+let cachedDbPath: string | null | undefined = undefined;
+
+function getCursorDbPath(): string | null {
+  if (cachedDbPath === undefined) {
+    cachedDbPath = findCursorDatabase();
+  }
+  return cachedDbPath;
+}
 
 export interface ChatMessage {
   type: 'user' | 'assistant';
@@ -30,23 +130,36 @@ export interface CursorConversation {
 }
 
 function runSqlite(query: string): string {
-  if (!existsSync(CURSOR_DB_PATH)) {
-    throw new Error('Cursor database not found');
+  const dbPath = getCursorDbPath();
+  if (!dbPath) {
+    return '';
   }
   
   try {
     const result = execSync(
-      `sqlite3 "${CURSOR_DB_PATH}" "${query}"`,
+      `sqlite3 "${dbPath}" "${query}"`,
       { encoding: 'utf-8', maxBuffer: 50 * 1024 * 1024 } // 50MB buffer
     );
     return result;
   } catch (error) {
+    logger.debug('SQLite query failed', { error: String(error) });
     return '';
   }
 }
 
 export function isCursorAvailable(): boolean {
-  return existsSync(CURSOR_DB_PATH);
+  return getCursorDbPath() !== null;
+}
+
+/**
+ * Get info about where Cursor data was found
+ */
+export function getCursorInfo(): { available: boolean; path: string | null; os: string } {
+  return {
+    available: isCursorAvailable(),
+    path: getCursorDbPath(),
+    os: platform(),
+  };
 }
 
 export function getRecentConversationIds(limit = 10): string[] {
