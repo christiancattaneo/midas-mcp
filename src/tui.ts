@@ -1,7 +1,16 @@
 import { exec } from 'child_process';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { createInterface } from 'readline';
+
+// Debug logging for animation issues
+let debugLogPath: string | null = null;
+function debugLog(msg: string): void {
+  if (!debugLogPath) return;
+  try {
+    appendFileSync(debugLogPath, `${Date.now()} | ${msg}\n`);
+  } catch { /* ignore */ }
+}
 import { loadState, saveState, setPhase, type Phase, PHASE_INFO, getGraduationChecklist, formatGraduationChecklist } from './state/phase.js';
 import { hasApiKey, ensureApiKey, getSkillLevel } from './config.js';
 import { logEvent, watchEvents, type MidasEvent } from './events.js';
@@ -632,6 +641,17 @@ function drawUI(state: TUIState, projectPath: string): string {
 export async function runInteractive(): Promise<void> {
   const projectPath = process.cwd();
   
+  // Set up debug logging
+  const midasDir = join(projectPath, '.midas');
+  if (!existsSync(midasDir)) {
+    mkdirSync(midasDir, { recursive: true });
+  }
+  debugLogPath = join(midasDir, 'tui-debug.log');
+  // Clear previous log
+  try {
+    appendFileSync(debugLogPath, `\n=== TUI Session Started ${new Date().toISOString()} ===\n`);
+  } catch { /* ignore */ }
+  
   // Check for API key on first run
   await ensureApiKey();
   
@@ -708,7 +728,11 @@ export async function runInteractive(): Promise<void> {
     scopeDrift: checkScopeCreep({ projectPath }),
   };
 
+  let renderCount = 0;
   const render = () => {
+    renderCount++;
+    const stage = tuiState.analysisProgress?.stage || 'none';
+    debugLog(`render #${renderCount} stage=${stage} isAnalyzing=${tuiState.isAnalyzing}`);
     try {
       // Hide cursor, clear, draw, show cursor - prevents flicker
       process.stdout.write(hideCursor + clearScreen);
@@ -719,6 +743,7 @@ export async function runInteractive(): Promise<void> {
       }
       process.stdout.write(showCursor);
     } catch (error) {
+      debugLog(`render ERROR: ${error}`);
       // Attempt recovery
       process.stdout.write(clearScreen + showCursor);
       console.error('Render error:', error);
@@ -749,9 +774,14 @@ export async function runInteractive(): Promise<void> {
     render();
     
     // Set up progress update interval for spinner animation
+    let intervalCount = 0;
     const progressInterval = setInterval(() => {
+      intervalCount++;
       if (tuiState.isAnalyzing) {
+        debugLog(`interval #${intervalCount} firing, calling render`);
         render();
+      } else {
+        debugLog(`interval #${intervalCount} skipped, isAnalyzing=false`);
       }
     }, 100);  // Update every 100ms for smooth spinner
     
@@ -761,7 +791,9 @@ export async function runInteractive(): Promise<void> {
     
     try {
       // Use streaming analysis with progress callback
+      debugLog('Starting analyzeProjectStreaming');
       const analysisPromise = analyzeProjectStreaming(projectPath, (progress) => {
+        debugLog(`progress callback: stage=${progress.stage} tokens=${progress.tokensReceived || 0}`);
         tuiState.analysisProgress = progress;
         // render() is called by the interval
       });
@@ -845,6 +877,7 @@ export async function runInteractive(): Promise<void> {
       tuiState.message = `${red}!${reset} ${msg}`;
     }
     
+    debugLog(`Analysis complete, clearing interval after ${intervalCount} intervals`);
     clearInterval(progressInterval);
     tuiState.isAnalyzing = false;
     tuiState.analysisProgress = null;
