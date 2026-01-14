@@ -41,6 +41,8 @@ ${bold}Usage:${reset}
   npx midas-mcp status       Show current phase and progress
   npx midas-mcp metrics      Show session metrics and statistics
   npx midas-mcp init <name>  Initialize new project with Plan phase
+  npx midas-mcp init -f      First-time setup with tutorial
+  npx midas-mcp init -e      Analyze existing project and infer phase
   npx midas-mcp audit        Audit project against 12 ingredients
   npx midas-mcp docs         Check planning docs completeness
   npx midas-mcp server       Start MCP server (for Cursor integration)
@@ -139,6 +141,154 @@ export function runInit(projectName: string): void {
   console.log('');
   console.log(`  ${bold}Next:${reset} Fill out ${cyan}docs/brainlift.md${reset}`);
   console.log(`        Then run ${cyan}npx midas-mcp status${reset}\n`);
+}
+
+// ============================================================================
+// First-time setup - Interactive tutorial for new users
+// ============================================================================
+
+export function runFirstTimeSetup(): void {
+  console.log('');
+  console.log(`${bold}${cyan}╔═══════════════════════════════════════════════════════════════════╗${reset}`);
+  console.log(`${bold}${cyan}║${reset}       ${bold}WELCOME TO MIDAS${reset} - ${dim}The Golden Code Methodology${reset}              ${bold}${cyan}║${reset}`);
+  console.log(`${bold}${cyan}╚═══════════════════════════════════════════════════════════════════╝${reset}`);
+  console.log('');
+  
+  // The 4 phases - explained in 60 seconds
+  console.log(`${bold}THE GOLDEN CODE LIFECYCLE (60 seconds)${reset}`);
+  console.log('');
+  console.log(`  ${yellow}1. PLAN${reset}  ${dim}Before coding, understand what you're building.${reset}`);
+  console.log(`           Write a ${bold}Brainlift${reset} (your unique insights),`);
+  console.log(`           ${bold}PRD${reset} (requirements), and ${bold}Gameplan${reset} (tasks).`);
+  console.log('');
+  console.log(`  ${blue}2. BUILD${reset} ${dim}Code methodically with verification.${reset}`);
+  console.log(`           Rules → Index → Read → Research → Implement → Test → Debug`);
+  console.log(`           ${dim}If stuck 3+ times, use Tornado: Research + Logs + Tests${reset}`);
+  console.log('');
+  console.log(`  ${green}3. SHIP${reset}  ${dim}Deploy with confidence.${reset}`);
+  console.log(`           Review code, deploy safely, set up monitoring.`);
+  console.log('');
+  console.log(`  ${cyan}4. GROW${reset}  ${dim}Learn and iterate.${reset}`);
+  console.log(`           Collect feedback, triage issues, plan next cycle.`);
+  console.log('');
+  
+  // Key tools
+  console.log(`${bold}KEY TOOLS${reset}`);
+  console.log('');
+  console.log(`  ${dim}[TUI]${reset}      Run ${cyan}npx midas-mcp${reset} for interactive coaching`);
+  console.log(`  ${dim}[Journal]${reset}  Save conversations with ${cyan}midas_journal_save${reset}`);
+  console.log(`  ${dim}[Verify]${reset}   Check gates with ${cyan}midas_verify${reset} (build, test, lint)`);
+  console.log(`  ${dim}[Hotfix]${reset}   Emergency mode with ${cyan}midas_start_hotfix${reset}`);
+  console.log('');
+  
+  // Quick start
+  console.log(`${bold}QUICK START${reset}`);
+  console.log('');
+  console.log(`  1. Run ${cyan}npx midas-mcp init MyProject${reset}`);
+  console.log(`  2. Fill out ${cyan}docs/brainlift.md${reset} with your unique insights`);
+  console.log(`  3. Run ${cyan}npx midas-mcp${reset} to start the interactive coach`);
+  console.log('');
+  
+  // Links
+  console.log(`${bold}LEARN MORE${reset}`);
+  console.log('');
+  console.log(`  ${dim}Docs:${reset}  https://github.com/christiancattaneo/midas-mcp`);
+  console.log(`  ${dim}Why:${reset}   See ${cyan}docs/WHY.md${reset} for methodology rationale`);
+  console.log('');
+}
+
+// ============================================================================
+// Existing project setup - Analyze and infer phase
+// ============================================================================
+
+export function runExistingProjectSetup(): void {
+  const cwd = process.cwd();
+  const projectName = cwd.split('/').pop() || 'project';
+  
+  console.log('');
+  console.log(box(`${cyan}${bold}Analyzing Existing Project${reset}`));
+  console.log('');
+  console.log(`  ${dim}Scanning ${projectName}...${reset}`);
+  
+  // Check for existing code, tests, docs
+  const { existsSync, readdirSync } = require('fs');
+  const { join } = require('path');
+  
+  const hasPackageJson = existsSync(join(cwd, 'package.json'));
+  const hasSrc = existsSync(join(cwd, 'src'));
+  const hasTests = existsSync(join(cwd, 'src', 'tests')) || existsSync(join(cwd, 'tests'));
+  const hasGit = existsSync(join(cwd, '.git'));
+  const hasMidas = existsSync(join(cwd, '.midas'));
+  const hasDocs = existsSync(join(cwd, 'docs'));
+  
+  console.log('');
+  console.log(`  ${hasPackageJson ? green + '[x]' : yellow + '[ ]'} ${reset}package.json`);
+  console.log(`  ${hasSrc ? green + '[x]' : yellow + '[ ]'} ${reset}src/ directory`);
+  console.log(`  ${hasTests ? green + '[x]' : yellow + '[ ]'} ${reset}tests`);
+  console.log(`  ${hasGit ? green + '[x]' : yellow + '[ ]'} ${reset}git repository`);
+  console.log(`  ${hasMidas ? green + '[x]' : dim + '[ ]'} ${reset}.midas/ state`);
+  console.log(`  ${hasDocs ? green + '[x]' : dim + '[ ]'} ${reset}docs/ directory`);
+  console.log('');
+  
+  // Infer phase
+  let inferredPhase = 'IDLE';
+  let inferredStep = '';
+  
+  if (!hasPackageJson && !hasSrc) {
+    inferredPhase = 'PLAN';
+    inferredStep = 'IDEA';
+  } else if (hasSrc && !hasTests) {
+    inferredPhase = 'BUILD';
+    inferredStep = 'TEST';
+  } else if (hasSrc && hasTests) {
+    // Check git for version tags
+    if (hasGit) {
+      try {
+        const { execSync } = require('child_process');
+        const tags = execSync('git tag -l "v*"', { encoding: 'utf-8', cwd });
+        if (tags.trim()) {
+          inferredPhase = 'GROW';
+          inferredStep = 'MONITOR';
+        } else {
+          inferredPhase = 'SHIP';
+          inferredStep = 'REVIEW';
+        }
+      } catch {
+        inferredPhase = 'SHIP';
+        inferredStep = 'REVIEW';
+      }
+    } else {
+      inferredPhase = 'SHIP';
+      inferredStep = 'REVIEW';
+    }
+  }
+  
+  console.log(`  ${bold}Inferred Phase:${reset} ${inferredPhase}${inferredStep ? ':' + inferredStep : ''}`);
+  console.log('');
+  
+  // Initialize if not already done
+  if (!hasMidas) {
+    const result = startProject({ projectName, projectPath: cwd });
+    console.log(`  ${green}[x]${reset} Created .midas/ state directory`);
+    
+    // Set the inferred phase
+    if (inferredPhase !== 'IDLE') {
+      const { setPhase } = require('./state/phase.js');
+      setPhase(cwd, { phase: inferredPhase as 'EAGLE_SIGHT' | 'BUILD' | 'SHIP' | 'GROW', step: inferredStep });
+      console.log(`  ${green}[x]${reset} Set phase to ${inferredPhase}:${inferredStep}`);
+    }
+  }
+  
+  if (!hasDocs) {
+    console.log('');
+    console.log(`  ${yellow}!${reset} No docs/ folder found.`);
+    console.log(`    Consider adding planning docs to capture project context.`);
+    console.log(`    Run ${cyan}npx midas-mcp init ${projectName}${reset} to create templates.`);
+  }
+  
+  console.log('');
+  console.log(`  ${bold}Next:${reset} Run ${cyan}npx midas-mcp${reset} to start the interactive coach`);
+  console.log('');
 }
 
 export function runAudit(): void {
@@ -280,7 +430,13 @@ export function runCLI(args: string[]): 'interactive' | 'server' | 'handled' {
       return 'handled';
 
     case 'init':
-      runInit(args[1]);
+      if (args[1] === '--first-time' || args[1] === '-f') {
+        runFirstTimeSetup();
+      } else if (args[1] === '--existing' || args[1] === '-e') {
+        runExistingProjectSetup();
+      } else {
+        runInit(args[1]);
+      }
       return 'handled';
 
     case 'audit':
