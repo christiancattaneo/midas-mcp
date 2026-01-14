@@ -122,6 +122,8 @@ interface TUIState {
   showingSessionStart: boolean;
   showingRejectionInput: boolean;
   showingHelp: boolean;       // Show help screen
+  showingInfo: boolean;       // Show info screen (tech stack, gates, stats)
+  showingHistory: boolean;    // Show completed items history
   beginnerMode: boolean;      // Simplified display for new users
   sessionStarterPrompt: string;
   sessionId: string;
@@ -316,27 +318,102 @@ function drawUI(state: TUIState, projectPath: string): string {
     lines.push(emptyRow());
     lines.push(row(`${bold}${cyan}HELP - Keyboard Shortcuts${reset}`));
     lines.push(emptyRow());
-    lines.push(row(`${dim}Navigation:${reset}`));
-    lines.push(row(`  ${bold}[r]${reset} Analyze     Re-analyze the project`));
-    lines.push(row(`  ${bold}[c]${reset} Copy        Copy suggested prompt to clipboard`));
-    lines.push(row(`  ${bold}[n]${reset} Next        Advance to next phase step`));
-    lines.push(row(`  ${bold}[p]${reset} Prev        Go back to previous step`));
+    lines.push(row(`${dim}Core:${reset}`));
+    lines.push(row(`  ${bold}[c]${reset} Copy        Copy prompt to clipboard`));
+    lines.push(row(`  ${bold}[r]${reset} Analyze     Re-analyze project`));
+    lines.push(row(`  ${bold}[x]${reset} Decline     Skip suggestion with feedback`));
     lines.push(emptyRow());
-    lines.push(row(`${dim}Actions:${reset}`));
-    lines.push(row(`  ${bold}[v]${reset} Paste       Paste AI response for analysis`));
-    lines.push(row(`  ${bold}[j]${reset} Journal     Save current session to journal`));
+    lines.push(row(`${dim}Info:${reset}`));
+    lines.push(row(`  ${bold}[i]${reset} Info        Tech stack, gates, stats`));
+    lines.push(row(`  ${bold}[h]${reset} History     View completed items`));
+    lines.push(row(`  ${bold}[e]${reset} Example     Show example for current step`));
+    lines.push(emptyRow());
+    lines.push(row(`${dim}Advanced:${reset}`));
+    lines.push(row(`  ${bold}[v]${reset} Verify      Run build/test/lint gates`));
+    lines.push(row(`  ${bold}[d]${reset} Docs        Validate planning documents`));
     lines.push(row(`  ${bold}[a]${reset} Add Rules   Add .cursorrules to project`));
-    lines.push(emptyRow());
-    lines.push(row(`${dim}Display:${reset}`));
-    lines.push(row(`  ${bold}[b]${reset} Beginner    Toggle simplified display mode`));
-    lines.push(row(`  ${bold}[?]${reset} Help        Show/hide this help screen`));
-    lines.push(row(`  ${bold}[R]${reset} Reset       Hard reset TUI state`));
+    lines.push(row(`  ${bold}[f]${reset} Hotfix      Toggle hotfix mode`));
     lines.push(emptyRow());
     lines.push(row(`${dim}Exit:${reset}`));
     lines.push(row(`  ${bold}[q]${reset} Quit        Exit Midas TUI`));
     lines.push(emptyRow());
     lines.push(`${cyan}╠${hLine}╣${reset}`);
-    lines.push(row(`${dim}Press any key to close help${reset}`));
+    lines.push(row(`${dim}Press any key to close${reset}`));
+    lines.push(`${cyan}╚${hLine}╝${reset}`);
+    return lines.join('\n');
+  }
+
+  // Info screen - tech stack, gates, stats
+  if (state.showingInfo) {
+    const a = state.analysis;
+    lines.push(emptyRow());
+    lines.push(row(`${bold}${cyan}PROJECT INFO${reset}`));
+    lines.push(emptyRow());
+    
+    if (a?.techStack && a.techStack.length > 0) {
+      lines.push(row(`${dim}Tech Stack:${reset}`));
+      const stack = a.techStack.slice(0, 8).join(' · ');
+      lines.push(row(`  ${stack}`));
+      lines.push(emptyRow());
+    }
+    
+    // Gates status
+    if (state.gatesStatus) {
+      const gs = state.gatesStatus;
+      if (gs.allPass) {
+        lines.push(row(`${green}[GATES]${reset} All passing (build, tests, lint)`));
+      } else if (gs.failing.length > 0) {
+        lines.push(row(`${red}[GATES]${reset} Failing: ${gs.failing.join(', ')}`));
+      }
+      if (gs.stale) {
+        lines.push(row(`${dim}Last run: ${gs.stale ? 'stale' : 'fresh'}${reset}`));
+      }
+      lines.push(emptyRow());
+    }
+    
+    // Skill level
+    const skillLevel = getSkillLevel() || 'intermediate';
+    lines.push(row(`${dim}Skill Level:${reset} ${skillLevel} (press 'l' to change)`));
+    
+    // Acceptance rate
+    if (state.suggestionAcceptanceRate > 0) {
+      lines.push(row(`${dim}Suggestion Acceptance:${reset} ${state.suggestionAcceptanceRate}%`));
+    }
+    
+    // Streak
+    if (state.sessionStreak > 0) {
+      lines.push(row(`${dim}Streak:${reset} ${state.sessionStreak} days`));
+    }
+    
+    lines.push(emptyRow());
+    lines.push(`${cyan}╠${hLine}╣${reset}`);
+    lines.push(row(`${dim}Press any key to close${reset}`));
+    lines.push(`${cyan}╚${hLine}╝${reset}`);
+    return lines.join('\n');
+  }
+
+  // History screen - completed items
+  if (state.showingHistory) {
+    const a = state.analysis;
+    lines.push(emptyRow());
+    lines.push(row(`${bold}${cyan}COMPLETED${reset}`));
+    lines.push(emptyRow());
+    
+    if (a?.whatsDone && a.whatsDone.length > 0) {
+      for (const done of a.whatsDone.slice(0, 10)) {
+        const t = done.length > I - 4 ? done.slice(0, I - 7) + '...' : done;
+        lines.push(row(`${green}[x]${reset} ${t}`));
+      }
+      if (a.whatsDone.length > 10) {
+        lines.push(row(`${dim}... and ${a.whatsDone.length - 10} more${reset}`));
+      }
+    } else {
+      lines.push(row(`${dim}No completed items yet.${reset}`));
+    }
+    
+    lines.push(emptyRow());
+    lines.push(`${cyan}╠${hLine}╣${reset}`);
+    lines.push(row(`${dim}Press any key to close${reset}`));
     lines.push(`${cyan}╚${hLine}╝${reset}`);
     return lines.join('\n');
   }
@@ -362,14 +439,9 @@ function drawUI(state: TUIState, projectPath: string): string {
 
   const a = state.analysis;
 
-  // Project summary (wrapped)
-  for (const line of wrapText(a.summary, I)) {
-    lines.push(row(`${bold}${line}${reset}`));
-  }
-  if (a.techStack.length > 0) {
-    const stack = a.techStack.slice(0, 5).join(' · ');
-    lines.push(row(`${dim}${stack}${reset}`));
-  }
+  // Project summary - single line, clean
+  const summaryLine = wrapText(a.summary, I)[0];
+  lines.push(row(`${bold}${summaryLine}${reset}`));
   lines.push(emptyRow());
 
   lines.push(`${cyan}╠${hLine}╣${reset}`);
@@ -399,7 +471,7 @@ function drawUI(state: TUIState, projectPath: string): string {
   const confColor = a.confidence >= 70 ? green : a.confidence >= 40 ? yellow : red;
   lines.push(row(`${bold}PHASE:${reset} ${phaseLabel(a.currentPhase)}  ${confColor}${a.confidence}%${reset}`));
   
-  // Show step progress bar within current phase
+  // Show step progress bar within current phase (visual aesthetic - keep)
   if (a.currentPhase.phase !== 'IDLE') {
     const phaseInfo = PHASE_INFO[a.currentPhase.phase];
     const steps = Object.keys(phaseInfo.steps);
@@ -411,26 +483,9 @@ function drawUI(state: TUIState, projectPath: string): string {
     const filled = Math.round((progress / 100) * barWidth);
     const empty = barWidth - filled;
     const progressBar = `${green}${'█'.repeat(filled)}${reset}${dim}${'░'.repeat(empty)}${reset}`;
-    lines.push(row(`${dim}Progress:${reset} [${progressBar}] ${progress}%`));
-  }
-  
-  // Show 'why' explanation for current step (helps users understand the methodology)
-  const stepWhy = getStepWhy(a.currentPhase);
-  if (stepWhy) {
-    const whyText = truncate(stepWhy, I - 4);
-    lines.push(row(`${dim}${whyText}${reset}`));
+    lines.push(row(`[${progressBar}] ${progress}%`));
   }
   lines.push(emptyRow());
-
-  // What's done
-  if (a.whatsDone.length > 0) {
-    lines.push(row(`${dim}Completed:${reset}`));
-    for (const done of a.whatsDone.slice(0, 4)) {
-      const t = done.length > I - 4 ? done.slice(0, I - 7) + '...' : done;
-      lines.push(row(`${green}[x]${reset} ${dim}${t}${reset}`));
-    }
-    lines.push(emptyRow());
-  }
 
   lines.push(`${cyan}╠${hLine}╣${reset}`);
 
@@ -469,66 +524,33 @@ function drawUI(state: TUIState, projectPath: string): string {
     lines.push(row(bottomBorder));
   }
 
-  // Show gates status if available
-  if (state.gatesStatus) {
-    lines.push(emptyRow());
-    const gs = state.gatesStatus;
-    if (gs.allPass) {
-      lines.push(row(`${green}[GATES]${reset} All passing (build, tests, lint)`));
-    } else if (gs.failing.length > 0) {
-      lines.push(row(`${red}[GATES]${reset} Failing: ${gs.failing.join(', ')}`));
-    }
-    if (gs.stale) {
-      lines.push(row(`${yellow}!${reset} ${dim}Gates are stale - consider running midas_verify${reset}`));
-    }
+  // Only show warnings - keep main view clean
+  
+  // Gates: only show if FAILING
+  if (state.gatesStatus && state.gatesStatus.failing.length > 0) {
+    lines.push(row(`${red}[GATES]${reset} Failing: ${state.gatesStatus.failing.join(', ')}`));
   }
   
-  // Show stuck indicator if user has been in same phase without progress for 2+ hours
+  // Stuck: show if no progress for 2+ hours
   const stuckInfo = checkIfStuck(projectPath);
   if (stuckInfo?.isStuck) {
-    lines.push(emptyRow());
-    lines.push(row(`${red}[STUCK?]${reset} No progress for ${formatDuration(stuckInfo.timeSinceProgress)}`));
-    if (stuckInfo.suggestions.length > 0) {
-      lines.push(row(`${dim}Try: ${stuckInfo.suggestions[0]}${reset}`));
-    }
+    lines.push(row(`${red}[STUCK]${reset} No progress for ${formatDuration(stuckInfo.timeSinceProgress)}`));
   }
   
-  // Show scope drift indicator if project has grown significantly
-  if (state.scopeDrift && state.scopeDrift.warning) {
-    const driftColor = state.scopeDrift.driftPercentage > 100 ? red : yellow;
-    const shortMsg = state.scopeDrift.driftPercentage > 100 
-      ? 'Consider: split project, defer features' 
-      : 'Review if all features are in PRD';
-    lines.push(row(`${driftColor}[SCOPE +${state.scopeDrift.driftPercentage}%]${reset} ${dim}${shortMsg}${reset}`));
+  // Scope drift: only show if severe (>100%)
+  if (state.scopeDrift && state.scopeDrift.driftPercentage > 100) {
+    lines.push(row(`${red}[SCOPE +${state.scopeDrift.driftPercentage}%]${reset} Consider splitting or deferring`));
   }
 
-  // Show if files changed since last analysis
+  // Files changed: subtle reminder
   if (state.filesChanged) {
-    lines.push(row(`${yellow}!${reset} ${dim}Files changed since analysis - press [r] to refresh${reset}`));
-  }
-
-  // Show recent MCP events (real-time from Cursor)
-  if (state.recentEvents.length > 0) {
-    lines.push(emptyRow());
-    lines.push(row(`${dim}Recent MCP Activity:${reset}`));
-    for (const evt of state.recentEvents.slice(-3)) {
-      const icon = evt.type === 'tool_called' ? `${green}>${reset}` : `${dim}-${reset}`;
-      const label = evt.tool || evt.type;
-      const time = new Date(evt.timestamp).toLocaleTimeString().slice(0, 5);
-      lines.push(row(`${icon} ${label} ${dim}(${time})${reset}`));
-    }
-  }
-
-  // Show suggestion acceptance rate
-  if (state.suggestionAcceptanceRate > 0) {
-    lines.push(row(`${dim}Suggestion acceptance: ${state.suggestionAcceptanceRate}%${reset}`));
+    lines.push(row(`${dim}Files changed - press [r] to refresh${reset}`));
   }
 
   lines.push(emptyRow());
   lines.push(`${cyan}╠${hLine}╣${reset}`);
-  // Two-row menu to fit within width
-  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[x]${reset} Decline  ${dim}[e]${reset} Example  ${dim}[d]${reset} Docs  ${dim}[r]${reset} Analyze  ${dim}[v]${reset} Verify`));
-  lines.push(row(`${dim}[l]${reset} Level  ${dim}[h]${reset} Hotfix  ${dim}[k]${reset} Cleanup  ${dim}[?]${reset} Help  ${dim}[q]${reset} Quit`));
+  // Clean single-row menu with essentials
+  lines.push(row(`${dim}[c]${reset} Copy  ${dim}[x]${reset} Decline  ${dim}[r]${reset} Analyze  ${dim}[i]${reset} Info  ${dim}[h]${reset} History  ${dim}[?]${reset} Help  ${dim}[q]${reset} Quit`));
   lines.push(`${cyan}╚${hLine}╝${reset}`);
 
   return lines.join('\n');
@@ -598,6 +620,8 @@ export async function runInteractive(): Promise<void> {
     showingSessionStart: true, // Start with session starter prompt
     showingRejectionInput: false,
     showingHelp: false,
+    showingInfo: false,        // Toggle with 'i' key
+    showingHistory: false,     // Toggle with 'h' key
     beginnerMode: false,       // Toggle with 'b' key
     sessionStarterPrompt: getSessionStarterPrompt(projectPath),
     sessionId,
@@ -684,6 +708,14 @@ export async function runInteractive(): Promise<void> {
             }
           }
         }
+      }
+      
+      // Auto-run gates during analysis to keep them fresh
+      try {
+        const { verify } = await import('./tools/verify.js');
+        verify({ projectPath, runTests: false }); // Quick verify (build + lint, skip slow tests)
+      } catch {
+        // Gates verification is optional - don't fail analysis
       }
       
       // Get smart suggestion and gates status
@@ -931,13 +963,9 @@ export async function runInteractive(): Promise<void> {
     if (!tuiState.filesChanged && tuiState.analysis) {
       tuiState.filesChanged = hasFilesChangedSinceAnalysis(projectPath);
       if (tuiState.filesChanged) {
-        tuiState.message = `${yellow}!${reset} Files changed. Press [r] to re-analyze.`;
         render();
       }
     }
-    
-    // Update gates status
-    tuiState.gatesStatus = getGatesStatus(projectPath);
   }, 5000);
 
   // REAL-TIME: Watch for MCP events (tool calls from Cursor)
@@ -986,9 +1014,21 @@ export async function runInteractive(): Promise<void> {
         process.exit(0);
       }
 
-      // Help screen - any key closes it
+      // Modal screens - any key closes them
       if (tuiState.showingHelp) {
         tuiState.showingHelp = false;
+        render();
+        return;
+      }
+      
+      if (tuiState.showingInfo) {
+        tuiState.showingInfo = false;
+        render();
+        return;
+      }
+      
+      if (tuiState.showingHistory) {
+        tuiState.showingHistory = false;
         render();
         return;
       }
@@ -1165,8 +1205,22 @@ export async function runInteractive(): Promise<void> {
     }
 
     if (key === 'h') {
+      // Show history (completed items)
+      tuiState.showingHistory = true;
+      render();
+      return;
+    }
+
+    if (key === 'i') {
+      // Show info screen (tech stack, gates, stats)
+      tuiState.showingInfo = true;
+      render();
+      return;
+    }
+
+    if (key === 'f') {
       // Toggle hotfix mode
-      const { getHotfixStatus, completeHotfix, startHotfix } = await import('./tools/hotfix.js');
+      const { getHotfixStatus, completeHotfix } = await import('./tools/hotfix.js');
       const status = getHotfixStatus({ projectPath });
       
       if (status.active) {
@@ -1202,8 +1256,8 @@ export async function runInteractive(): Promise<void> {
       render();
     }
 
-    if (key === 'i') {
-      // Input/paste AI response for analysis
+    if (key === 'P') {
+      // (Advanced) Paste AI response for analysis
       const exchange = await promptForResponse();
       
       if (!exchange) {
