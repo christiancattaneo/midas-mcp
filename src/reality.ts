@@ -208,6 +208,10 @@ const DEFAULT_TRIGGERS: Record<string, (p: ProjectProfile) => string> = {
   EU_AI_ACT: (p) => p.targetsEU 
     ? 'AI system targeting EU users' 
     : 'AI system in regulated industry (healthcare/education/finance)',
+  SBOM: () => 'Enterprise/finance audience expects supply chain transparency',
+  DATA_RESIDENCY: (p) => p.targetsEU 
+    ? 'EU users require data residency documentation (GDPR)'
+    : 'Enterprise customers require data location clarity',
 };
 
 const REALITY_CHECKS: Record<string, RealityCheckDefinition> = {
@@ -696,6 +700,51 @@ Create docs/eu-ai-act-assessment.md covering:
 
 Add warning: "This requires legal review for final classification"`,
     condition: (p) => p.usesAI && (p.targetsEU || p.industry.some(i => ['healthcare', 'education', 'finance'].includes(i))),
+  },
+
+  SBOM: {
+    key: 'SBOM',
+    category: 'Supply Chain',
+    tier: 'generatable',
+    headline: 'Generate a Software Bill of Materials (SBOM)',
+    explanation: 'An SBOM lists all dependencies in your software. Required by US Executive Order 14028 for government contractors, increasingly expected by enterprise customers.',
+    priority: 'medium',
+    promptTemplate: `Generate a Software Bill of Materials (SBOM) for this project.
+
+Run these commands to generate the SBOM:
+1. For npm: npx @cyclonedx/cyclonedx-npm --output-file sbom.json
+2. Or use: npm sbom --sbom-format cyclonedx
+
+Then create docs/sbom-readme.md explaining:
+- What the SBOM contains
+- How to regenerate it
+- When to update it (after dependency changes)
+- License summary of all dependencies
+
+Add the sbom.json generation to CI/CD pipeline.`,
+    condition: (p) => p.targetAudience.includes('enterprise') || p.industry.includes('finance'),
+  },
+
+  DATA_RESIDENCY: {
+    key: 'DATA_RESIDENCY',
+    category: 'Compliance',
+    tier: 'assistable',
+    headline: 'Document data residency requirements',
+    explanation: 'If you store data in specific regions, you need to document where data lives. GDPR, data sovereignty laws, and enterprise contracts often require this.',
+    priority: 'high',
+    alsoNeeded: ['Legal review of data transfer agreements', 'Cloud provider region verification'],
+    promptTemplate: `Read docs/brainlift.md and docs/prd.md. Create a data residency documentation.
+
+Create docs/data-residency.md covering:
+1. Where is user data stored? (AWS region, GCP zone, etc.)
+2. Does data cross borders? (US ↔ EU, etc.)
+3. What legal basis for cross-border transfers? (SCCs, adequacy decisions)
+4. Can customers choose data region? (for enterprise)
+5. Where are backups stored?
+6. Third-party services and their data locations (Stripe, analytics, etc.)
+
+Add warning: "Verify regions with your cloud provider dashboard"`,
+    condition: (p) => p.targetsEU || p.targetAudience.includes('enterprise'),
   },
 };
 

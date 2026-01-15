@@ -13,6 +13,11 @@
 ## User Stories
 - As a [user type], I want to [action] so that [benefit]
 
+## Target Geography
+- Primary markets: [US, EU, Global, etc.]
+- Data storage region: [AWS us-east-1, etc.]
+- Regulatory considerations: [GDPR, CCPA, none, etc.]
+
 ## Technical Requirements
 - [Performance, security, integration requirements]
 
