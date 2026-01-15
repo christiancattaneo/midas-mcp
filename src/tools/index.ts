@@ -156,3 +156,9 @@ export {
   setScopeBaseline,
   setScopeBaselineSchema,
 } from './scope.js';
+
+// Reality check - before-you-ship requirements
+export {
+  realityCheck,
+  realityCheckSchema,
+} from './reality.js';

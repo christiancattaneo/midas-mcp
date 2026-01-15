@@ -35,6 +35,7 @@ import { showExample } from './tools/examples.js';
 import { checkScopeCreep, type ScopeMetrics } from './tools/scope.js';
 import { getHotfixStatus } from './tools/hotfix.js';
 import { startSession, endSession, recordPromptCopied, recordPhaseChange, loadMetrics } from './metrics.js';
+import { getRealityChecks, getTierSymbol, getTierDescription, type RealityCheck, type RealityCheckResult } from './reality.js';
 
 // ANSI codes
 const ESC = '\x1b';
@@ -136,6 +137,9 @@ interface TUIState {
   showingHelp: boolean;       // Show help screen
   showingInfo: boolean;       // Show info screen (tech stack, gates, stats)
   showingHistory: boolean;    // Show completed items history
+  showingReality: boolean;    // Show reality check screen
+  realityChecks: RealityCheckResult | null;
+  realityIndex: number;       // Current reality check being viewed
   beginnerMode: boolean;      // Simplified display for new users
   sessionStarterPrompt: string;
   sessionId: string;
@@ -314,6 +318,7 @@ function drawUI(state: TUIState, projectPath: string): string {
     lines.push(row(`${dim}Info:${reset}`));
     lines.push(row(`  ${bold}[i]${reset} Info        Tech stack, gates, stats`));
     lines.push(row(`  ${bold}[h]${reset} History     View completed items`));
+    lines.push(row(`  ${bold}[y]${reset} Reality     Before-you-ship requirements`));
     lines.push(row(`  ${bold}[e]${reset} Example     Show example for current step`));
     lines.push(emptyRow());
     lines.push(row(`${dim}Advanced:${reset}`));
@@ -402,6 +407,88 @@ function drawUI(state: TUIState, projectPath: string): string {
     lines.push(emptyRow());
     lines.push(`${cyan}╠${hLine}╣${reset}`);
     lines.push(row(`${dim}Press any key to close${reset}`));
+    lines.push(`${cyan}╚${hLine}╝${reset}`);
+    return lines.join('\n');
+  }
+
+  // Reality Check screen - shows before-you-ship requirements
+  if (state.showingReality && state.realityChecks) {
+    const rc = state.realityChecks;
+    const idx = state.realityIndex;
+    const check = rc.checks[idx];
+    
+    lines.push(emptyRow());
+    lines.push(row(`${bold}${cyan}REALITY CHECK${reset} ${dim}(${idx + 1}/${rc.checks.length})${reset}`));
+    lines.push(emptyRow());
+    
+    if (check) {
+      // Tier indicator
+      const tierSymbol = getTierSymbol(check.tier);
+      const tierDesc = getTierDescription(check.tier);
+      
+      lines.push(row(`${tierSymbol} ${bold}${check.headline}${reset}`));
+      lines.push(row(`${dim}${tierDesc}${reset}`));
+      lines.push(emptyRow());
+      
+      // Explanation - wrap it
+      const wrappedExplanation = wrapText(check.explanation, I - 2);
+      for (const line of wrappedExplanation) {
+        lines.push(row(line));
+      }
+      lines.push(emptyRow());
+      
+      // For human_only tier, show steps
+      if (check.tier === 'human_only' && check.humanSteps) {
+        lines.push(row(`${bold}You need to:${reset}`));
+        for (let i = 0; i < Math.min(check.humanSteps.length, 4); i++) {
+          const step = check.humanSteps[i];
+          const truncatedStep = step.length > I - 6 ? step.slice(0, I - 9) + '...' : step;
+          lines.push(row(`${dim}${i + 1}.${reset} ${truncatedStep}`));
+        }
+        lines.push(emptyRow());
+        if (check.externalLinks && check.externalLinks.length > 0) {
+          lines.push(row(`${dim}→${reset} ${check.externalLinks[0]}`));
+          lines.push(emptyRow());
+        }
+        lines.push(row(`${dim}Then copy the prompt below:${reset}`));
+      }
+      
+      // For assistable tier, show what's also needed
+      if (check.tier === 'assistable' && check.alsoNeeded) {
+        lines.push(row(`${yellow}!${reset} ${bold}Also needed (human):${reset}`));
+        for (const item of check.alsoNeeded.slice(0, 3)) {
+          const truncatedItem = item.length > I - 4 ? item.slice(0, I - 7) + '...' : item;
+          lines.push(row(`${dim}•${reset} ${truncatedItem}`));
+        }
+        lines.push(emptyRow());
+      }
+      
+      // Show prompt preview
+      lines.push(`${cyan}╠${hLine}╣${reset}`);
+      lines.push(row(`${bold}Prompt to copy:${reset}`));
+      const promptPreview = check.cursorPrompt.split('\n')[0].slice(0, I - 2);
+      lines.push(row(`${dim}${promptPreview}...${reset}`));
+    } else {
+      lines.push(row(`${green}All checks reviewed!${reset}`));
+    }
+    
+    lines.push(emptyRow());
+    lines.push(`${cyan}╠${hLine}╣${reset}`);
+    
+    // Summary line
+    const critical = rc.summary.critical;
+    const gen = rc.summary.generatable;
+    const assist = rc.summary.assistable;
+    const human = rc.summary.humanOnly;
+    lines.push(row(`${dim}Summary:${reset} ${critical > 0 ? `${red}${critical} critical${reset} ` : ''}${gen} AI-draft, ${assist} need review, ${human} manual`));
+    
+    // Navigation
+    lines.push(emptyRow());
+    lines.push(`${cyan}╠${hLine}╣${reset}`);
+    const nav = idx < rc.checks.length - 1 
+      ? `${dim}[←]${reset} Prev  ${dim}[→]${reset} Next  ${dim}[c]${reset} Copy Prompt  ${dim}[Esc]${reset} Close`
+      : `${dim}[←]${reset} Prev  ${dim}[c]${reset} Copy Prompt  ${dim}[Esc]${reset} Close`;
+    lines.push(row(nav));
     lines.push(`${cyan}╚${hLine}╝${reset}`);
     return lines.join('\n');
   }
@@ -609,6 +696,11 @@ function drawUI(state: TUIState, projectPath: string): string {
 
   // Only show warnings - keep main view clean
   
+  // Reality check hint for SHIP phase
+  if (a.currentPhase.phase === 'SHIP') {
+    lines.push(row(`${yellow}[y]${reset} ${dim}Press Y to check before-you-ship requirements${reset}`));
+  }
+  
   // Gates: only show if FAILING
   if (state.gatesStatus && state.gatesStatus.failing.length > 0) {
     lines.push(row(`${red}[GATES]${reset} Failing: ${state.gatesStatus.failing.join(', ')}`));
@@ -719,6 +811,9 @@ export async function runInteractive(): Promise<void> {
     showingHelp: false,
     showingInfo: false,        // Toggle with 'i' key
     showingHistory: false,     // Toggle with 'h' key
+    showingReality: false,     // Toggle with 'y' key (realitY check)
+    realityChecks: null,
+    realityIndex: 0,
     beginnerMode: false,       // Toggle with 'b' key
     sessionStarterPrompt: getSessionStarterPrompt(projectPath),
     sessionId,
@@ -1156,6 +1251,53 @@ export async function runInteractive(): Promise<void> {
         render();
         return;
       }
+      
+      // Reality check screen - special navigation
+      if (tuiState.showingReality) {
+        const rc = tuiState.realityChecks;
+        
+        // Escape or any other key to close (except navigation keys)
+        if (key === '\u001b' || key === '\r' || key === '\n') {  // Escape or Enter
+          tuiState.showingReality = false;
+          render();
+          return;
+        }
+        
+        // Arrow keys for navigation
+        if (key === '\u001b[C' || key === 'l') {  // Right arrow or 'l'
+          if (rc && tuiState.realityIndex < rc.checks.length - 1) {
+            tuiState.realityIndex++;
+          }
+          render();
+          return;
+        }
+        
+        if (key === '\u001b[D' || key === 'h') {  // Left arrow or 'h'
+          if (tuiState.realityIndex > 0) {
+            tuiState.realityIndex--;
+          }
+          render();
+          return;
+        }
+        
+        // 'c' to copy current prompt
+        if (key === 'c' && rc && rc.checks[tuiState.realityIndex]) {
+          const check = rc.checks[tuiState.realityIndex];
+          try {
+            await copyToClipboard(check.cursorPrompt);
+            tuiState.message = `${green}OK${reset} Copied ${check.key} prompt. Paste in Cursor.`;
+          } catch {
+            tuiState.message = `${red}!${reset} Failed to copy.`;
+          }
+          render();
+          return;
+        }
+        
+        // Any other key closes the reality screen
+        tuiState.showingReality = false;
+        render();
+        return;
+      }
 
       // Session start screen handling
       if (tuiState.showingSessionStart) {
@@ -1384,6 +1526,30 @@ export async function runInteractive(): Promise<void> {
       // Show info screen (tech stack, gates, stats)
       tuiState.showingInfo = true;
       render();
+      return;
+    }
+
+    if (key === 'y') {
+      // Show reality check screen
+      tuiState.message = `${magenta}...${reset} Checking project requirements...`;
+      render();
+      
+      try {
+        tuiState.realityChecks = getRealityChecks(projectPath);
+        tuiState.realityIndex = 0;
+        
+        if (tuiState.realityChecks.checks.length === 0) {
+          tuiState.message = `${green}OK${reset} No reality checks apply yet. Add more details to brainlift/PRD.`;
+          render();
+        } else {
+          tuiState.showingReality = true;
+          tuiState.message = '';
+          render();
+        }
+      } catch (error) {
+        tuiState.message = `${red}!${reset} Failed to check requirements.`;
+        render();
+      }
       return;
     }
 

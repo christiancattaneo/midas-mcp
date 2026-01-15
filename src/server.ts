@@ -110,6 +110,9 @@ import {
   checkScopeCreepSchema,
   setScopeBaseline,
   setScopeBaselineSchema,
+  // Reality check - before-you-ship requirements
+  realityCheck,
+  realityCheckSchema,
 } from './tools/index.js';
 import { registerAllPrompts } from './prompts/index.js';
 import { registerAllResources } from './resources/index.js';
@@ -540,6 +543,13 @@ export function createServer(): McpServer {
     'Set current project size as the baseline for scope tracking.',
     setScopeBaselineSchema.shape,
     wrapTool('midas_set_scope_baseline', setScopeBaseline)
+  );
+
+  server.tool(
+    'midas_reality_check',
+    'Get before-you-ship requirements based on project profile. Returns prompts to generate docs like privacy policy, terms, etc.',
+    realityCheckSchema.shape,
+    wrapTool('midas_reality_check', realityCheck)
   );
 
   // Register prompts
