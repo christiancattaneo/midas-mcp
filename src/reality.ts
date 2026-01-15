@@ -203,6 +203,11 @@ const DEFAULT_TRIGGERS: Record<string, (p: ProjectProfile) => string> = {
   DATA_RETENTION: (p) => p.collectsSensitiveData ? 'Handles sensitive data' : 'Collects user data',
   INCIDENT_RESPONSE: () => 'Production system needs incident handling',
   OSS_LICENSE: () => 'Open source project needs license',
+  HIPAA_COMPLIANCE: () => 'Healthcare industry + collects user data',
+  FERPA_COMPLIANCE: () => 'Education industry + collects student data',
+  EU_AI_ACT: (p) => p.targetsEU 
+    ? 'AI system targeting EU users' 
+    : 'AI system in regulated industry (healthcare/education/finance)',
 };
 
 const REALITY_CHECKS: Record<string, RealityCheckDefinition> = {
@@ -619,6 +624,79 @@ However, you can prepare by implementing:
 Create a security checklist: docs/security-checklist.md`,
     condition: (p) => p.targetAudience.includes('enterprise'),
   },
+
+  // ⚠️ ASSISTABLE - Industry-specific regulations
+  HIPAA_COMPLIANCE: {
+    key: 'HIPAA_COMPLIANCE',
+    category: 'Healthcare',
+    tier: 'assistable',
+    headline: 'Healthcare data requires HIPAA compliance',
+    explanation: 'Handling patient health information in the US requires HIPAA compliance. Violations can cost $100-50K per record.',
+    priority: 'critical',
+    alsoNeeded: ['Legal review of BAA', 'Security audit', 'Employee HIPAA training'],
+    promptTemplate: `Read docs/brainlift.md and docs/prd.md. This is a healthcare application that may need HIPAA compliance.
+
+Create docs/hipaa-checklist.md covering:
+1. PHI (Protected Health Information) inventory - what health data do we handle?
+2. Access controls - minimum necessary access
+3. Audit logging - who accessed what PHI, when
+4. Encryption - at rest and in transit
+5. BAA requirements - list of vendors needing Business Associate Agreements
+6. Incident response - breach notification within 60 days
+
+Add warning: "This checklist requires review by a HIPAA compliance officer or healthcare attorney"`,
+    condition: (p) => p.industry.includes('healthcare') && p.collectsUserData,
+  },
+
+  FERPA_COMPLIANCE: {
+    key: 'FERPA_COMPLIANCE',
+    category: 'Education',
+    tier: 'assistable',
+    headline: 'Education records require FERPA compliance',
+    explanation: 'Student education records in US schools are protected by FERPA. Violations can result in loss of federal funding.',
+    priority: 'critical',
+    alsoNeeded: ['School admin approval', 'Parent consent process', 'Annual notification'],
+    promptTemplate: `Read docs/brainlift.md and docs/prd.md. This is an education application that may need FERPA compliance.
+
+Create docs/ferpa-checklist.md covering:
+1. Education records inventory - what student records do we access/store?
+2. Consent requirements - when do we need parent/student consent?
+3. Directory information policy - what can be disclosed without consent?
+4. Access controls - only authorized school officials
+5. Record keeping - maintain log of disclosures
+6. Annual notification - how schools notify parents/students
+
+Add warning: "This checklist requires review by school legal counsel"`,
+    condition: (p) => p.industry.includes('education') && p.collectsUserData,
+  },
+
+  EU_AI_ACT: {
+    key: 'EU_AI_ACT',
+    category: 'AI Regulation',
+    tier: 'assistable',
+    headline: 'EU AI Act may apply to your AI system',
+    explanation: 'The EU AI Act regulates AI systems by risk level. High-risk AI (health, education, employment) has strict requirements.',
+    priority: 'high',
+    alsoNeeded: ['Risk classification assessment', 'Technical documentation', 'EU representative if non-EU company'],
+    promptTemplate: `Read docs/brainlift.md and docs/prd.md. This AI system may be subject to the EU AI Act.
+
+Create docs/eu-ai-act-assessment.md covering:
+1. AI use case classification - what does the AI decide or recommend?
+2. Risk level assessment:
+   - Unacceptable (banned): social scoring, subliminal manipulation
+   - High-risk: education, employment, credit, healthcare, law enforcement
+   - Limited risk: chatbots (requires transparency)
+   - Minimal risk: spam filters, games
+3. If high-risk, document:
+   - Data governance requirements
+   - Technical documentation
+   - Record keeping
+   - Human oversight mechanisms
+   - Accuracy, robustness, cybersecurity
+
+Add warning: "This requires legal review for final classification"`,
+    condition: (p) => p.usesAI && (p.targetsEU || p.industry.some(i => ['healthcare', 'education', 'finance'].includes(i))),
+  },
 };
 
 // ============================================================================
@@ -712,9 +790,9 @@ export function inferProjectProfile(projectPath: string): ProjectProfile {
     hasPayments: ['payment', 'stripe', 'paypal', 'billing', 'checkout', 'purchase', 'monetize', 'pricing page'],
     hasSubscriptions: ['subscription', 'monthly plan', 'yearly plan', 'recurring billing', 'saas'],
     hasUserContent: ['upload', 'user generated', 'ugc', 'user posts', 'comments section', 'community content'],
-    // AI - only when clearly AI-powered
-    usesAI: ['ai-powered', 'artificial intelligence', 'machine learning', 'gpt', 'llm', 'claude api', 'openai api', 'langchain'],
-    aiMakesDecisions: ['ai decides', 'ai recommends', 'automated decision', 'algorithm determines', 'ai-driven'],
+    // AI - detect AI usage with common patterns
+    usesAI: ['ai-powered', 'artificial intelligence', 'machine learning', 'gpt', 'llm', 'claude', 'openai', 'langchain', 'uses ai', 'ai features', 'ai model', 'neural network', 'deep learning', 'genai', 'generative ai'],
+    aiMakesDecisions: ['ai decides', 'ai recommends', 'automated decision', 'algorithm determines', 'ai-driven', 'ai generates', 'ai creates'],
   };
   
   for (const [key, terms] of Object.entries(keywords)) {
