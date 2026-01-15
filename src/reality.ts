@@ -565,19 +565,24 @@ export function inferProjectProfile(projectPath: string): ProjectProfile {
     } catch { /* ignore parse errors */ }
   }
   
-  // Keyword analysis
+  // CONSERVATIVE keyword analysis
+  // Only trigger on explicit mentions, NOT on broad terms like "global" or "international"
+  // AI catch-all will handle nuanced cases
   const keywords = {
-    // User data
-    collectsUserData: ['user', 'account', 'login', 'signup', 'register', 'email', 'profile', 'auth'],
-    collectsSensitiveData: ['health', 'medical', 'financial', 'bank', 'credit', 'ssn', 'biometric', 'face', 'fingerprint'],
-    hasUnder13Users: ['kids', 'children', 'child', 'k-12', 'elementary', 'middle school', 'under 13'],
-    targetsEU: ['eu', 'europe', 'european', 'gdpr', 'uk', 'germany', 'france', 'spain', 'global', 'international', 'worldwide'],
-    targetsCalifornia: ['california', 'ccpa', 'us', 'usa', 'united states', 'global', 'international'],
-    hasPayments: ['payment', 'subscribe', 'subscription', 'premium', 'paid', 'pricing', 'monetize', 'charge', 'stripe', 'billing', 'freemium', 'pro plan'],
-    hasSubscriptions: ['subscription', 'monthly', 'yearly', 'annual', 'recurring', 'plan'],
-    hasUserContent: ['upload', 'post', 'share', 'comment', 'create content', 'user generated', 'ugc', 'community'],
-    usesAI: ['ai', 'artificial intelligence', 'machine learning', 'ml', 'gpt', 'llm', 'claude', 'openai', 'generate', 'recommend'],
-    aiMakesDecisions: ['recommend', 'suggest', 'decide', 'score', 'rank', 'filter', 'personalize', 'match'],
+    // User data - conservative: must be clear user accounts
+    collectsUserData: ['user account', 'login', 'signup', 'sign up', 'register', 'authentication', 'auth'],
+    collectsSensitiveData: ['health', 'medical', 'hipaa', 'financial', 'bank account', 'credit card', 'ssn', 'social security', 'biometric', 'fingerprint', 'face id'],
+    hasUnder13Users: ['kids', 'children', 'child', 'k-12', 'elementary', 'middle school', 'under 13', 'coppa', 'parental consent'],
+    // Geography - VERY conservative: only explicit mentions, not "global"
+    targetsEU: ['eu', 'europe', 'european union', 'gdpr', 'germany', 'france', 'spain', 'italy', 'netherlands', 'uk users'],
+    targetsCalifornia: ['california', 'ccpa', 'california users'],
+    // Business - clear signals only
+    hasPayments: ['payment', 'stripe', 'paypal', 'billing', 'checkout', 'purchase', 'monetize', 'pricing page'],
+    hasSubscriptions: ['subscription', 'monthly plan', 'yearly plan', 'recurring billing', 'saas'],
+    hasUserContent: ['upload', 'user generated', 'ugc', 'user posts', 'comments section', 'community content'],
+    // AI - only when clearly AI-powered
+    usesAI: ['ai-powered', 'artificial intelligence', 'machine learning', 'gpt', 'llm', 'claude api', 'openai api', 'langchain'],
+    aiMakesDecisions: ['ai decides', 'ai recommends', 'automated decision', 'algorithm determines', 'ai-driven'],
   };
   
   for (const [key, terms] of Object.entries(keywords)) {
@@ -724,6 +729,192 @@ export function getRealityChecks(projectPath: string): RealityCheckResult {
       humanOnly: checks.filter(c => c.tier === 'human_only').length,
     },
   };
+}
+
+// ============================================================================
+// AI CATCH-ALL FILTER
+// ============================================================================
+
+/**
+ * AI-powered reality check filter
+ * 
+ * Conservative defaults may miss edge cases. This AI pass:
+ * 1. Reviews the full project context
+ * 2. Filters out irrelevant checks (e.g., GDPR for US-only app)
+ * 3. Adds missing checks based on nuanced understanding
+ * 
+ * Called only when API key is available, falls back to keyword-based otherwise.
+ */
+export async function filterChecksWithAI(
+  profile: ProjectProfile,
+  checks: RealityCheck[],
+  projectPath: string
+): Promise<{ filtered: RealityCheck[]; additions: string[]; removals: string[] }> {
+  // Dynamic import to avoid circular dependency
+  const { getApiKey } = await import('./config.js');
+  const { chat } = await import('./providers.js');
+  
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    // No API key - return checks as-is
+    return { filtered: checks, additions: [], removals: [] };
+  }
+  
+  const safePath = sanitizePath(projectPath);
+  
+  // Read full docs for context
+  let docsContent = '';
+  const brainliftPath = join(safePath, 'docs', 'brainlift.md');
+  const prdPath = join(safePath, 'docs', 'prd.md');
+  const readmePath = join(safePath, 'README.md');
+  
+  if (existsSync(brainliftPath)) {
+    docsContent += `## Brainlift:\n${readFileSync(brainliftPath, 'utf-8').slice(0, 2000)}\n\n`;
+  }
+  if (existsSync(prdPath)) {
+    docsContent += `## PRD:\n${readFileSync(prdPath, 'utf-8').slice(0, 2000)}\n\n`;
+  }
+  if (existsSync(readmePath)) {
+    docsContent += `## README:\n${readFileSync(readmePath, 'utf-8').slice(0, 1000)}\n`;
+  }
+  
+  if (!docsContent) {
+    // No docs to analyze - return checks as-is
+    return { filtered: checks, additions: [], removals: [] };
+  }
+  
+  const systemPrompt = `You are a compliance advisor reviewing reality checks for a software project.
+Your job is to FILTER the proposed checks based on the actual project context.
+
+Rules:
+1. REMOVE checks that don't apply (e.g., GDPR for US-only apps, COPPA for adult-only products)
+2. FLAG checks that might apply but need confirmation (add to "maybeAdd" list)
+3. Be CONSERVATIVE: when in doubt, keep the check
+4. Consider industry-specific requirements (healthcare → HIPAA, education → FERPA, etc.)
+5. Consider geographic requirements (EU → GDPR, California → CCPA, etc.)
+
+Respond ONLY with JSON.`;
+
+  const prompt = `# Project Documentation
+${docsContent}
+
+# Inferred Profile
+${JSON.stringify(profile, null, 2)}
+
+# Proposed Checks
+${checks.map(c => `- ${c.key}: ${c.headline}`).join('\n')}
+
+# All Available Checks (not currently triggered)
+${Object.keys(REALITY_CHECKS).filter(k => !checks.some(c => c.key === k)).map(k => `- ${k}: ${REALITY_CHECKS[k].headline}`).join('\n')}
+
+Review this and respond with:
+{
+  "keep": ["CHECK_KEY", ...],      // Checks that definitely apply
+  "remove": ["CHECK_KEY", ...],   // Checks that don't apply (with reason)
+  "add": ["CHECK_KEY", ...],      // Checks from available list that SHOULD apply
+  "reasoning": "Brief explanation of key decisions"
+}`;
+
+  try {
+    const response = await chat(prompt, {
+      systemPrompt,
+      maxTokens: 1000,
+      useThinking: false,  // Fast response
+      timeout: 15000,  // Quick timeout
+    });
+    
+    // Parse response
+    let jsonStr = response.content;
+    if (response.content.includes('```')) {
+      const match = response.content.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (match) jsonStr = match[1];
+    }
+    
+    const result = JSON.parse(jsonStr.trim());
+    
+    // Filter checks based on AI response
+    const keepSet = new Set(result.keep || []);
+    const removeSet = new Set(result.remove || []);
+    const addKeys = result.add || [];
+    
+    // Apply filtering
+    let filtered = checks.filter(c => {
+      // If explicitly removed, remove it
+      if (removeSet.has(c.key)) return false;
+      // If explicitly kept or not mentioned, keep it (conservative)
+      return true;
+    });
+    
+    // Add any checks AI says we're missing
+    for (const key of addKeys) {
+      if (REALITY_CHECKS[key] && !filtered.some(c => c.key === key)) {
+        const check = REALITY_CHECKS[key];
+        const cursorPrompt = fillPromptTemplate(check.promptTemplate, profile, projectPath);
+        filtered.push({
+          key: check.key,
+          category: check.category,
+          tier: check.tier,
+          headline: check.headline,
+          explanation: check.explanation,
+          cursorPrompt,
+          humanSteps: check.humanSteps,
+          externalLinks: check.externalLinks,
+          alsoNeeded: check.alsoNeeded,
+          priority: check.priority,
+        });
+      }
+    }
+    
+    // Re-sort
+    const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+    const tierOrder = { human_only: 0, assistable: 1, generatable: 2 };
+    filtered.sort((a, b) => {
+      const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
+      if (priorityDiff !== 0) return priorityDiff;
+      return tierOrder[a.tier] - tierOrder[b.tier];
+    });
+    
+    return {
+      filtered,
+      additions: addKeys,
+      removals: Array.from(removeSet) as string[],
+    };
+  } catch (error) {
+    // AI failed - return original checks (conservative fallback)
+    return { filtered: checks, additions: [], removals: [] };
+  }
+}
+
+/**
+ * Get reality checks with AI filtering (async version)
+ * Use this when you want the most accurate checks
+ */
+export async function getRealityChecksWithAI(projectPath: string): Promise<RealityCheckResult & { aiFiltered: boolean }> {
+  const basic = getRealityChecks(projectPath);
+  
+  try {
+    const { filtered, additions, removals } = await filterChecksWithAI(
+      basic.profile,
+      basic.checks,
+      projectPath
+    );
+    
+    return {
+      profile: basic.profile,
+      checks: filtered,
+      summary: {
+        total: filtered.length,
+        critical: filtered.filter(c => c.priority === 'critical').length,
+        generatable: filtered.filter(c => c.tier === 'generatable').length,
+        assistable: filtered.filter(c => c.tier === 'assistable').length,
+        humanOnly: filtered.filter(c => c.tier === 'human_only').length,
+      },
+      aiFiltered: additions.length > 0 || removals.length > 0,
+    };
+  } catch {
+    // Fallback to basic checks
+    return { ...basic, aiFiltered: false };
+  }
 }
 
 /**

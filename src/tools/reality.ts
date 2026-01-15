@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getRealityChecks, getTierSymbol, getTierDescription, type RealityCheckResult } from '../reality.js';
+import { getRealityChecks, getRealityChecksWithAI, getTierSymbol } from '../reality.js';
 import { sanitizePath } from '../security.js';
 
 // ============================================================================
@@ -8,6 +8,7 @@ import { sanitizePath } from '../security.js';
 
 export const realityCheckSchema = z.object({
   projectPath: z.string().optional().describe('Path to project root'),
+  useAI: z.boolean().optional().describe('Use AI to filter checks (more accurate but slower)'),
 });
 
 export type RealityCheckInput = z.infer<typeof realityCheckSchema>;
@@ -40,22 +41,29 @@ export interface RealityCheckToolResult {
     alsoNeeded?: string[];
     priority: string;
   }>;
+  aiFiltered: boolean;
   message: string;
 }
 
 /**
  * Get reality checks for a project - requirements that should be addressed before shipping.
  * 
+ * Uses conservative keyword detection + optional AI filtering for accuracy.
+ * 
  * Checks are categorized by what AI can do:
  * - generatable (✅): AI can draft the document, just needs human review
  * - assistable (⚠️): AI can create a guide/checklist, needs professional verification  
  * - human_only (🔴): Requires real-world action (signup, purchase, certification)
  */
-export function realityCheck(input: RealityCheckInput): RealityCheckToolResult {
+export async function realityCheck(input: RealityCheckInput): Promise<RealityCheckToolResult> {
   const projectPath = sanitizePath(input.projectPath || process.cwd());
+  const useAI = input.useAI ?? true;  // Default to using AI for better accuracy
   
   try {
-    const result = getRealityChecks(projectPath);
+    // Use AI-filtered version for more accurate results
+    const result = useAI 
+      ? await getRealityChecksWithAI(projectPath)
+      : { ...getRealityChecks(projectPath), aiFiltered: false };
     
     const checks = result.checks.map(check => ({
       key: check.key,
@@ -70,9 +78,10 @@ export function realityCheck(input: RealityCheckInput): RealityCheckToolResult {
       priority: check.priority,
     }));
     
+    const aiNote = result.aiFiltered ? ' (AI-filtered)' : '';
     const message = result.checks.length === 0
       ? 'No reality checks detected. Add more details to your brainlift/PRD to get personalized requirements.'
-      : `Found ${result.summary.total} requirements: ${result.summary.critical} critical, ${result.summary.generatable} AI-draftable, ${result.summary.assistable} need review, ${result.summary.humanOnly} manual.`;
+      : `Found ${result.summary.total} requirements${aiNote}: ${result.summary.critical} critical, ${result.summary.generatable} AI-draftable, ${result.summary.assistable} need review, ${result.summary.humanOnly} manual.`;
     
     return {
       success: true,
@@ -85,6 +94,7 @@ export function realityCheck(input: RealityCheckInput): RealityCheckToolResult {
       },
       summary: result.summary,
       checks,
+      aiFiltered: result.aiFiltered,
       message,
     };
   } catch (error) {
@@ -105,6 +115,7 @@ export function realityCheck(input: RealityCheckInput): RealityCheckToolResult {
         humanOnly: 0,
       },
       checks: [],
+      aiFiltered: false,
       message: `Failed to check requirements: ${error}`,
     };
   }
