@@ -14,6 +14,7 @@ import {
 import { sanitizePath } from '../security.js';
 import { loadState } from '../state/phase.js';
 import { logEvent } from '../events.js';
+import { getRealityChecks } from '../reality.js';
 
 // ============================================================================
 // midas_verify - Run verification gates (build, test, lint)
@@ -36,6 +37,13 @@ export interface VerifyResult {
   autoAdvanced?: {
     from: string;
     to: string;
+  };
+  // Reality check status for SHIP phase
+  realityCheck?: {
+    total: number;
+    pending: number;
+    critical: number;
+    warning?: string;
   };
 }
 
@@ -73,6 +81,25 @@ export function verify(input: VerifyInput): VerifyResult {
     }
   }
   
+  // Check reality checks if in SHIP phase
+  const state = loadState(projectPath);
+  let realityCheck: VerifyResult['realityCheck'];
+  
+  if (state.current.phase === 'SHIP') {
+    const rc = getRealityChecks(projectPath);
+    const pendingCritical = rc.checks.filter(c => c.priority === 'critical' && c.status === 'pending').length;
+    
+    realityCheck = {
+      total: rc.summary.total,
+      pending: rc.summary.pending,
+      critical: pendingCritical,
+    };
+    
+    if (pendingCritical > 0) {
+      realityCheck.warning = `${pendingCritical} critical requirements not addressed. Press [y] in TUI or run midas_reality_check to review.`;
+    }
+  }
+  
   // Determine next step
   let nextStep: string;
   if (status.allPass) {
@@ -80,6 +107,11 @@ export function verify(input: VerifyInput): VerifyResult {
       nextStep = `All gates pass! Auto-advanced from ${autoAdvanced.from} to ${autoAdvanced.to}.`;
     } else {
       nextStep = 'All gates pass. Ready to continue or advance phase.';
+    }
+    
+    // Add reality check warning if applicable
+    if (realityCheck?.warning) {
+      nextStep += `\n\n⚠️ ${realityCheck.warning}`;
     }
   } else {
     nextStep = `Fix: ${status.failing.join(', ')}`;
@@ -97,6 +129,7 @@ export function verify(input: VerifyInput): VerifyResult {
     failing: status.failing,
     nextStep,
     autoAdvanced,
+    realityCheck,
   };
 }
 
