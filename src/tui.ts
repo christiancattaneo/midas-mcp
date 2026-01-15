@@ -1345,6 +1345,14 @@ export async function runInteractive(): Promise<void> {
           rc.summary.completed++;
           tuiState.message = `${green}✓${reset} ${check.key} marked complete`;
           
+          // Log to journal for audit trail
+          saveToJournal({
+            projectPath,
+            title: `Reality Check: ${check.key} completed`,
+            conversation: `Completed requirement: ${check.headline}\n\nCategory: ${check.category}\nTier: ${check.tier}\nPriority: ${check.priority}`,
+            tags: ['reality-check', check.category.toLowerCase()],
+          });
+          
           // Auto-advance to next pending check
           const nextPending = rc.checks.findIndex((c, i) => i > tuiState.realityIndex && c.status === 'pending');
           if (nextPending !== -1) {

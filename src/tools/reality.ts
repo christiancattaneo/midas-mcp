@@ -7,6 +7,7 @@ import {
   type RealityCheckStatus,
 } from '../reality.js';
 import { sanitizePath } from '../security.js';
+import { saveToJournal } from './journal.js';
 
 // ============================================================================
 // midas_reality_check - Get before-you-ship requirements
@@ -162,6 +163,7 @@ export interface RealityUpdateResult {
 /**
  * Update the status of a reality check (mark as completed or skipped).
  * Status is persisted between sessions in .midas/reality-checks.json.
+ * Completed checks are logged to journal for audit trail.
  */
 export function realityUpdate(input: RealityUpdateInput): RealityUpdateResult {
   const projectPath = sanitizePath(input.projectPath || process.cwd());
@@ -179,6 +181,16 @@ export function realityUpdate(input: RealityUpdateInput): RealityUpdateResult {
       : input.status === 'skipped'
         ? `skipped${input.skippedReason ? `: ${input.skippedReason}` : ''}`
         : 'reset to pending';
+    
+    // Log to journal for audit trail when completed
+    if (input.status === 'completed') {
+      saveToJournal({
+        projectPath,
+        title: `Reality Check: ${input.checkKey} completed`,
+        conversation: `Completed requirement: ${input.checkKey}`,
+        tags: ['reality-check'],
+      });
+    }
     
     return {
       success: true,
