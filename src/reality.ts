@@ -132,6 +132,7 @@ export interface RealityCheck {
   externalLinks?: string[];       // For human_only tier
   alsoNeeded?: string[];          // For assistable tier - what still needs human
   priority: 'critical' | 'high' | 'medium' | 'low';
+  triggeredBy: string;            // Why this check applies (e.g., "Found 'payment' in PRD")
   // Persisted state
   status: RealityCheckStatus;
   statusUpdatedAt?: string;
@@ -176,10 +177,32 @@ export interface RealityCheckResult {
 // REALITY CHECK DEFINITIONS
 // ============================================================================
 
-// Static definition type - excludes runtime fields (cursorPrompt, status)
-type RealityCheckDefinition = Omit<RealityCheck, 'cursorPrompt' | 'status' | 'statusUpdatedAt' | 'skippedReason'> & { 
+// Static definition type - excludes runtime fields (cursorPrompt, status, triggeredBy)
+type RealityCheckDefinition = Omit<RealityCheck, 'cursorPrompt' | 'status' | 'statusUpdatedAt' | 'skippedReason' | 'triggeredBy'> & { 
   promptTemplate: string; 
   condition: (p: ProjectProfile) => boolean;
+  getTriggeredBy?: (p: ProjectProfile) => string;  // Optional - explain why this check applies
+};
+
+// Default triggered-by generators based on common profile fields
+const DEFAULT_TRIGGERS: Record<string, (p: ProjectProfile) => string> = {
+  PRIVACY_POLICY: (p) => p.collectsSensitiveData 
+    ? 'Project collects sensitive data (health/financial/biometric)' 
+    : 'Project collects user data',
+  TERMS_OF_SERVICE: () => 'Public-facing product',
+  COOKIE_POLICY: (p) => p.targetsEU ? 'Targets EU users' : 'Collects user data',
+  GDPR_COMPLIANCE: (p) => p.targetsEU ? 'Explicitly targets EU users' : 'May have EU users',
+  CCPA_COMPLIANCE: () => 'Targets California or US users',
+  COPPA_COMPLIANCE: () => 'May have users under 13',
+  AI_DISCLOSURE: () => 'Uses AI for decisions or recommendations',
+  PAYMENT_SETUP: () => 'Has payment/subscription features',
+  STRIPE_INTEGRATION: () => 'Has payment processing',
+  APP_STORE: () => 'Distributes via iOS App Store',
+  PLAY_STORE: () => 'Distributes via Google Play Store',
+  ACCESSIBILITY: () => 'Public-facing product should be accessible',
+  DATA_RETENTION: (p) => p.collectsSensitiveData ? 'Handles sensitive data' : 'Collects user data',
+  INCIDENT_RESPONSE: () => 'Production system needs incident handling',
+  OSS_LICENSE: () => 'Open source project needs license',
 };
 
 const REALITY_CHECKS: Record<string, RealityCheckDefinition> = {
@@ -191,23 +214,23 @@ const REALITY_CHECKS: Record<string, RealityCheckDefinition> = {
     headline: 'You need a Privacy Policy',
     explanation: 'You collect user data. Users need to know what you collect, why, and how to delete it.',
     priority: 'critical',
-    promptTemplate: `Create a privacy policy for this project based on the brainlift and PRD.
+    promptTemplate: `Read docs/brainlift.md and docs/prd.md to understand this project. Then create a privacy policy.
 
-We collect: {{dataCollected}}
-Target users: {{targetUsers}}
-Business model: {{businessModel}}
+First, identify from the docs:
+- What user data is collected
+- Why it's collected
+- Who the target users are
+- The business model
 
-Include sections:
+Then create docs/privacy-policy.md with sections:
 - What we collect and why
 - How we use the data
-- Third parties we share with (if any)
-- How long we keep data
+- Third parties we share with
+- Data retention
 - User rights (access, correct, delete)
-- How to contact us
+- Contact information
 
-Save to docs/privacy-policy.md
-
-Add at the top: "DRAFT - Review with a lawyer before publishing"`,
+Add at top: "DRAFT - Review with a lawyer before publishing"`,
     condition: (p) => p.collectsUserData,
   },
 
@@ -218,15 +241,11 @@ Add at the top: "DRAFT - Review with a lawyer before publishing"`,
     headline: 'You need Terms of Service',
     explanation: 'Any public product needs terms defining the rules of use and liability limits.',
     priority: 'high',
-    promptTemplate: `Create terms of service for this project based on the brainlift and PRD.
+    promptTemplate: `Read docs/brainlift.md and docs/prd.md to understand this project. Then create terms of service.
 
-Product type: {{productType}}
-Business model: {{businessModel}}
-Key features: {{keyFeatures}}
-
-Include sections:
+Create docs/terms-of-service.md with sections:
 - Acceptance of terms
-- Description of service
+- Description of service (from what you read)
 - User responsibilities
 - Prohibited uses
 - Intellectual property
@@ -813,6 +832,11 @@ export function getRealityChecks(projectPath: string): RealityCheckResult {
       const cursorPrompt = fillPromptTemplate(check.promptTemplate, profile, safePath);
       const persisted = checkStates[check.key];
       
+      // Get triggered-by reason
+      const triggeredBy = check.getTriggeredBy 
+        ? check.getTriggeredBy(profile)
+        : DEFAULT_TRIGGERS[check.key]?.(profile) || 'Inferred from project profile';
+      
       checks.push({
         key: check.key,
         category: check.category,
@@ -824,6 +848,7 @@ export function getRealityChecks(projectPath: string): RealityCheckResult {
         externalLinks: check.externalLinks,
         alsoNeeded: check.alsoNeeded,
         priority: check.priority,
+        triggeredBy,
         // Add persisted status
         status: persisted?.status || 'pending',
         statusUpdatedAt: persisted?.updatedAt,
@@ -982,6 +1007,11 @@ Review this and respond with:
         const cursorPrompt = fillPromptTemplate(check.promptTemplate, profile, projectPath);
         const persisted = persistedState.checkStates[key];
         
+        // Get triggered-by reason (AI-added checks)
+        const triggeredBy = check.getTriggeredBy 
+          ? check.getTriggeredBy(profile)
+          : 'Added by AI analysis of project context';
+        
         filtered.push({
           key: check.key,
           category: check.category,
@@ -993,6 +1023,7 @@ Review this and respond with:
           externalLinks: check.externalLinks,
           alsoNeeded: check.alsoNeeded,
           priority: check.priority,
+          triggeredBy,
           status: persisted?.status || 'pending',
           statusUpdatedAt: persisted?.updatedAt,
           skippedReason: persisted?.skippedReason,

@@ -449,6 +449,11 @@ function drawUI(state: TUIState, projectPath: string): string {
       
       lines.push(row(`${statusBadge}${tierSymbol} ${bold}${check.headline}${reset}`));
       lines.push(row(`${dim}${tierDesc}${reset}`));
+      
+      // Show why this check was triggered
+      if (check.triggeredBy) {
+        lines.push(row(`${yellow}Why:${reset} ${dim}${check.triggeredBy}${reset}`));
+      }
       lines.push(emptyRow());
       
       // Explanation - wrap it
