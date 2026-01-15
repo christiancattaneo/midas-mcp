@@ -8,7 +8,7 @@ import { updateTracker, getActivitySummary, loadTracker, getGatesStatus, getUnre
 import { getJournalEntries } from './tools/journal.js';
 import { sanitizePath, limitLength, LIMITS } from './security.js';
 import { logger } from './logger.js';
-import { buildCompressedContext, contextToString, estimateTokens } from './context.js';
+import { estimateTokens } from './context.js';
 import { isCursorAvailable, getRecentMessages, getCursorInfo } from './cursor.js';
 
 // ============================================================================
@@ -986,40 +986,6 @@ ${ctx.skillSuffix}
 ---
 
 Analyze this project and provide the JSON response.`;
-}
-
-// ============================================================================
-// QUICK ANALYSIS (for frequent re-checks)
-// ============================================================================
-
-/**
- * Fast analysis using pre-compressed context
- * Use this for file-change triggered re-analysis
- */
-export async function quickAnalyze(projectPath: string): Promise<{
-  suggestedPrompt: string;
-  priority: 'critical' | 'high' | 'normal' | 'low';
-  reason: string;
-  explanation: string;
-}> {
-  const safePath = sanitizePath(projectPath);
-  
-  // Build compressed context (fast, no AI needed)
-  buildCompressedContext(safePath, { maxTokens: 2000 });
-  
-  // Get smart suggestion based on gates/errors
-  const { getSmartPromptSuggestion } = await import('./tracker.js');
-  const suggestion = getSmartPromptSuggestion(safePath);
-  
-  // Mark analysis complete
-  markAnalysisComplete(safePath);
-  
-  return {
-    suggestedPrompt: suggestion.prompt,
-    priority: suggestion.priority,
-    reason: suggestion.reason,
-    explanation: suggestion.explanation,
-  };
 }
 
 // ============================================================================
