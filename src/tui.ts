@@ -517,7 +517,7 @@ function drawUI(state: TUIState, projectPath: string): string {
     // Navigation with status actions
     lines.push(emptyRow());
     lines.push(`${cyan}╠${hLine}╣${reset}`);
-    const navBase = `${dim}[←→]${reset} Nav ${dim}[c]${reset} Copy`;
+    const navBase = `${dim}[←→]${reset} Nav ${dim}[c]${reset} Copy ${dim}[a]${reset} All`;
     const statusAction = check && check.status === 'pending'
       ? ` ${dim}[d]${reset} Done ${dim}[x]${reset} Skip`
       : ` ${dim}[r]${reset} Reset`;
@@ -1335,6 +1335,26 @@ export async function runInteractive(): Promise<void> {
             tuiState.message = `${green}OK${reset} Copied ${check.key} prompt. Paste in Cursor.`;
           } catch {
             tuiState.message = `${red}!${reset} Failed to copy.`;
+          }
+          render();
+          return;
+        }
+        
+        // 'a' to copy all pending prompts (bulk copy)
+        if (key === 'a' && rc) {
+          const pendingChecks = rc.checks.filter(c => c.status === 'pending');
+          if (pendingChecks.length === 0) {
+            tuiState.message = `${yellow}!${reset} No pending checks to copy.`;
+          } else {
+            const allPrompts = pendingChecks.map(c => 
+              `# ${c.key}: ${c.headline}\n\n${c.cursorPrompt}`
+            ).join('\n\n---\n\n');
+            try {
+              await copyToClipboard(allPrompts);
+              tuiState.message = `${green}OK${reset} Copied ${pendingChecks.length} prompts. Paste in Cursor.`;
+            } catch {
+              tuiState.message = `${red}!${reset} Failed to copy.`;
+            }
           }
           render();
           return;
