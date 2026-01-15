@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { getRealityChecks, getRealityChecksWithAI, getTierSymbol } from '../reality.js';
+import { 
+  getRealityChecks, 
+  getRealityChecksWithAI, 
+  getTierSymbol,
+  updateCheckStatus,
+  type RealityCheckStatus,
+} from '../reality.js';
 import { sanitizePath } from '../security.js';
 
 // ============================================================================
@@ -28,6 +34,9 @@ export interface RealityCheckToolResult {
     generatable: number;  // AI can draft
     assistable: number;   // AI can help, needs review
     humanOnly: number;    // Requires real-world action
+    pending: number;      // Not yet addressed
+    completed: number;    // Marked complete
+    skipped: number;      // Skipped by user
   };
   checks: Array<{
     key: string;
@@ -40,6 +49,9 @@ export interface RealityCheckToolResult {
     humanSteps?: string[];
     alsoNeeded?: string[];
     priority: string;
+    status: string;       // 'pending' | 'completed' | 'skipped'
+    statusUpdatedAt?: string;
+    skippedReason?: string;
   }>;
   aiFiltered: boolean;
   message: string;
@@ -76,6 +88,9 @@ export async function realityCheck(input: RealityCheckInput): Promise<RealityChe
       humanSteps: check.humanSteps,
       alsoNeeded: check.alsoNeeded,
       priority: check.priority,
+      status: check.status,
+      statusUpdatedAt: check.statusUpdatedAt,
+      skippedReason: check.skippedReason,
     }));
     
     const aiNote = result.aiFiltered ? ' (AI-filtered)' : '';
@@ -113,10 +128,70 @@ export async function realityCheck(input: RealityCheckInput): Promise<RealityChe
         generatable: 0,
         assistable: 0,
         humanOnly: 0,
+        pending: 0,
+        completed: 0,
+        skipped: 0,
       },
       checks: [],
       aiFiltered: false,
       message: `Failed to check requirements: ${error}`,
+    };
+  }
+}
+
+// ============================================================================
+// midas_reality_update - Update status of a reality check
+// ============================================================================
+
+export const realityUpdateSchema = z.object({
+  projectPath: z.string().optional().describe('Path to project root'),
+  checkKey: z.string().describe('The key of the check to update (e.g., PRIVACY_POLICY)'),
+  status: z.enum(['pending', 'completed', 'skipped']).describe('New status for the check'),
+  skippedReason: z.string().optional().describe('Why the check was skipped (optional)'),
+});
+
+export type RealityUpdateInput = z.infer<typeof realityUpdateSchema>;
+
+export interface RealityUpdateResult {
+  success: boolean;
+  checkKey: string;
+  status: RealityCheckStatus;
+  message: string;
+}
+
+/**
+ * Update the status of a reality check (mark as completed or skipped).
+ * Status is persisted between sessions in .midas/reality-checks.json.
+ */
+export function realityUpdate(input: RealityUpdateInput): RealityUpdateResult {
+  const projectPath = sanitizePath(input.projectPath || process.cwd());
+  
+  try {
+    updateCheckStatus(
+      projectPath,
+      input.checkKey,
+      input.status as RealityCheckStatus,
+      input.skippedReason
+    );
+    
+    const statusMessage = input.status === 'completed' 
+      ? 'marked as completed'
+      : input.status === 'skipped'
+        ? `skipped${input.skippedReason ? `: ${input.skippedReason}` : ''}`
+        : 'reset to pending';
+    
+    return {
+      success: true,
+      checkKey: input.checkKey,
+      status: input.status as RealityCheckStatus,
+      message: `Reality check ${input.checkKey} ${statusMessage}`,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      checkKey: input.checkKey,
+      status: 'pending',
+      message: `Failed to update check: ${error}`,
     };
   }
 }

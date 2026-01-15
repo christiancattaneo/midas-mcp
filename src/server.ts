@@ -113,6 +113,8 @@ import {
   // Reality check - before-you-ship requirements
   realityCheck,
   realityCheckSchema,
+  realityUpdate,
+  realityUpdateSchema,
 } from './tools/index.js';
 import { registerAllPrompts } from './prompts/index.js';
 import { registerAllResources } from './resources/index.js';
@@ -550,6 +552,13 @@ export function createServer(): McpServer {
     'Get before-you-ship requirements based on project profile. Returns prompts to generate docs like privacy policy, terms, etc.',
     realityCheckSchema.shape,
     wrapTool('midas_reality_check', realityCheck)
+  );
+
+  server.tool(
+    'midas_reality_update',
+    'Update the status of a reality check (mark as completed or skipped). Persisted between sessions.',
+    realityUpdateSchema.shape,
+    wrapTool('midas_reality_update', realityUpdate)
   );
 
   // Register prompts

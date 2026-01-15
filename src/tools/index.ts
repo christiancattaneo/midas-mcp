@@ -161,4 +161,6 @@ export {
 export {
   realityCheck,
   realityCheckSchema,
+  realityUpdate,
+  realityUpdateSchema,
 } from './reality.js';

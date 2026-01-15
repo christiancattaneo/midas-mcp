@@ -6,9 +6,108 @@
  * and generates context-aware prompts for Cursor.
  */
 
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { sanitizePath } from './security.js';
+
+// ============================================================================
+// PERSISTENCE
+// ============================================================================
+
+const MIDAS_DIR = '.midas';
+const REALITY_STATE_FILE = 'reality-checks.json';
+
+export type RealityCheckStatus = 'pending' | 'completed' | 'skipped';
+
+export interface PersistedCheckState {
+  status: RealityCheckStatus;
+  updatedAt: string;
+  skippedReason?: string;  // Why user skipped (optional)
+}
+
+interface RealityStateFile {
+  checkStates: Record<string, PersistedCheckState>;
+  lastProfileHash: string;  // Detect when project profile changes
+}
+
+function getRealityStatePath(projectPath: string): string {
+  return join(projectPath, MIDAS_DIR, REALITY_STATE_FILE);
+}
+
+function loadRealityState(projectPath: string): RealityStateFile {
+  const path = getRealityStatePath(projectPath);
+  if (existsSync(path)) {
+    try {
+      return JSON.parse(readFileSync(path, 'utf-8'));
+    } catch {
+      return { checkStates: {}, lastProfileHash: '' };
+    }
+  }
+  return { checkStates: {}, lastProfileHash: '' };
+}
+
+function saveRealityState(projectPath: string, state: RealityStateFile): void {
+  const dir = join(projectPath, MIDAS_DIR);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  writeFileSync(getRealityStatePath(projectPath), JSON.stringify(state, null, 2));
+}
+
+function hashProfile(profile: ProjectProfile): string {
+  // Simple hash to detect profile changes
+  return JSON.stringify(profile).split('').reduce((a, b) => {
+    a = ((a << 5) - a) + b.charCodeAt(0);
+    return a & a;
+  }, 0).toString(36);
+}
+
+/**
+ * Update the status of a reality check
+ */
+export function updateCheckStatus(
+  projectPath: string,
+  checkKey: string,
+  status: RealityCheckStatus,
+  skippedReason?: string
+): void {
+  const safePath = sanitizePath(projectPath);
+  const state = loadRealityState(safePath);
+  
+  state.checkStates[checkKey] = {
+    status,
+    updatedAt: new Date().toISOString(),
+    ...(skippedReason ? { skippedReason } : {}),
+  };
+  
+  saveRealityState(safePath, state);
+}
+
+/**
+ * Get the persisted status for a check
+ */
+export function getCheckStatus(projectPath: string, checkKey: string): PersistedCheckState | undefined {
+  const safePath = sanitizePath(projectPath);
+  const state = loadRealityState(safePath);
+  return state.checkStates[checkKey];
+}
+
+/**
+ * Get all check statuses
+ */
+export function getAllCheckStatuses(projectPath: string): Record<string, PersistedCheckState> {
+  const safePath = sanitizePath(projectPath);
+  const state = loadRealityState(safePath);
+  return state.checkStates;
+}
+
+/**
+ * Reset all check statuses (e.g., when profile changes significantly)
+ */
+export function resetCheckStatuses(projectPath: string): void {
+  const safePath = sanitizePath(projectPath);
+  saveRealityState(safePath, { checkStates: {}, lastProfileHash: '' });
+}
 
 // ============================================================================
 // TYPES
@@ -33,6 +132,10 @@ export interface RealityCheck {
   externalLinks?: string[];       // For human_only tier
   alsoNeeded?: string[];          // For assistable tier - what still needs human
   priority: 'critical' | 'high' | 'medium' | 'low';
+  // Persisted state
+  status: RealityCheckStatus;
+  statusUpdatedAt?: string;
+  skippedReason?: string;
 }
 
 export interface ProjectProfile {
@@ -62,6 +165,10 @@ export interface RealityCheckResult {
     generatable: number;
     assistable: number;
     humanOnly: number;
+    // Status counts
+    pending: number;
+    completed: number;
+    skipped: number;
   };
 }
 
@@ -69,7 +176,13 @@ export interface RealityCheckResult {
 // REALITY CHECK DEFINITIONS
 // ============================================================================
 
-const REALITY_CHECKS: Record<string, Omit<RealityCheck, 'cursorPrompt'> & { promptTemplate: string; condition: (p: ProjectProfile) => boolean }> = {
+// Static definition type - excludes runtime fields (cursorPrompt, status)
+type RealityCheckDefinition = Omit<RealityCheck, 'cursorPrompt' | 'status' | 'statusUpdatedAt' | 'skippedReason'> & { 
+  promptTemplate: string; 
+  condition: (p: ProjectProfile) => boolean;
+};
+
+const REALITY_CHECKS: Record<string, RealityCheckDefinition> = {
   // ✅ GENERATABLE - AI can draft these
   PRIVACY_POLICY: {
     key: 'PRIVACY_POLICY',
@@ -687,12 +800,19 @@ function fillPromptTemplate(template: string, profile: ProjectProfile, projectPa
  * Get all applicable reality checks for a project
  */
 export function getRealityChecks(projectPath: string): RealityCheckResult {
-  const profile = inferProjectProfile(projectPath);
+  const safePath = sanitizePath(projectPath);
+  const profile = inferProjectProfile(safePath);
   const checks: RealityCheck[] = [];
+  
+  // Load persisted state
+  const persistedState = loadRealityState(safePath);
+  const checkStates = persistedState.checkStates;
   
   for (const check of Object.values(REALITY_CHECKS)) {
     if (check.condition(profile)) {
-      const cursorPrompt = fillPromptTemplate(check.promptTemplate, profile, projectPath);
+      const cursorPrompt = fillPromptTemplate(check.promptTemplate, profile, safePath);
+      const persisted = checkStates[check.key];
+      
       checks.push({
         key: check.key,
         category: check.category,
@@ -704,6 +824,10 @@ export function getRealityChecks(projectPath: string): RealityCheckResult {
         externalLinks: check.externalLinks,
         alsoNeeded: check.alsoNeeded,
         priority: check.priority,
+        // Add persisted status
+        status: persisted?.status || 'pending',
+        statusUpdatedAt: persisted?.updatedAt,
+        skippedReason: persisted?.skippedReason,
       });
     }
   }
@@ -727,6 +851,9 @@ export function getRealityChecks(projectPath: string): RealityCheckResult {
       generatable: checks.filter(c => c.tier === 'generatable').length,
       assistable: checks.filter(c => c.tier === 'assistable').length,
       humanOnly: checks.filter(c => c.tier === 'human_only').length,
+      pending: checks.filter(c => c.status === 'pending').length,
+      completed: checks.filter(c => c.status === 'completed').length,
+      skipped: checks.filter(c => c.status === 'skipped').length,
     },
   };
 }
@@ -846,10 +973,15 @@ Review this and respond with:
     });
     
     // Add any checks AI says we're missing
+    const safePath = sanitizePath(projectPath);
+    const persistedState = loadRealityState(safePath);
+    
     for (const key of addKeys) {
       if (REALITY_CHECKS[key] && !filtered.some(c => c.key === key)) {
         const check = REALITY_CHECKS[key];
         const cursorPrompt = fillPromptTemplate(check.promptTemplate, profile, projectPath);
+        const persisted = persistedState.checkStates[key];
+        
         filtered.push({
           key: check.key,
           category: check.category,
@@ -861,6 +993,9 @@ Review this and respond with:
           externalLinks: check.externalLinks,
           alsoNeeded: check.alsoNeeded,
           priority: check.priority,
+          status: persisted?.status || 'pending',
+          statusUpdatedAt: persisted?.updatedAt,
+          skippedReason: persisted?.skippedReason,
         });
       }
     }
@@ -908,6 +1043,9 @@ export async function getRealityChecksWithAI(projectPath: string): Promise<Reali
         generatable: filtered.filter(c => c.tier === 'generatable').length,
         assistable: filtered.filter(c => c.tier === 'assistable').length,
         humanOnly: filtered.filter(c => c.tier === 'human_only').length,
+        pending: filtered.filter(c => c.status === 'pending').length,
+        completed: filtered.filter(c => c.status === 'completed').length,
+        skipped: filtered.filter(c => c.status === 'skipped').length,
       },
       aiFiltered: additions.length > 0 || removals.length > 0,
     };
