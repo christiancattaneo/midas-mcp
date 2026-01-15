@@ -22,13 +22,13 @@ Add to your Cursor settings (`~/.cursor/mcp.json`):
   "mcpServers": {
     "midas": {
       "command": "npx",
-      "args": ["midas-mcp", "server"]
+      "args": ["midas-mcp@latest", "server"]
     }
   }
 }
 ```
 
-The `server` argument runs midas as an MCP server. Without it, `npx midas-mcp` launches the interactive TUI instead.
+Using `@latest` ensures you always get the newest version. The `server` argument runs midas as an MCP server (without it, you get the interactive TUI).
 
 ## What Midas Does
 
