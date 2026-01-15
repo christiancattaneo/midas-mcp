@@ -759,10 +759,10 @@ function fillPromptTemplate(template: string, profile: ProjectProfile, projectPa
   const prdPath = join(safePath, 'docs', 'prd.md');
   
   if (existsSync(brainliftPath)) {
-    brainliftContent = readFileSync(brainliftPath, 'utf-8').slice(0, 1000);
+    brainliftContent = readFileSync(brainliftPath, 'utf-8');  // Read full doc for accurate inference
   }
   if (existsSync(prdPath)) {
-    prdContent = readFileSync(prdPath, 'utf-8').slice(0, 1000);
+    prdContent = readFileSync(prdPath, 'utf-8');  // Read full doc for accurate inference
   }
   
   // Build replacements
@@ -896,13 +896,13 @@ export async function filterChecksWithAI(
   const readmePath = join(safePath, 'README.md');
   
   if (existsSync(brainliftPath)) {
-    docsContent += `## Brainlift:\n${readFileSync(brainliftPath, 'utf-8').slice(0, 2000)}\n\n`;
+    docsContent += `## Brainlift:\n${readFileSync(brainliftPath, 'utf-8').slice(0, 4000)}\n\n`;
   }
   if (existsSync(prdPath)) {
-    docsContent += `## PRD:\n${readFileSync(prdPath, 'utf-8').slice(0, 2000)}\n\n`;
+    docsContent += `## PRD:\n${readFileSync(prdPath, 'utf-8').slice(0, 4000)}\n\n`;
   }
   if (existsSync(readmePath)) {
-    docsContent += `## README:\n${readFileSync(readmePath, 'utf-8').slice(0, 1000)}\n`;
+    docsContent += `## README:\n${readFileSync(readmePath, 'utf-8').slice(0, 2000)}\n`;
   }
   
   if (!docsContent) {

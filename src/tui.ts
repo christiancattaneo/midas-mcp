@@ -458,9 +458,9 @@ function drawUI(state: TUIState, projectPath: string): string {
       }
       lines.push(emptyRow());
       
-      // For human_only tier, show steps
+      // For human_only tier, show manual steps prominently
       if (check.tier === 'human_only' && check.humanSteps) {
-        lines.push(row(`${bold}You need to:${reset}`));
+        lines.push(row(`${red}!${reset} ${bold}Manual action required:${reset}`));
         for (let i = 0; i < Math.min(check.humanSteps.length, 4); i++) {
           const step = check.humanSteps[i];
           const truncatedStep = step.length > I - 6 ? step.slice(0, I - 9) + '...' : step;
@@ -471,12 +471,15 @@ function drawUI(state: TUIState, projectPath: string): string {
           lines.push(row(`${dim}→${reset} ${check.externalLinks[0]}`));
           lines.push(emptyRow());
         }
-        lines.push(row(`${dim}Then copy the prompt below:${reset}`));
+        // Only mention prompt if there's actual follow-up work
+        if (check.cursorPrompt && check.cursorPrompt.length > 50) {
+          lines.push(row(`${dim}After completing above, copy prompt for integration:${reset}`));
+        }
       }
       
       // For assistable tier, show what's also needed
       if (check.tier === 'assistable' && check.alsoNeeded) {
-        lines.push(row(`${yellow}!${reset} ${bold}Also needed (human):${reset}`));
+        lines.push(row(`${yellow}!${reset} ${bold}Also needs human review:${reset}`));
         for (const item of check.alsoNeeded.slice(0, 3)) {
           const truncatedItem = item.length > I - 4 ? item.slice(0, I - 7) + '...' : item;
           lines.push(row(`${dim}•${reset} ${truncatedItem}`));
@@ -484,9 +487,12 @@ function drawUI(state: TUIState, projectPath: string): string {
         lines.push(emptyRow());
       }
       
-      // Show prompt preview
+      // Show prompt preview (different label for human_only)
       lines.push(`${cyan}╠${hLine}╣${reset}`);
-      lines.push(row(`${bold}Prompt to copy:${reset}`));
+      const promptLabel = check.tier === 'human_only' 
+        ? `${dim}Integration prompt (after manual steps):${reset}`
+        : `${bold}Prompt to copy:${reset}`;
+      lines.push(row(promptLabel));
       const promptPreview = check.cursorPrompt.split('\n')[0].slice(0, I - 2);
       lines.push(row(`${dim}${promptPreview}...${reset}`));
     } else {
@@ -946,6 +952,20 @@ export async function runInteractive(): Promise<void> {
             if (milestone) {
               tuiState.message = milestone;
               recordPhaseChange(projectPath, newPhase);
+            }
+            
+            // Auto-show reality checks when entering SHIP phase
+            if (newPhase.phase === 'SHIP') {
+              try {
+                tuiState.realityChecks = await getRealityChecksWithAI(projectPath);
+                if (tuiState.realityChecks.checks.length > 0 && tuiState.realityChecks.summary.pending > 0) {
+                  tuiState.realityIndex = 0;
+                  tuiState.showingReality = true;
+                  tuiState.message = `${yellow}SHIP PHASE${reset} Review ${tuiState.realityChecks.summary.pending} requirements before deploying`;
+                }
+              } catch {
+                // Silently fail - user can still press 'y' manually
+              }
             }
           }
         }
