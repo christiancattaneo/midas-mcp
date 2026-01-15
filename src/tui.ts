@@ -35,7 +35,14 @@ import { showExample } from './tools/examples.js';
 import { checkScopeCreep, type ScopeMetrics } from './tools/scope.js';
 import { getHotfixStatus } from './tools/hotfix.js';
 import { startSession, endSession, recordPromptCopied, recordPhaseChange, loadMetrics } from './metrics.js';
-import { getRealityChecks, getTierSymbol, getTierDescription, type RealityCheck, type RealityCheckResult } from './reality.js';
+import { 
+  getRealityChecksWithAI, 
+  getTierSymbol, 
+  getTierDescription, 
+  updateCheckStatus,
+  type RealityCheck, 
+  type RealityCheckResult,
+} from './reality.js';
 
 // ANSI codes
 const ESC = '\x1b';
@@ -418,15 +425,29 @@ function drawUI(state: TUIState, projectPath: string): string {
     const check = rc.checks[idx];
     
     lines.push(emptyRow());
-    lines.push(row(`${bold}${cyan}REALITY CHECK${reset} ${dim}(${idx + 1}/${rc.checks.length})${reset}`));
+    
+    // Header with status counts
+    const pendingCount = rc.summary.pending;
+    const completedCount = rc.summary.completed;
+    const statusInfo = completedCount > 0 || rc.summary.skipped > 0
+      ? `${green}${completedCount}✓${reset} ${dim}${rc.summary.skipped}→${reset}`
+      : '';
+    lines.push(row(`${bold}${cyan}REALITY CHECK${reset} ${dim}(${idx + 1}/${rc.checks.length})${reset} ${statusInfo}`));
     lines.push(emptyRow());
     
     if (check) {
+      // Status indicator for this check
+      const statusBadge = check.status === 'completed' 
+        ? `${green}[DONE]${reset} ` 
+        : check.status === 'skipped' 
+          ? `${yellow}[SKIPPED]${reset} ` 
+          : '';
+      
       // Tier indicator
       const tierSymbol = getTierSymbol(check.tier);
       const tierDesc = getTierDescription(check.tier);
       
-      lines.push(row(`${tierSymbol} ${bold}${check.headline}${reset}`));
+      lines.push(row(`${statusBadge}${tierSymbol} ${bold}${check.headline}${reset}`));
       lines.push(row(`${dim}${tierDesc}${reset}`));
       lines.push(emptyRow());
       
@@ -482,13 +503,14 @@ function drawUI(state: TUIState, projectPath: string): string {
     const human = rc.summary.humanOnly;
     lines.push(row(`${dim}Summary:${reset} ${critical > 0 ? `${red}${critical} critical${reset} ` : ''}${gen} AI-draft, ${assist} need review, ${human} manual`));
     
-    // Navigation
+    // Navigation with status actions
     lines.push(emptyRow());
     lines.push(`${cyan}╠${hLine}╣${reset}`);
-    const nav = idx < rc.checks.length - 1 
-      ? `${dim}[←]${reset} Prev  ${dim}[→]${reset} Next  ${dim}[c]${reset} Copy Prompt  ${dim}[Esc]${reset} Close`
-      : `${dim}[←]${reset} Prev  ${dim}[c]${reset} Copy Prompt  ${dim}[Esc]${reset} Close`;
-    lines.push(row(nav));
+    const navBase = `${dim}[←→]${reset} Nav ${dim}[c]${reset} Copy`;
+    const statusAction = check && check.status === 'pending'
+      ? ` ${dim}[d]${reset} Done ${dim}[x]${reset} Skip`
+      : ` ${dim}[r]${reset} Reset`;
+    lines.push(row(`${navBase}${statusAction} ${dim}[Esc]${reset} Close`));
     lines.push(`${cyan}╚${hLine}╝${reset}`);
     return lines.join('\n');
   }
@@ -1293,6 +1315,59 @@ export async function runInteractive(): Promise<void> {
           return;
         }
         
+        // 'd' to mark as done/complete
+        if (key === 'd' && rc && rc.checks[tuiState.realityIndex]) {
+          const check = rc.checks[tuiState.realityIndex];
+          updateCheckStatus(projectPath, check.key, 'completed');
+          check.status = 'completed';
+          check.statusUpdatedAt = new Date().toISOString();
+          rc.summary.pending--;
+          rc.summary.completed++;
+          tuiState.message = `${green}✓${reset} ${check.key} marked complete`;
+          
+          // Auto-advance to next pending check
+          const nextPending = rc.checks.findIndex((c, i) => i > tuiState.realityIndex && c.status === 'pending');
+          if (nextPending !== -1) {
+            tuiState.realityIndex = nextPending;
+          }
+          render();
+          return;
+        }
+        
+        // 'x' to skip
+        if (key === 'x' && rc && rc.checks[tuiState.realityIndex]) {
+          const check = rc.checks[tuiState.realityIndex];
+          updateCheckStatus(projectPath, check.key, 'skipped');
+          check.status = 'skipped';
+          check.statusUpdatedAt = new Date().toISOString();
+          rc.summary.pending--;
+          rc.summary.skipped++;
+          tuiState.message = `${yellow}→${reset} ${check.key} skipped`;
+          
+          // Auto-advance to next pending check
+          const nextPending = rc.checks.findIndex((c, i) => i > tuiState.realityIndex && c.status === 'pending');
+          if (nextPending !== -1) {
+            tuiState.realityIndex = nextPending;
+          }
+          render();
+          return;
+        }
+        
+        // 'r' to reset to pending
+        if (key === 'r' && rc && rc.checks[tuiState.realityIndex]) {
+          const check = rc.checks[tuiState.realityIndex];
+          const oldStatus = check.status;
+          updateCheckStatus(projectPath, check.key, 'pending');
+          check.status = 'pending';
+          check.statusUpdatedAt = new Date().toISOString();
+          rc.summary.pending++;
+          if (oldStatus === 'completed') rc.summary.completed--;
+          if (oldStatus === 'skipped') rc.summary.skipped--;
+          tuiState.message = `${dim}↺${reset} ${check.key} reset to pending`;
+          render();
+          return;
+        }
+        
         // Any other key closes the reality screen
         tuiState.showingReality = false;
         render();
@@ -1530,20 +1605,25 @@ export async function runInteractive(): Promise<void> {
     }
 
     if (key === 'y') {
-      // Show reality check screen
-      tuiState.message = `${magenta}...${reset} Checking project requirements...`;
+      // Show reality check screen (async with AI filtering)
+      tuiState.message = `${magenta}...${reset} Analyzing project requirements (AI filtering)...`;
       render();
       
       try {
-        tuiState.realityChecks = getRealityChecks(projectPath);
+        // Use AI-filtered version for more accurate results
+        tuiState.realityChecks = await getRealityChecksWithAI(projectPath);
         tuiState.realityIndex = 0;
         
         if (tuiState.realityChecks.checks.length === 0) {
           tuiState.message = `${green}OK${reset} No reality checks apply yet. Add more details to brainlift/PRD.`;
           render();
         } else {
+          const pending = tuiState.realityChecks.summary.pending;
+          const total = tuiState.realityChecks.summary.total;
           tuiState.showingReality = true;
-          tuiState.message = '';
+          tuiState.message = pending < total 
+            ? `${cyan}${pending}/${total}${reset} checks remaining`
+            : '';
           render();
         }
       } catch (error) {
