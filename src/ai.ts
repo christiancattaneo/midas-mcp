@@ -234,8 +234,11 @@ Respond in JSON:
     );
 
     return JSON.parse(response.content);
-  } catch {
-    return { completed: false, confidence: 0, reason: 'Analysis failed' };
+  } catch (error) {
+    const reason = error instanceof Error 
+      ? `Analysis failed: ${error.message.slice(0, 40)}`
+      : 'Analysis failed: unknown error';
+    return { completed: false, confidence: 0, reason };
   }
 }
 

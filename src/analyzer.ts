@@ -593,11 +593,31 @@ Analyze this project and provide the JSON response.`;
     };
   } catch (error) {
     logger.error('AI analysis failed', error as unknown);
+    
+    // Preserve error details for debugging
+    let errorReason = 'Unknown error';
+    if (error instanceof Error) {
+      if (error.message.includes('Rate limited')) {
+        errorReason = 'Rate limited - wait a moment';
+      } else if (error.message.includes('Invalid API key')) {
+        errorReason = 'Invalid API key - check config';
+      } else if (error.message.includes('overloaded')) {
+        errorReason = 'API overloaded - try again';
+      } else if (error.message.includes('No API key')) {
+        errorReason = 'No API key - run midas config';
+      } else if (error.message.includes('timeout') || error.name === 'AbortError') {
+        errorReason = 'Request timed out';
+      } else {
+        // Include first 50 chars of actual error
+        errorReason = error.message.slice(0, 50);
+      }
+    }
+    
     return {
       currentPhase: { phase: 'IDLE' },
-      summary: 'Analysis failed',
+      summary: `Analysis failed: ${errorReason}`,
       whatsDone: [],
-      whatsNext: 'Try again or check API key',
+      whatsNext: 'Fix the issue above and try again',
       suggestedPrompt: '',
       confidence: 0,
       techStack: [],
@@ -839,6 +859,13 @@ export async function analyzeProjectStreaming(
     };
   } catch (error) {
     logger.error('Streaming analysis failed', error as unknown);
+    
+    // Notify about fallback
+    onProgress?.({
+      stage: 'gathering',
+      message: 'Streaming failed, trying non-streaming...',
+      elapsedMs: elapsed(),
+    });
     
     // Fall back to non-streaming analysis
     return analyzeProject(projectPath);
