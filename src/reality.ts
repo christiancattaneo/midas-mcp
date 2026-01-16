@@ -28,6 +28,7 @@ export interface PersistedCheckState {
 interface RealityStateFile {
   checkStates: Record<string, PersistedCheckState>;
   lastProfileHash: string;  // Detect when project profile changes
+  viewCount?: number;       // How many times reality checks have been viewed
 }
 
 function getRealityStatePath(projectPath: string): string {
@@ -109,17 +110,81 @@ export function resetCheckStatuses(projectPath: string): void {
   saveRealityState(safePath, { checkStates: {}, lastProfileHash: '' });
 }
 
+/**
+ * Map of check keys to the expected generated file paths
+ */
+const EXPECTED_OUTPUTS: Record<string, string[]> = {
+  PRIVACY_POLICY: ['docs/privacy-policy.md', 'privacy-policy.md', 'PRIVACY.md'],
+  TERMS_OF_SERVICE: ['docs/terms-of-service.md', 'docs/terms.md', 'TERMS.md'],
+  COOKIE_POLICY: ['docs/cookie-policy.md'],
+  GDPR_COMPLIANCE: ['docs/gdpr-checklist.md', 'docs/gdpr.md'],
+  CCPA_COMPLIANCE: ['docs/ccpa-checklist.md'],
+  AI_DISCLOSURE: ['docs/ai-disclosure.md', 'AI_DISCLOSURE.md'],
+  ACCESSIBILITY: ['docs/accessibility.md', 'docs/a11y.md', 'ACCESSIBILITY.md'],
+  DATA_RETENTION: ['docs/data-retention.md'],
+  INCIDENT_RESPONSE: ['docs/incident-response.md'],
+  OSS_LICENSE: ['LICENSE', 'LICENSE.md', 'docs/license.md'],
+  HIPAA_COMPLIANCE: ['docs/hipaa-checklist.md'],
+  FERPA_COMPLIANCE: ['docs/ferpa-checklist.md'],
+  EU_AI_ACT: ['docs/eu-ai-act-assessment.md'],
+  SBOM: ['sbom.json', 'docs/sbom-readme.md'],
+  DATA_RESIDENCY: ['docs/data-residency.md'],
+};
+
+/**
+ * Detect if any expected output files exist and auto-complete checks
+ * Returns array of check keys that were auto-completed
+ */
+export function detectGeneratedDocs(projectPath: string): string[] {
+  const safePath = sanitizePath(projectPath);
+  const state = loadRealityState(safePath);
+  const autoCompleted: string[] = [];
+  
+  for (const [checkKey, possibleFiles] of Object.entries(EXPECTED_OUTPUTS)) {
+    // Skip if already completed
+    if (state.checkStates[checkKey]?.status === 'completed') continue;
+    
+    // Check if any of the expected files exist
+    const fileExists = possibleFiles.some(file => 
+      existsSync(join(safePath, file))
+    );
+    
+    if (fileExists) {
+      // Auto-complete this check
+      state.checkStates[checkKey] = {
+        status: 'completed',
+        updatedAt: new Date().toISOString(),
+      };
+      autoCompleted.push(checkKey);
+    }
+  }
+  
+  if (autoCompleted.length > 0) {
+    saveRealityState(safePath, state);
+  }
+  
+  return autoCompleted;
+}
+
 // ============================================================================
 // TYPES
 // ============================================================================
 
 /**
- * Three tiers of AI capability:
- * - generatable: AI can draft the document, just needs human review
- * - assistable: AI can help with checklist/guide, but needs professional verification
- * - human_only: Requires real-world action (signup, purchase, certification)
+ * Two tiers of AI capability:
+ * - ai_assisted: AI can help (draft docs, create checklists, generate code)
+ * - manual: Requires real-world action (signup, purchase, certification)
  */
-export type RealityTier = 'generatable' | 'assistable' | 'human_only';
+export type RealityTier = 'ai_assisted' | 'manual';
+
+// Legacy tier mapping for backward compatibility
+const TIER_MAPPING: Record<string, RealityTier> = {
+  'generatable': 'ai_assisted',
+  'assistable': 'ai_assisted', 
+  'human_only': 'manual',
+  'ai_assisted': 'ai_assisted',
+  'manual': 'manual',
+};
 
 export interface RealityCheck {
   key: string;
@@ -163,14 +228,16 @@ export interface RealityCheckResult {
   summary: {
     total: number;
     critical: number;
-    generatable: number;
-    assistable: number;
-    humanOnly: number;
+    aiAssisted: number;    // AI can help with these
+    manual: number;        // User must do these manually
     // Status counts
     pending: number;
     completed: number;
     skipped: number;
   };
+  // Progressive disclosure
+  totalAvailable?: number;  // All checks before filtering for first session
+  isFirstSession?: boolean; // True if first or second view
 }
 
 // ============================================================================
@@ -219,7 +286,7 @@ const REALITY_CHECKS: Record<string, RealityCheckDefinition> = {
   PRIVACY_POLICY: {
     key: 'PRIVACY_POLICY',
     category: 'Legal',
-    tier: 'generatable',
+    tier: 'ai_assisted',
     headline: 'You need a Privacy Policy',
     explanation: 'You collect user data. Users need to know what you collect, why, and how to delete it.',
     priority: 'critical',
@@ -246,7 +313,7 @@ Add at top: "DRAFT - Review with a lawyer before publishing"`,
   TERMS_OF_SERVICE: {
     key: 'TERMS_OF_SERVICE',
     category: 'Legal',
-    tier: 'generatable',
+    tier: 'ai_assisted',
     headline: 'You need Terms of Service',
     explanation: 'Any public product needs terms defining the rules of use and liability limits.',
     priority: 'high',
@@ -271,7 +338,7 @@ Add at the top: "DRAFT - Review with a lawyer before publishing"`,
   AI_DISCLOSURE: {
     key: 'AI_DISCLOSURE',
     category: 'Transparency',
-    tier: 'generatable',
+    tier: 'ai_assisted',
     headline: 'You need an AI disclosure',
     explanation: 'Users should know when AI is involved and that it can make mistakes.',
     priority: 'high',
@@ -294,7 +361,7 @@ Also add a brief inline disclosure component/text that can be shown in the UI wh
   REFUND_POLICY: {
     key: 'REFUND_POLICY',
     category: 'Business',
-    tier: 'generatable',
+    tier: 'ai_assisted',
     headline: 'You need a refund policy',
     explanation: 'Paid products need clear refund terms to avoid disputes and chargebacks.',
     priority: 'high',
@@ -319,7 +386,7 @@ Save to docs/refund-policy.md`,
   CONTENT_POLICY: {
     key: 'CONTENT_POLICY',
     category: 'Trust',
-    tier: 'generatable',
+    tier: 'ai_assisted',
     headline: 'You need a content policy',
     explanation: 'User-generated content needs rules about what\'s allowed and how violations are handled.',
     priority: 'high',
@@ -342,7 +409,7 @@ Save to docs/content-policy.md`,
   GDPR_COMPLIANCE: {
     key: 'GDPR_COMPLIANCE',
     category: 'Compliance',
-    tier: 'assistable',
+    tier: 'ai_assisted',
     headline: 'GDPR applies to your product',
     explanation: 'You\'re targeting EU users. You need lawful basis for data processing, user consent, and data rights.',
     priority: 'critical',
@@ -374,7 +441,7 @@ Note at top: "This is a technical implementation guide. Legal review required be
   CCPA_COMPLIANCE: {
     key: 'CCPA_COMPLIANCE',
     category: 'Compliance',
-    tier: 'assistable',
+    tier: 'ai_assisted',
     headline: 'CCPA applies to your product',
     explanation: 'California users have rights to know, delete, and opt-out of data sales.',
     priority: 'high',
@@ -398,7 +465,7 @@ Save to docs/ccpa-checklist.md`,
   ACCESSIBILITY: {
     key: 'ACCESSIBILITY',
     category: 'Inclusion',
-    tier: 'assistable',
+    tier: 'ai_assisted',
     headline: 'Consider accessibility (WCAG)',
     explanation: 'Making your product accessible helps more users and may be legally required for some customers.',
     priority: 'medium',
@@ -421,7 +488,7 @@ Save checklist to docs/accessibility-checklist.md`,
   BIAS_ASSESSMENT: {
     key: 'BIAS_ASSESSMENT',
     category: 'Ethics',
-    tier: 'assistable',
+    tier: 'ai_assisted',
     headline: 'AI bias assessment needed',
     explanation: 'AI that makes decisions about people can have unintended bias. Document what you\'ve considered.',
     priority: 'high',
@@ -449,7 +516,7 @@ This is for internal documentation and transparency.`,
   PAYMENT_SETUP: {
     key: 'PAYMENT_SETUP',
     category: 'Business',
-    tier: 'human_only',
+    tier: 'manual',
     headline: 'You need payment processing',
     explanation: 'You want to charge users. You need a payment provider account first.',
     priority: 'critical',
@@ -480,7 +547,7 @@ I have my Stripe API keys ready. Use STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KE
   BUSINESS_REGISTRATION: {
     key: 'BUSINESS_REGISTRATION',
     category: 'Legal',
-    tier: 'human_only',
+    tier: 'manual',
     headline: 'Consider business registration',
     explanation: 'If you\'re making money, you may need a business entity for taxes and liability protection.',
     priority: 'medium',
@@ -503,7 +570,7 @@ Once you have your business set up, update your docs:
   TAX_SETUP: {
     key: 'TAX_SETUP',
     category: 'Business',
-    tier: 'human_only',
+    tier: 'manual',
     headline: 'You need tax handling',
     explanation: 'Selling internationally means dealing with VAT, GST, and sales tax. Stripe Tax can help.',
     priority: 'high',
@@ -528,7 +595,7 @@ See Stripe Tax docs for jurisdiction-specific setup.`,
   DOMAIN_SSL: {
     key: 'DOMAIN_SSL',
     category: 'Infrastructure',
-    tier: 'human_only',
+    tier: 'manual',
     headline: 'You need a domain and SSL',
     explanation: 'To launch publicly, you need a domain name and HTTPS.',
     priority: 'high',
@@ -551,7 +618,7 @@ Once you have your domain, update:
   APP_STORE: {
     key: 'APP_STORE',
     category: 'Distribution',
-    tier: 'human_only',
+    tier: 'manual',
     headline: 'App Store submission needed',
     explanation: 'Mobile apps need App Store / Play Store developer accounts and review.',
     priority: 'critical',
@@ -577,7 +644,7 @@ Check that the app follows platform guidelines before submission.`,
   COPPA_COMPLIANCE: {
     key: 'COPPA_COMPLIANCE',
     category: 'Compliance',
-    tier: 'human_only',
+    tier: 'manual',
     headline: 'COPPA compliance required',
     explanation: 'Users under 13 require parental consent and special data handling.',
     priority: 'critical',
@@ -605,7 +672,7 @@ This requires careful legal review - the FTC enforces COPPA strictly.`,
   SOC2: {
     key: 'SOC2',
     category: 'Certification',
-    tier: 'human_only',
+    tier: 'manual',
     headline: 'Enterprise customers may require SOC 2',
     explanation: 'B2B/enterprise sales often require SOC 2 certification to prove security practices.',
     priority: 'medium',
@@ -633,7 +700,7 @@ Create a security checklist: docs/security-checklist.md`,
   HIPAA_COMPLIANCE: {
     key: 'HIPAA_COMPLIANCE',
     category: 'Healthcare',
-    tier: 'assistable',
+    tier: 'ai_assisted',
     headline: 'Healthcare data requires HIPAA compliance',
     explanation: 'Handling patient health information in the US requires HIPAA compliance. Violations can cost $100-50K per record.',
     priority: 'critical',
@@ -655,7 +722,7 @@ Add warning: "This checklist requires review by a HIPAA compliance officer or he
   FERPA_COMPLIANCE: {
     key: 'FERPA_COMPLIANCE',
     category: 'Education',
-    tier: 'assistable',
+    tier: 'ai_assisted',
     headline: 'Education records require FERPA compliance',
     explanation: 'Student education records in US schools are protected by FERPA. Violations can result in loss of federal funding.',
     priority: 'critical',
@@ -677,7 +744,7 @@ Add warning: "This checklist requires review by school legal counsel"`,
   EU_AI_ACT: {
     key: 'EU_AI_ACT',
     category: 'AI Regulation',
-    tier: 'assistable',
+    tier: 'ai_assisted',
     headline: 'EU AI Act may apply to your AI system',
     explanation: 'The EU AI Act regulates AI systems by risk level. High-risk AI (health, education, employment) has strict requirements.',
     priority: 'high',
@@ -705,7 +772,7 @@ Add warning: "This requires legal review for final classification"`,
   SBOM: {
     key: 'SBOM',
     category: 'Supply Chain',
-    tier: 'generatable',
+    tier: 'ai_assisted',
     headline: 'Generate a Software Bill of Materials (SBOM)',
     explanation: 'An SBOM lists all dependencies in your software. Required by US Executive Order 14028 for government contractors, increasingly expected by enterprise customers.',
     priority: 'medium',
@@ -728,7 +795,7 @@ Add the sbom.json generation to CI/CD pipeline.`,
   DATA_RESIDENCY: {
     key: 'DATA_RESIDENCY',
     category: 'Compliance',
-    tier: 'assistable',
+    tier: 'ai_assisted',
     headline: 'Document data residency requirements',
     explanation: 'If you store data in specific regions, you need to document where data lives. GDPR, data sovereignty laws, and enterprise contracts often require this.',
     priority: 'high',
@@ -947,10 +1014,14 @@ function fillPromptTemplate(template: string, profile: ProjectProfile, projectPa
  */
 export function getRealityChecks(projectPath: string): RealityCheckResult {
   const safePath = sanitizePath(projectPath);
+  
+  // Auto-detect generated docs and mark checks complete (feedback loop)
+  detectGeneratedDocs(safePath);
+  
   const profile = inferProjectProfile(safePath);
   const checks: RealityCheck[] = [];
   
-  // Load persisted state
+  // Load persisted state (after detection so it includes auto-completions)
   const persistedState = loadRealityState(safePath);
   const checkStates = persistedState.checkStates;
   
@@ -986,7 +1057,7 @@ export function getRealityChecks(projectPath: string): RealityCheckResult {
   
   // Sort by priority and tier
   const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
-  const tierOrder = { human_only: 0, assistable: 1, generatable: 2 };
+  const tierOrder: Record<string, number> = { manual: 0, ai_assisted: 1 };
   
   checks.sort((a, b) => {
     const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
@@ -994,19 +1065,37 @@ export function getRealityChecks(projectPath: string): RealityCheckResult {
     return tierOrder[a.tier] - tierOrder[b.tier];
   });
   
+  // Progressive disclosure: first 2 views show only critical + 2 more
+  const totalAvailable = checks.length;
+  const viewCount = persistedState.viewCount || 0;
+  const isFirstSession = viewCount < 2;
+  
+  // Increment view count
+  const newState = { ...persistedState, viewCount: viewCount + 1 };
+  saveRealityState(safePath, newState);
+  
+  // On first sessions, limit to critical + 2 non-critical
+  let displayChecks = checks;
+  if (isFirstSession && checks.length > 4) {
+    const critical = checks.filter(c => c.priority === 'critical');
+    const nonCritical = checks.filter(c => c.priority !== 'critical').slice(0, 2);
+    displayChecks = [...critical, ...nonCritical];
+  }
+  
   return {
     profile,
-    checks,
+    checks: displayChecks,
     summary: {
-      total: checks.length,
-      critical: checks.filter(c => c.priority === 'critical').length,
-      generatable: checks.filter(c => c.tier === 'generatable').length,
-      assistable: checks.filter(c => c.tier === 'assistable').length,
-      humanOnly: checks.filter(c => c.tier === 'human_only').length,
-      pending: checks.filter(c => c.status === 'pending').length,
-      completed: checks.filter(c => c.status === 'completed').length,
-      skipped: checks.filter(c => c.status === 'skipped').length,
+      total: displayChecks.length,
+      critical: displayChecks.filter(c => c.priority === 'critical').length,
+      aiAssisted: displayChecks.filter(c => c.tier === 'ai_assisted').length,
+      manual: displayChecks.filter(c => c.tier === 'manual').length,
+      pending: displayChecks.filter(c => c.status === 'pending').length,
+      completed: displayChecks.filter(c => c.status === 'completed').length,
+      skipped: displayChecks.filter(c => c.status === 'skipped').length,
     },
+    totalAvailable,
+    isFirstSession,
   };
 }
 
@@ -1062,37 +1151,16 @@ export async function filterChecksWithAI(
     return { filtered: checks, additions: [], removals: [] };
   }
   
-  const systemPrompt = `You are a compliance advisor reviewing reality checks for a software project.
-Your job is to FILTER the proposed checks based on the actual project context.
+  // Combined profile validation + check filtering in a single focused prompt
+  const systemPrompt = `Compliance check filter. Given project docs and proposed checks, return JSON only:
+{"keep":["KEY",...], "remove":["KEY",...], "add":["KEY",...]}
+Rules: Remove checks that clearly don't apply. Add missing checks from available list. Be conservative.`;
 
-Rules:
-1. REMOVE checks that don't apply (e.g., GDPR for US-only apps, COPPA for adult-only products)
-2. FLAG checks that might apply but need confirmation (add to "maybeAdd" list)
-3. Be CONSERVATIVE: when in doubt, keep the check
-4. Consider industry-specific requirements (healthcare → HIPAA, education → FERPA, etc.)
-5. Consider geographic requirements (EU → GDPR, California → CCPA, etc.)
-
-Respond ONLY with JSON.`;
-
-  const prompt = `# Project Documentation
-${docsContent}
-
-# Inferred Profile
-${JSON.stringify(profile, null, 2)}
-
-# Proposed Checks
-${checks.map(c => `- ${c.key}: ${c.headline}`).join('\n')}
-
-# All Available Checks (not currently triggered)
-${Object.keys(REALITY_CHECKS).filter(k => !checks.some(c => c.key === k)).map(k => `- ${k}: ${REALITY_CHECKS[k].headline}`).join('\n')}
-
-Review this and respond with:
-{
-  "keep": ["CHECK_KEY", ...],      // Checks that definitely apply
-  "remove": ["CHECK_KEY", ...],   // Checks that don't apply (with reason)
-  "add": ["CHECK_KEY", ...],      // Checks from available list that SHOULD apply
-  "reasoning": "Brief explanation of key decisions"
-}`;
+  // Compact prompt - less tokens, faster response
+  const proposed = checks.map(c => c.key).join(',');
+  const available = Object.keys(REALITY_CHECKS).filter(k => !checks.some(c => c.key === k)).join(',');
+  
+  const prompt = `Docs:\n${docsContent}\n\nProposed: ${proposed}\nAvailable: ${available}\n\nProfile: ${profile.businessModel}, EU:${profile.targetsEU}, AI:${profile.usesAI}, payments:${profile.hasPayments}`;
 
   try {
     const response = await chat(prompt, {
@@ -1160,7 +1228,7 @@ Review this and respond with:
     
     // Re-sort
     const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
-    const tierOrder = { human_only: 0, assistable: 1, generatable: 2 };
+    const tierOrder: Record<string, number> = { manual: 0, ai_assisted: 1 };
     filtered.sort((a, b) => {
       const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
       if (priorityDiff !== 0) return priorityDiff;
@@ -1198,9 +1266,8 @@ export async function getRealityChecksWithAI(projectPath: string): Promise<Reali
       summary: {
         total: filtered.length,
         critical: filtered.filter(c => c.priority === 'critical').length,
-        generatable: filtered.filter(c => c.tier === 'generatable').length,
-        assistable: filtered.filter(c => c.tier === 'assistable').length,
-        humanOnly: filtered.filter(c => c.tier === 'human_only').length,
+        aiAssisted: filtered.filter(c => c.tier === 'ai_assisted').length,
+        manual: filtered.filter(c => c.tier === 'manual').length,
         pending: filtered.filter(c => c.status === 'pending').length,
         completed: filtered.filter(c => c.status === 'completed').length,
         skipped: filtered.filter(c => c.status === 'skipped').length,
@@ -1217,10 +1284,11 @@ export async function getRealityChecksWithAI(projectPath: string): Promise<Reali
  * Get tier symbol for display
  */
 export function getTierSymbol(tier: RealityTier): string {
-  switch (tier) {
-    case 'generatable': return '✅';
-    case 'assistable': return '⚠️';
-    case 'human_only': return '🔴';
+  const mapped = TIER_MAPPING[tier] || tier;
+  switch (mapped) {
+    case 'ai_assisted': return '🤖';
+    case 'manual': return '👤';
+    default: return '❓';
   }
 }
 
@@ -1228,9 +1296,10 @@ export function getTierSymbol(tier: RealityTier): string {
  * Get tier description
  */
 export function getTierDescription(tier: RealityTier): string {
-  switch (tier) {
-    case 'generatable': return 'AI can draft this';
-    case 'assistable': return 'AI can help, needs review';
-    case 'human_only': return 'You need to do this';
+  const mapped = TIER_MAPPING[tier] || tier;
+  switch (mapped) {
+    case 'ai_assisted': return 'AI can help with this';
+    case 'manual': return 'You need to do this yourself';
+    default: return 'Unknown tier';
   }
 }

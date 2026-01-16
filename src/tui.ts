@@ -463,8 +463,8 @@ function drawUI(state: TUIState, projectPath: string): string {
       }
       lines.push(emptyRow());
       
-      // For human_only tier, show manual steps prominently
-      if (check.tier === 'human_only' && check.humanSteps) {
+      // For manual tier, show manual steps prominently
+      if (check.tier === 'manual' && check.humanSteps) {
         lines.push(row(`${red}!${reset} ${bold}Manual action required:${reset}`));
         for (let i = 0; i < Math.min(check.humanSteps.length, 4); i++) {
           const step = check.humanSteps[i];
@@ -482,8 +482,8 @@ function drawUI(state: TUIState, projectPath: string): string {
         }
       }
       
-      // For assistable tier, show what's also needed
-      if (check.tier === 'assistable' && check.alsoNeeded) {
+      // For ai_assisted tier with alsoNeeded, show what still needs human review
+      if (check.tier === 'ai_assisted' && check.alsoNeeded) {
         lines.push(row(`${yellow}!${reset} ${bold}Also needs human review:${reset}`));
         for (const item of check.alsoNeeded.slice(0, 3)) {
           const truncatedItem = item.length > I - 4 ? item.slice(0, I - 7) + '...' : item;
@@ -492,9 +492,9 @@ function drawUI(state: TUIState, projectPath: string): string {
         lines.push(emptyRow());
       }
       
-      // Show prompt preview (different label for human_only)
+      // Show prompt preview (different label for manual tier)
       lines.push(`${cyan}╠${hLine}╣${reset}`);
-      const promptLabel = check.tier === 'human_only' 
+      const promptLabel = check.tier === 'manual' 
         ? `${dim}Integration prompt (after manual steps):${reset}`
         : `${bold}Prompt to copy:${reset}`;
       lines.push(row(promptLabel));
@@ -509,10 +509,14 @@ function drawUI(state: TUIState, projectPath: string): string {
     
     // Summary line
     const critical = rc.summary.critical;
-    const gen = rc.summary.generatable;
-    const assist = rc.summary.assistable;
-    const human = rc.summary.humanOnly;
-    lines.push(row(`${dim}Summary:${reset} ${critical > 0 ? `${red}${critical} critical${reset} ` : ''}${gen} AI-draft, ${assist} need review, ${human} manual`));
+    const aiHelp = rc.summary.aiAssisted;
+    const manual = rc.summary.manual;
+    lines.push(row(`${dim}Summary:${reset} ${critical > 0 ? `${red}${critical} critical${reset} ` : ''}${aiHelp} AI-assisted, ${manual} manual`));
+    
+    // Progressive disclosure notice
+    if (rc.isFirstSession && rc.totalAvailable && rc.totalAvailable > rc.summary.total) {
+      lines.push(row(`${dim}Showing ${rc.summary.total}/${rc.totalAvailable} checks. Complete these to see more.${reset}`));
+    }
     
     // Navigation with status actions
     lines.push(emptyRow());

@@ -32,9 +32,8 @@ export interface RealityCheckToolResult {
   summary: {
     total: number;
     critical: number;
-    generatable: number;  // AI can draft
-    assistable: number;   // AI can help, needs review
-    humanOnly: number;    // Requires real-world action
+    aiAssisted: number;   // AI can help with these
+    manual: number;       // Requires real-world action
     pending: number;      // Not yet addressed
     completed: number;    // Marked complete
     skipped: number;      // Skipped by user
@@ -42,8 +41,8 @@ export interface RealityCheckToolResult {
   checks: Array<{
     key: string;
     category: string;
-    tier: string;         // 'generatable' | 'assistable' | 'human_only'
-    tierSymbol: string;   // ✅ | ⚠️ | 🔴
+    tier: string;         // 'ai_assisted' | 'manual'
+    tierSymbol: string;   // 🤖 | 👤
     headline: string;
     explanation: string;
     cursorPrompt: string;
@@ -97,7 +96,7 @@ export async function realityCheck(input: RealityCheckInput): Promise<RealityChe
     const aiNote = result.aiFiltered ? ' (AI-filtered)' : '';
     const message = result.checks.length === 0
       ? 'No reality checks detected. Add more details to your brainlift/PRD to get personalized requirements.'
-      : `Found ${result.summary.total} requirements${aiNote}: ${result.summary.critical} critical, ${result.summary.generatable} AI-draftable, ${result.summary.assistable} need review, ${result.summary.humanOnly} manual.`;
+      : `Found ${result.summary.total} requirements${aiNote}: ${result.summary.critical} critical, ${result.summary.aiAssisted} AI-assisted, ${result.summary.manual} manual.`;
     
     return {
       success: true,
@@ -126,9 +125,8 @@ export async function realityCheck(input: RealityCheckInput): Promise<RealityChe
       summary: {
         total: 0,
         critical: 0,
-        generatable: 0,
-        assistable: 0,
-        humanOnly: 0,
+        aiAssisted: 0,
+        manual: 0,
         pending: 0,
         completed: 0,
         skipped: 0,
