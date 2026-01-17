@@ -2,7 +2,7 @@ import { getApiKey, getActiveProvider, getSkillLevel, type SkillLevel } from './
 import { chat, chatStream, getProviderCapabilities, getCurrentModel, type StreamProgress } from './providers.js';
 import { readdirSync, readFileSync, existsSync } from 'fs';
 import { join, extname } from 'path';
-import type { Phase, EagleSightStep, BuildStep, ShipStep, GrowStep } from './state/phase.js';
+import type { Phase, PlanStep, BuildStep, ShipStep, GrowStep } from './state/phase.js';
 import { loadState } from './state/phase.js';
 import { updateTracker, getActivitySummary, loadTracker, getGatesStatus, getUnresolvedErrors, markAnalysisComplete } from './tracker.js';
 import { getJournalEntries } from './tools/journal.js';
@@ -10,6 +10,7 @@ import { sanitizePath, limitLength, LIMITS } from './security.js';
 import { logger } from './logger.js';
 import { estimateTokens } from './context.js';
 import { isCursorAvailable, getRecentMessages, getCursorInfo } from './cursor.js';
+import { discoverDocsSync } from './docs-discovery.js';
 
 // ============================================================================
 // SKILL LEVEL ADAPTERS
@@ -314,19 +315,22 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
   const files = scanFiles(safePath);
   const fileList = files.map(f => f.replace(safePath + '/', '')).join('\n');
   
-  // Check for planning docs
-  const hasbrainlift = existsSync(join(safePath, 'docs', 'brainlift.md'));
-  const hasPrd = existsSync(join(safePath, 'docs', 'prd.md'));
-  const hasGameplan = existsSync(join(safePath, 'docs', 'gameplan.md'));
+  // Discover and classify planning docs (intelligent detection)
+  const docsResult = discoverDocsSync(safePath);
+  const hasbrainlift = !!docsResult.brainlift;
+  const hasPrd = !!docsResult.prd;
+  const hasGameplan = !!docsResult.gameplan;
   
-  const brainliftContent = hasbrainlift ? readFile(join(safePath, 'docs', 'brainlift.md')) : '';
-  const prdContent = hasPrd ? readFile(join(safePath, 'docs', 'prd.md')) : '';
-  const gameplanContent = hasGameplan ? readFile(join(safePath, 'docs', 'gameplan.md')) : '';
+  const brainliftContent = docsResult.brainlift?.content || '';
+  const prdContent = docsResult.prd?.content || '';
+  const gameplanContent = docsResult.gameplan?.content || '';
   
   // Check for deployment/monitoring
   const hasDockerfile = existsSync(join(safePath, 'Dockerfile')) || existsSync(join(safePath, 'docker-compose.yml'));
   const hasCI = existsSync(join(safePath, '.github', 'workflows'));
-  const hasTests = files.some(f => f.includes('.test.') || f.includes('.spec.') || f.includes('__tests__'));
+  // Detect test files with expanded patterns
+  const testPatterns = ['.test.', '.spec.', '__tests__', 'tests/', '_test.', 'test_', 'spec/'];
+  const hasTests = files.some(f => testPatterns.some(p => f.includes(p)));
 
   // Extract package.json for AI to analyze (let AI determine project type dynamically)
   let packageJsonContent = '';
@@ -487,7 +491,7 @@ When user is in GROW, congratulate them and remind them of the checklist. Use 'n
 ## Response Format:
 Respond ONLY with valid JSON matching this schema:
 {
-  "phase": "EAGLE_SIGHT" | "BUILD" | "SHIP" | "GROW" | "IDLE",
+  "phase": "PLAN" | "BUILD" | "SHIP" | "GROW" | "IDLE",
   "step": "step name within phase",
   "summary": "one-line project summary",
   "techStack": ["detected", "technologies"],
@@ -537,7 +541,7 @@ ${hasSetupPy ? '- Has setup.py (Python)' : ''}
 ${hasGoMod ? '- Has go.mod (Go)' : ''}
 
 ## Infrastructure:
-- Tests: ${hasTests ? 'yes' : 'no'} (found ${files.filter(f => f.includes('.test.') || f.includes('.spec.')).length} test files)
+- Tests: ${hasTests ? 'yes' : 'no'} (found ${files.filter(f => testPatterns.some(p => f.includes(p))).length} test files)
 - Dockerfile/compose: ${hasDockerfile ? 'yes' : 'no'}
 - CI/CD: ${hasCI ? 'yes' : 'no'}
 
@@ -567,8 +571,8 @@ Analyze this project and provide the JSON response.`;
     let currentPhase: Phase;
     if (data.phase === 'IDLE' || !data.phase) {
       currentPhase = { phase: 'IDLE' };
-    } else if (data.phase === 'EAGLE_SIGHT') {
-      currentPhase = { phase: 'EAGLE_SIGHT', step: data.step as EagleSightStep };
+    } else if (data.phase === 'PLAN') {
+      currentPhase = { phase: 'PLAN', step: data.step as PlanStep };
     } else if (data.phase === 'BUILD') {
       currentPhase = { phase: 'BUILD', step: data.step as BuildStep };
     } else if (data.phase === 'SHIP') {
@@ -675,17 +679,21 @@ export async function analyzeProjectStreaming(
   const files = scanFiles(safePath);
   const fileList = files.map(f => f.replace(safePath + '/', '')).join('\n');
   
-  const hasbrainlift = existsSync(join(safePath, 'docs', 'brainlift.md'));
-  const hasPrd = existsSync(join(safePath, 'docs', 'prd.md'));
-  const hasGameplan = existsSync(join(safePath, 'docs', 'gameplan.md'));
+  // Discover and classify planning docs (intelligent detection)
+  const docsResult = discoverDocsSync(safePath);
+  const hasbrainlift = !!docsResult.brainlift;
+  const hasPrd = !!docsResult.prd;
+  const hasGameplan = !!docsResult.gameplan;
   
-  const brainliftContent = hasbrainlift ? readFile(join(safePath, 'docs', 'brainlift.md')) : '';
-  const prdContent = hasPrd ? readFile(join(safePath, 'docs', 'prd.md')) : '';
-  const gameplanContent = hasGameplan ? readFile(join(safePath, 'docs', 'gameplan.md')) : '';
+  const brainliftContent = docsResult.brainlift?.content || '';
+  const prdContent = docsResult.prd?.content || '';
+  const gameplanContent = docsResult.gameplan?.content || '';
   
   const hasDockerfile = existsSync(join(safePath, 'Dockerfile')) || existsSync(join(safePath, 'docker-compose.yml'));
   const hasCI = existsSync(join(safePath, '.github', 'workflows'));
-  const hasTests = files.some(f => f.includes('.test.') || f.includes('.spec.') || f.includes('__tests__'));
+  // Detect test files with expanded patterns
+  const testPatterns = ['.test.', '.spec.', '__tests__', 'tests/', '_test.', 'test_', 'spec/'];
+  const hasTests = files.some(f => testPatterns.some(p => f.includes(p)));
 
   let packageJsonContent = '';
   const packageJsonPath = join(safePath, 'package.json');
@@ -827,8 +835,8 @@ export async function analyzeProjectStreaming(
     let currentPhase: Phase;
     if (data.phase === 'IDLE' || !data.phase) {
       currentPhase = { phase: 'IDLE' };
-    } else if (data.phase === 'EAGLE_SIGHT') {
-      currentPhase = { phase: 'EAGLE_SIGHT', step: data.step as EagleSightStep };
+    } else if (data.phase === 'PLAN') {
+      currentPhase = { phase: 'PLAN', step: data.step as PlanStep };
     } else if (data.phase === 'BUILD') {
       currentPhase = { phase: 'BUILD', step: data.step as BuildStep };
     } else if (data.phase === 'SHIP') {
@@ -931,7 +939,7 @@ The GROW phase is a graduation checklist:
 ## Response Format:
 Respond ONLY with valid JSON matching this schema:
 {
-  "phase": "EAGLE_SIGHT" | "BUILD" | "SHIP" | "GROW" | "IDLE",
+  "phase": "PLAN" | "BUILD" | "SHIP" | "GROW" | "IDLE",
   "step": "string (step within phase)",
   "summary": "1-2 sentence project summary",
   "whatsDone": ["array of completed items"],

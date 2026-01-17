@@ -52,7 +52,7 @@ src/
 // Prefer discriminated unions for state
 type Phase =
   | { phase: 'IDLE' }
-  | { phase: 'EAGLE_SIGHT'; step: EagleSightStep }
+  | { phase: 'PLAN'; step: PlanStep }
   | { phase: 'BUILD'; step: BuildStep };
 
 // Use Zod for runtime validation (MCP tool schemas)
@@ -138,7 +138,7 @@ if (!response.ok) {
 ### Phase State Machine
 The development lifecycle has 4 phases, each with steps:
 
-1. **EAGLE_SIGHT** (Planning): IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN
+1. **OLAN** (Planning): IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN
 2. **BUILD** (Development): RULES → INDEX → READ → RESEARCH → IMPLEMENT → TEST → DEBUG
 3. **SHIP** (Deployment): REVIEW → DEPLOY → MONITOR
 4. **GROW** (Iteration): FEEDBACK → ANALYZE → ITERATE
@@ -280,7 +280,7 @@ interface Result<T> {
 
 This tool teaches the Golden Code methodology:
 
-1. **Eagle Sight First**: Always plan before coding
+1. **Plan First**: Always plan before coding
 2. **7-Step Build Cycle**: Rules → Index → Read → Research → Implement → Test → Debug
 3. **Tornado Debugging**: Research + Logs + Tests when stuck
 4. **Oneshot Paradigm**: One clear task per prompt

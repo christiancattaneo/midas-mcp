@@ -4,6 +4,7 @@ import { execSync } from 'child_process';
 import { loadState, saveState, getNextPhase, type Phase } from './state/phase.js';
 import { sanitizePath, isShellSafe } from './security.js';
 import { logger } from './logger.js';
+import { discoverDocsSync } from './docs-discovery.js';
 
 const MIDAS_DIR = '.midas';
 const TRACKER_FILE = 'tracker.json';
@@ -677,7 +678,7 @@ Focus on completing this step before moving to the next.`,
 
 function getPhaseExplanation(phase: string, step: string): string {
   const explanations: Record<string, Record<string, string>> = {
-    EAGLE_SIGHT: {
+    PLAN: {
       IDEA: 'Define the core problem, who it affects, and why now is the right time to solve it.',
       RESEARCH: 'Study what exists. What works? What fails? Where are the gaps?',
       BRAINLIFT: 'Document your unique insights - what do you know that others don\'t?',
@@ -817,7 +818,7 @@ function getPhaseBasedPrompt(phase: Phase, task: TaskFocus | null): string {
     return 'Start a new project or set the phase with midas_set_phase.';
   }
   
-  if (phase.phase === 'EAGLE_SIGHT') {
+  if (phase.phase === 'PLAN') {
     const stepPrompts: Record<string, string> = {
       IDEA: 'Define the core idea: What problem? Who for? Why now?',
       RESEARCH: 'Research the landscape: What exists? What works? What fails?',
@@ -987,17 +988,13 @@ export function checkCompletionSignals(projectPath: string): TrackerState['compl
     docsComplete: false,
   };
   
-  const testPatterns = ['.test.', '.spec.', '__tests__', 'tests/'];
+  const testPatterns = ['.test.', '.spec.', '__tests__', 'tests/', '_test.', 'test_', 'spec/'];
   const files = scanRecentFiles(projectPath, 0);
   signals.testsExist = files.some(f => testPatterns.some(p => f.path.includes(p)));
   
-  const docsPath = join(projectPath, 'docs');
-  if (existsSync(docsPath)) {
-    const brainlift = existsSync(join(docsPath, 'brainlift.md'));
-    const prd = existsSync(join(docsPath, 'prd.md'));
-    const gameplan = existsSync(join(docsPath, 'gameplan.md'));
-    signals.docsComplete = brainlift && prd && gameplan;
-  }
+  // Use intelligent docs discovery instead of hardcoded filenames
+  const docsResult = discoverDocsSync(projectPath);
+  signals.docsComplete = docsResult.hasAllPlanningDocs;
   
   return signals;
 }
@@ -1009,8 +1006,8 @@ function updatePhaseFromToolCalls(tracker: TrackerState): void {
   const lastTool = recent[0].tool;
   
   const toolPhaseMap: Record<string, Phase> = {
-    'midas_start_project': { phase: 'EAGLE_SIGHT', step: 'IDEA' },
-    'midas_check_docs': { phase: 'EAGLE_SIGHT', step: 'BRAINLIFT' },
+    'midas_start_project': { phase: 'PLAN', step: 'IDEA' },
+    'midas_check_docs': { phase: 'PLAN', step: 'BRAINLIFT' },
     'midas_tornado': { phase: 'BUILD', step: 'DEBUG' },
     'midas_oneshot': { phase: 'BUILD', step: 'DEBUG' },
     'midas_horizon': { phase: 'BUILD', step: 'IMPLEMENT' },
@@ -1030,12 +1027,23 @@ function inferPhaseFromSignals(tracker: TrackerState): void {
   const recentTools = tracker.recentToolCalls.slice(0, 5).map(t => t.tool);
   
   if (!signals.docsComplete) {
-    if (!existsSync(join(process.cwd(), 'docs'))) {
+    // Use docs discovery to determine what's missing
+    const docsResult = discoverDocsSync(process.cwd());
+    if (docsResult.totalDocsFound === 0) {
       tracker.inferredPhase = { phase: 'IDLE' };
       tracker.confidence = 90;
       return;
     }
-    tracker.inferredPhase = { phase: 'EAGLE_SIGHT', step: 'BRAINLIFT' };
+    // Determine which planning step based on what's missing
+    if (!docsResult.brainlift) {
+      tracker.inferredPhase = { phase: 'PLAN', step: 'BRAINLIFT' };
+    } else if (!docsResult.prd) {
+      tracker.inferredPhase = { phase: 'PLAN', step: 'PRD' };
+    } else if (!docsResult.gameplan) {
+      tracker.inferredPhase = { phase: 'PLAN', step: 'GAMEPLAN' };
+    } else {
+      tracker.inferredPhase = { phase: 'PLAN', step: 'BRAINLIFT' };
+    }
     tracker.confidence = 70;
     return;
   }

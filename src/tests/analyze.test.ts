@@ -25,10 +25,10 @@ describe('Analyze Tools', () => {
       assert.strictEqual(result.prompt.includes('start a new project'), true);
     });
 
-    it('returns phase-specific prompt for EAGLE_SIGHT', () => {
-      setPhase(testDir, { phase: 'EAGLE_SIGHT', step: 'IDEA' });
+    it('returns phase-specific prompt for PLAN', () => {
+      setPhase(testDir, { phase: 'PLAN', step: 'IDEA' });
       const result = suggestPrompt({ projectPath: testDir });
-      assert.strictEqual(result.phase, 'EAGLE_SIGHT');
+      assert.strictEqual(result.phase, 'PLAN');
       assert.strictEqual(result.step, 'IDEA');
       assert.strictEqual(result.prompt.includes('want to build'), true);
     });
@@ -72,35 +72,35 @@ describe('Analyze Tools', () => {
   });
 
   describe('advancePhase', () => {
-    it('advances from IDLE to EAGLE_SIGHT:IDEA', () => {
+    it('advances from IDLE to PLAN:IDEA', () => {
       const result = advancePhase({ projectPath: testDir });
-      assert.strictEqual(result.current.phase, 'EAGLE_SIGHT');
+      assert.strictEqual(result.current.phase, 'PLAN');
       assert.strictEqual(result.current.step, 'IDEA');
       assert.strictEqual(result.previous.phase, 'IDLE');
     });
 
-    it('advances within EAGLE_SIGHT phase', () => {
-      setPhase(testDir, { phase: 'EAGLE_SIGHT', step: 'IDEA' });
+    it('advances within PLAN phase', () => {
+      setPhase(testDir, { phase: 'PLAN', step: 'IDEA' });
       const result = advancePhase({ projectPath: testDir });
-      assert.strictEqual(result.current.phase, 'EAGLE_SIGHT');
+      assert.strictEqual(result.current.phase, 'PLAN');
       assert.strictEqual(result.current.step, 'RESEARCH');
       assert.strictEqual(result.previous.step, 'IDEA');
     });
 
-    it('transitions from EAGLE_SIGHT to BUILD (forced)', () => {
-      setPhase(testDir, { phase: 'EAGLE_SIGHT', step: 'GAMEPLAN' });
+    it('transitions from PLAN to BUILD (forced)', () => {
+      setPhase(testDir, { phase: 'PLAN', step: 'GAMEPLAN' });
       // Force advancement since test has no planning docs
       const result = advancePhase({ projectPath: testDir, force: true });
       assert.strictEqual(result.current.phase, 'BUILD');
       assert.strictEqual(result.current.step, 'RULES');
     });
 
-    it('blocks EAGLE_SIGHT to BUILD without planning docs', () => {
-      setPhase(testDir, { phase: 'EAGLE_SIGHT', step: 'GAMEPLAN' });
+    it('blocks PLAN to BUILD without planning docs', () => {
+      setPhase(testDir, { phase: 'PLAN', step: 'GAMEPLAN' });
       const result = advancePhase({ projectPath: testDir });
       // Should be blocked since there are no planning docs
       assert.strictEqual(result.blocked, true);
-      assert.strictEqual(result.current.phase, 'EAGLE_SIGHT');
+      assert.strictEqual(result.current.phase, 'PLAN');
       assert.ok(result.blockers && result.blockers.length > 0);
     });
 
@@ -124,10 +124,10 @@ describe('Analyze Tools', () => {
       assert.strictEqual(result.current.step, 'DONE');
     });
 
-    it('loops from GROW back to EAGLE_SIGHT', () => {
+    it('loops from GROW back to PLAN', () => {
       setPhase(testDir, { phase: 'GROW', step: 'DONE' });
       const result = advancePhase({ projectPath: testDir });
-      assert.strictEqual(result.current.phase, 'EAGLE_SIGHT');
+      assert.strictEqual(result.current.phase, 'PLAN');
       assert.strictEqual(result.current.step, 'IDEA');
     });
 
@@ -144,7 +144,7 @@ describe('Analyze Tools', () => {
       const result = advancePhase({ projectPath: testDir });
       assert.strictEqual(result.message.includes('Advanced from'), true);
       assert.strictEqual(result.message.includes('IDLE'), true);
-      assert.strictEqual(result.message.includes('EAGLE_SIGHT'), true);
+      assert.strictEqual(result.message.includes('PLAN'), true);
     });
   });
 });

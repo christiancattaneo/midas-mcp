@@ -18,9 +18,9 @@ describe('Prompt Generation System', () => {
     rmSync(testDir, { recursive: true, force: true });
   });
 
-  describe('EAGLE_SIGHT prompts', () => {
+  describe('PLAN prompts', () => {
     it('IDEA step focuses on problem definition', () => {
-      setPhase(testDir, { phase: 'EAGLE_SIGHT', step: 'IDEA' });
+      setPhase(testDir, { phase: 'PLAN', step: 'IDEA' });
       const result = suggestPrompt({ projectPath: testDir });
       
       assert.strictEqual(result.prompt.includes('problem'), true);
@@ -28,14 +28,14 @@ describe('Prompt Generation System', () => {
     });
 
     it('RESEARCH step focuses on competitive analysis', () => {
-      setPhase(testDir, { phase: 'EAGLE_SIGHT', step: 'RESEARCH' });
+      setPhase(testDir, { phase: 'PLAN', step: 'RESEARCH' });
       const result = suggestPrompt({ projectPath: testDir });
       
       assert.strictEqual(result.prompt.includes('similar solutions'), true);
     });
 
     it('BRAINLIFT step captures unique insights', () => {
-      setPhase(testDir, { phase: 'EAGLE_SIGHT', step: 'BRAINLIFT' });
+      setPhase(testDir, { phase: 'PLAN', step: 'BRAINLIFT' });
       const result = suggestPrompt({ projectPath: testDir });
       
       assert.strictEqual(result.prompt.includes('unique insights'), true);
@@ -43,7 +43,7 @@ describe('Prompt Generation System', () => {
     });
 
     it('PRD step defines goals and non-goals', () => {
-      setPhase(testDir, { phase: 'EAGLE_SIGHT', step: 'PRD' });
+      setPhase(testDir, { phase: 'PLAN', step: 'PRD' });
       const result = suggestPrompt({ projectPath: testDir });
       
       assert.strictEqual(result.prompt.includes('PRD'), true);
@@ -52,7 +52,7 @@ describe('Prompt Generation System', () => {
     });
 
     it('GAMEPLAN step plans implementation', () => {
-      setPhase(testDir, { phase: 'EAGLE_SIGHT', step: 'GAMEPLAN' });
+      setPhase(testDir, { phase: 'PLAN', step: 'GAMEPLAN' });
       const result = suggestPrompt({ projectPath: testDir });
       
       assert.strictEqual(result.prompt.includes('gameplan'), true);
@@ -163,8 +163,8 @@ describe('Prompt Generation System', () => {
       assert.strictEqual(result.prompt.includes('user authentication module'), true);
     });
 
-    it('substitutes idea context in EAGLE_SIGHT:IDEA', () => {
-      setPhase(testDir, { phase: 'EAGLE_SIGHT', step: 'IDEA' });
+    it('substitutes idea context in PLAN:IDEA', () => {
+      setPhase(testDir, { phase: 'PLAN', step: 'IDEA' });
       const result = suggestPrompt({ 
         projectPath: testDir, 
         context: 'task management app' 

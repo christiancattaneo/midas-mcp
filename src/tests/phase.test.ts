@@ -34,11 +34,11 @@ describe('Phase State Machine', () => {
 
     it('returns saved state if exists', () => {
       const customState = getDefaultState();
-      customState.current = { phase: 'EAGLE_SIGHT', step: 'RESEARCH' };
+      customState.current = { phase: 'PLAN', step: 'RESEARCH' };
       saveState(testDir, customState);
 
       const loaded = loadState(testDir);
-      assert.deepStrictEqual(loaded.current, { phase: 'EAGLE_SIGHT', step: 'RESEARCH' });
+      assert.deepStrictEqual(loaded.current, { phase: 'PLAN', step: 'RESEARCH' });
     });
   });
 
@@ -61,34 +61,34 @@ describe('Phase State Machine', () => {
 
   describe('setPhase', () => {
     it('updates current phase', () => {
-      const newPhase: Phase = { phase: 'EAGLE_SIGHT', step: 'IDEA' };
+      const newPhase: Phase = { phase: 'PLAN', step: 'IDEA' };
       const state = setPhase(testDir, newPhase);
       assert.deepStrictEqual(state.current, newPhase);
     });
 
     it('adds previous phase to history', () => {
-      setPhase(testDir, { phase: 'EAGLE_SIGHT', step: 'IDEA' });
-      setPhase(testDir, { phase: 'EAGLE_SIGHT', step: 'RESEARCH' });
+      setPhase(testDir, { phase: 'PLAN', step: 'IDEA' });
+      setPhase(testDir, { phase: 'PLAN', step: 'RESEARCH' });
 
       const state = loadState(testDir);
       assert.strictEqual(state.history.length, 2);
-      assert.deepStrictEqual(state.history[1], { phase: 'EAGLE_SIGHT', step: 'IDEA' });
+      assert.deepStrictEqual(state.history[1], { phase: 'PLAN', step: 'IDEA' });
     });
   });
 
   describe('getNextPhase', () => {
     it('returns first step from IDLE', () => {
       const next = getNextPhase({ phase: 'IDLE' });
-      assert.deepStrictEqual(next, { phase: 'EAGLE_SIGHT', step: 'IDEA' });
+      assert.deepStrictEqual(next, { phase: 'PLAN', step: 'IDEA' });
     });
 
     it('advances within same phase', () => {
-      const next = getNextPhase({ phase: 'EAGLE_SIGHT', step: 'IDEA' });
-      assert.deepStrictEqual(next, { phase: 'EAGLE_SIGHT', step: 'RESEARCH' });
+      const next = getNextPhase({ phase: 'PLAN', step: 'IDEA' });
+      assert.deepStrictEqual(next, { phase: 'PLAN', step: 'RESEARCH' });
     });
 
     it('transitions between phases', () => {
-      const next = getNextPhase({ phase: 'EAGLE_SIGHT', step: 'GAMEPLAN' });
+      const next = getNextPhase({ phase: 'PLAN', step: 'GAMEPLAN' });
       assert.deepStrictEqual(next, { phase: 'BUILD', step: 'RULES' });
     });
 
@@ -102,9 +102,9 @@ describe('Phase State Machine', () => {
       assert.deepStrictEqual(next, { phase: 'GROW', step: 'DONE' });
     });
 
-    it('loops back to EAGLE_SIGHT from GROW', () => {
+    it('loops back to PLAN from GROW', () => {
       const next = getNextPhase({ phase: 'GROW', step: 'DONE' });
-      assert.deepStrictEqual(next, { phase: 'EAGLE_SIGHT', step: 'IDEA' });
+      assert.deepStrictEqual(next, { phase: 'PLAN', step: 'IDEA' });
     });
   });
 
@@ -115,13 +115,13 @@ describe('Phase State Machine', () => {
     });
 
     it('goes back within same phase', () => {
-      const prev = getPrevPhase({ phase: 'EAGLE_SIGHT', step: 'RESEARCH' });
-      assert.deepStrictEqual(prev, { phase: 'EAGLE_SIGHT', step: 'IDEA' });
+      const prev = getPrevPhase({ phase: 'PLAN', step: 'RESEARCH' });
+      assert.deepStrictEqual(prev, { phase: 'PLAN', step: 'IDEA' });
     });
 
     it('stays at first step if already there', () => {
-      const prev = getPrevPhase({ phase: 'EAGLE_SIGHT', step: 'IDEA' });
-      assert.deepStrictEqual(prev, { phase: 'EAGLE_SIGHT', step: 'IDEA' });
+      const prev = getPrevPhase({ phase: 'PLAN', step: 'IDEA' });
+      assert.deepStrictEqual(prev, { phase: 'PLAN', step: 'IDEA' });
     });
   });
 

@@ -67,7 +67,7 @@ const saveCursor = `${ESC}7`;            // Save cursor position
 const restoreCursor = `${ESC}8`;         // Restore cursor position
 
 const PHASE_COLORS: Record<string, string> = {
-  EAGLE_SIGHT: yellow,
+  PLAN: yellow,
   BUILD: blue,
   SHIP: green,
   GROW: magenta,
@@ -645,7 +645,7 @@ function drawUI(state: TUIState, projectPath: string): string {
   const a = state.analysis;
 
   // Phase lifecycle bar (no project summary - keep it clean)
-  const phases = ['EAGLE_SIGHT', 'BUILD', 'SHIP', 'GROW'] as const;
+  const phases = ['PLAN', 'BUILD', 'SHIP', 'GROW'] as const;
   const currentPhaseIdx = a.currentPhase.phase === 'IDLE' ? -1 : phases.indexOf(a.currentPhase.phase as typeof phases[number]);
   
   let phaseBarText = '';
@@ -1508,7 +1508,7 @@ export async function runInteractive(): Promise<void> {
           });
           
           // Reset to PLAN phase
-          setPhase(projectPath, { phase: 'EAGLE_SIGHT', step: 'IDEA' });
+          setPhase(projectPath, { phase: 'PLAN', step: 'IDEA' });
           tuiState.message = `${green}OK${reset} New cycle started! Back to PLAN phase.`;
           
           // Re-analyze to get new suggestions

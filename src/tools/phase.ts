@@ -6,7 +6,7 @@ import {
   getPhaseGuidance, 
   getDefaultState,
   type Phase,
-  type EagleSightStep,
+  type PlanStep,
   type BuildStep,
   type ShipStep,
   type GrowStep,
@@ -17,7 +17,7 @@ import { sanitizePath, limitLength, LIMITS, validateEnum } from '../security.js'
 import { writeCursorRules, detectTechStack } from '../techstack.js';
 
 // Valid step values for each phase
-const EAGLE_SIGHT_STEPS = ['IDEA', 'RESEARCH', 'BRAINLIFT', 'PRD', 'GAMEPLAN'] as const;
+const PLAN_STEPS = ['IDEA', 'RESEARCH', 'BRAINLIFT', 'PRD', 'GAMEPLAN'] as const;
 const BUILD_STEPS = ['RULES', 'INDEX', 'READ', 'RESEARCH', 'IMPLEMENT', 'TEST', 'DEBUG'] as const;
 const SHIP_STEPS = ['REVIEW', 'DEPLOY', 'MONITOR'] as const;
 const GROW_STEPS = ['DONE'] as const;  // Single graduation step
@@ -126,7 +126,7 @@ export function startProject(input: StartProjectInput): {
 
   // Initialize state
   const state = getDefaultState();
-  state.current = { phase: 'EAGLE_SIGHT', step: 'IDEA' };
+  state.current = { phase: 'PLAN', step: 'IDEA' };
   state.startedAt = new Date().toISOString();
   saveState(projectPath, state);
 
@@ -180,7 +180,7 @@ export function getPhase(input: GetPhaseInput): {
 
 // Tool: midas_set_phase
 export const setPhaseSchema = z.object({
-  phase: z.enum(['IDLE', 'EAGLE_SIGHT', 'BUILD', 'SHIP', 'GROW']).describe('Target phase'),
+  phase: z.enum(['IDLE', 'PLAN', 'BUILD', 'SHIP', 'GROW']).describe('Target phase'),
   step: z.string().max(20).optional().describe('Step within phase'),
   projectPath: z.string().max(LIMITS.PATH_MAX_LENGTH).optional().describe('Path to project root'),
 });
@@ -199,17 +199,17 @@ export function setPhaseManually(input: SetPhaseInput): {
   
   if (input.phase === 'IDLE') {
     newPhase = { phase: 'IDLE' };
-  } else if (input.phase === 'EAGLE_SIGHT') {
-    const step = validateEnum(input.step || 'IDEA', EAGLE_SIGHT_STEPS) as EagleSightStep;
+  } else if (input.phase === 'PLAN') {
+    const step = validateEnum(input.step || 'IDEA', PLAN_STEPS) as PlanStep;
     if (!step) {
       return {
         success: false,
         current: loadState(projectPath).current,
         nextSteps: [],
-        error: `Invalid step "${input.step}" for EAGLE_SIGHT. Valid: ${EAGLE_SIGHT_STEPS.join(', ')}`,
+        error: `Invalid step "${input.step}" for PLAN. Valid: ${PLAN_STEPS.join(', ')}`,
       };
     }
-    newPhase = { phase: 'EAGLE_SIGHT', step };
+    newPhase = { phase: 'PLAN', step };
   } else if (input.phase === 'BUILD') {
     const step = validateEnum(input.step || 'RULES', BUILD_STEPS) as BuildStep;
     if (!step) {

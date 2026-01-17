@@ -4,7 +4,7 @@ The Golden Code methodology isn't arbitrary. Each phase and step exists because 
 
 ---
 
-## PLAN Phase (formerly Eagle Sight)
+## Plan Phase
 
 **Why plan before building?** Because code without context is just syntax. The AI doesn't know your domain, your constraints, or your users. You do.
 

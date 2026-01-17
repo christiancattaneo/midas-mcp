@@ -151,18 +151,18 @@ describe('Edge Cases and Error Handling', () => {
       
       // Rapid saves should not corrupt state
       for (let i = 0; i < 10; i++) {
-        state.current = { phase: 'EAGLE_SIGHT', step: 'IDEA' };
+        state.current = { phase: 'PLAN', step: 'IDEA' };
         saveState(testDir, state);
       }
       
       const loaded = loadState(testDir);
-      assert.strictEqual(loaded.current.phase, 'EAGLE_SIGHT');
+      assert.strictEqual(loaded.current.phase, 'PLAN');
     });
 
     it('handles rapid phase changes', () => {
-      setPhase(testDir, { phase: 'EAGLE_SIGHT', step: 'IDEA' });
-      setPhase(testDir, { phase: 'EAGLE_SIGHT', step: 'RESEARCH' });
-      setPhase(testDir, { phase: 'EAGLE_SIGHT', step: 'BRAINLIFT' });
+      setPhase(testDir, { phase: 'PLAN', step: 'IDEA' });
+      setPhase(testDir, { phase: 'PLAN', step: 'RESEARCH' });
+      setPhase(testDir, { phase: 'PLAN', step: 'BRAINLIFT' });
       
       const state = loadState(testDir);
       assert.strictEqual((state.current as { step: string }).step, 'BRAINLIFT');
@@ -277,7 +277,7 @@ describe('Edge Cases and Error Handling', () => {
     it('handles deep history', () => {
       // Create many phase transitions
       for (let i = 0; i < 100; i++) {
-        setPhase(testDir, { phase: 'EAGLE_SIGHT', step: 'IDEA' });
+        setPhase(testDir, { phase: 'PLAN', step: 'IDEA' });
       }
       
       const state = loadState(testDir);

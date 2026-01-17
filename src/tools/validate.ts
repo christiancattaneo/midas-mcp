@@ -269,9 +269,9 @@ export function enforceGatesAndAdvance(input: EnforceGatesInput): {
   const upperStep = targetStep.toUpperCase();
   
   switch (upperPhase) {
-    case 'EAGLE_SIGHT':
     case 'PLAN':
-      newPhase = { phase: 'EAGLE_SIGHT', step: upperStep as any };
+    case 'PLAN':
+      newPhase = { phase: 'PLAN', step: upperStep as any };
       break;
     case 'BUILD':
       newPhase = { phase: 'BUILD', step: upperStep as any };

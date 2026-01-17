@@ -192,11 +192,11 @@ describe('Metrics Module', () => {
 
   describe('recordPhaseChange', () => {
     it('adds phase to history', () => {
-      recordPhaseChange(testDir, { phase: 'EAGLE_SIGHT', step: 'IDEA' });
+      recordPhaseChange(testDir, { phase: 'PLAN', step: 'IDEA' });
       
       const metrics = loadMetrics(testDir);
       assert.strictEqual(metrics.phaseHistory.length, 1);
-      assert.strictEqual(metrics.phaseHistory[0].phase, 'EAGLE_SIGHT:IDEA');
+      assert.strictEqual(metrics.phaseHistory[0].phase, 'PLAN:IDEA');
     });
 
     it('records entry time', () => {

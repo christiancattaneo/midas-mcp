@@ -77,7 +77,7 @@ export function showStatus(): void {
   }
 
   const phaseConfig: Record<string, { color: string; steps: string[]; labels?: Record<string, string> }> = {
-    EAGLE_SIGHT: {
+    PLAN: {
       color: yellow,
       steps: ['IDEA', 'RESEARCH', 'BRAINLIFT', 'PRD', 'GAMEPLAN'],
     },
@@ -233,11 +233,11 @@ export function runExistingProjectSetup(): void {
   console.log('');
   
   // Infer phase (using internal phase names)
-  let inferredPhase: 'IDLE' | 'EAGLE_SIGHT' | 'BUILD' | 'SHIP' | 'GROW' = 'IDLE';
+  let inferredPhase: 'IDLE' | 'PLAN' | 'BUILD' | 'SHIP' | 'GROW' = 'IDLE';
   let inferredStep: string = '';
   
   if (!hasPackageJson && !hasSrc) {
-    inferredPhase = 'EAGLE_SIGHT';  // User-facing name is "PLAN"
+    inferredPhase = 'PLAN';  // User-facing name is "PLAN"
     inferredStep = 'IDEA';
   } else if (hasSrc && !hasTests) {
     inferredPhase = 'BUILD';
@@ -275,10 +275,10 @@ export function runExistingProjectSetup(): void {
     // Set the inferred phase
     if (inferredPhase !== 'IDLE') {
       // Build the Phase object with proper typing
-      type ValidPhase = 'EAGLE_SIGHT' | 'BUILD' | 'SHIP' | 'GROW';
+      type ValidPhase = 'PLAN' | 'BUILD' | 'SHIP' | 'GROW';
       const phaseObj = { phase: inferredPhase as ValidPhase, step: inferredStep } as Phase;
       setPhase(cwd, phaseObj);
-      const displayPhase = inferredPhase === 'EAGLE_SIGHT' ? 'PLAN' : inferredPhase;
+      const displayPhase = inferredPhase === 'PLAN' ? 'PLAN' : inferredPhase;
       console.log(`  ${green}[x]${reset} Set phase to ${displayPhase}:${inferredStep}`);
     }
   }

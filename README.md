@@ -36,7 +36,7 @@ Using `@latest` ensures you always get the newest version. The `server` argument
 
 Midas tracks your current phase and guides you through:
 
-**Phase 1: Eagle Sight (Pre-Build)**
+**Phase 1: Plan (Pre-Build)**
 ```
 💡 Idea → 🔍 Research → 🧠 Brainlift → 📋 PRD → 🗺️ Gameplan
 ```
@@ -51,7 +51,7 @@ Midas tracks your current phase and guides you through:
 
 | Tool | Description |
 |------|-------------|
-| `midas_start_project` | Initialize Eagle Sight, create docs folder structure |
+| `midas_start_project` | Initialize Plan, create docs folder structure |
 | `midas_get_phase` | Get current phase and recommended next steps |
 | `midas_set_phase` | Move to a specific phase |
 | `midas_audit` | Score project against 12 ingredients |
@@ -78,7 +78,7 @@ Pre-built expert prompts you can invoke:
 Documentation available on demand:
 
 - `midas://methodology` - Core philosophy
-- `midas://eagle-sight` - Pre-build process
+- `midas://plan` - Pre-build process
 - `midas://process` - 7-step development loop
 - `midas://oneshot` - Fix backward paradigm
 - `midas://tornado` - Research + Logs + Tests
@@ -115,7 +115,7 @@ Wrong output? Widen your horizontal context.
 ```
 User: "I want to build a task management app"
 
-Midas: Initiates Eagle Sight phase, creates docs folder,
+Midas: Initiates Plan phase, creates docs folder,
        guides through Brainlift → PRD → Gameplan
 ```
 

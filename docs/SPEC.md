@@ -48,7 +48,7 @@ midas-mcp/
 ## Phase State Machine
 
 ```typescript
-type EagleSightStep = 
+type PlanStep = 
   | 'IDEA'
   | 'RESEARCH'
   | 'BRAINLIFT'
@@ -66,7 +66,7 @@ type BuildStep =
 
 type Phase =
   | { phase: 'IDLE' }
-  | { phase: 'EAGLE_SIGHT'; step: EagleSightStep }
+  | { phase: 'PLAN'; step: PlanStep }
   | { phase: 'BUILD'; step: BuildStep }
   | { phase: 'SHIPPED' };
 
@@ -88,7 +88,7 @@ interface PhaseState {
 
 ### midas_start_project
 
-Initializes a new project with Eagle Sight.
+Initializes a new project with Plan.
 
 **Input:**
 ```typescript
@@ -103,7 +103,7 @@ Initializes a new project with Eagle Sight.
 2. Creates `docs/brainlift.md` with template
 3. Creates `docs/prd.md` with template
 4. Creates `docs/gameplan.md` with template
-5. Sets phase to `EAGLE_SIGHT.IDEA`
+5. Sets phase to `PLAN.IDEA`
 6. Returns guidance for next step
 
 ---
@@ -132,7 +132,7 @@ Manually set the current phase.
 **Input:**
 ```typescript
 {
-  phase: 'EAGLE_SIGHT' | 'BUILD' | 'SHIPPED';
+  phase: 'PLAN' | 'BUILD' | 'SHIPPED';
   step?: string;
 }
 ```
@@ -170,7 +170,7 @@ Audit project against 12 ingredients.
 
 ### midas_check_docs
 
-Verify Eagle Sight docs exist and are complete.
+Verify Plan docs exist and are complete.
 
 **Input:**
 ```typescript

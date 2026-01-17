@@ -6,7 +6,7 @@ Quick reference for the vibecoding methodology.
 
 ## The Two Phases
 
-**Phase 1: Eagle Sight (Pre-Build)**
+**Phase 1: Plan (Pre-Build)**
 ```
 Idea → Research → Brainlift → PRD → Gameplan
 ```

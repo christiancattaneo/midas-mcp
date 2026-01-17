@@ -31,7 +31,7 @@ Always complete earlier steps before jumping to implementation.
 
 ## The 4 Phases:
 
-### EAGLE_SIGHT (Planning)
+### PLAN (Planning)
 - IDEA: Define core idea, problem, audience
 - RESEARCH: Landscape scan, competitors
 - BRAINLIFT: Document unique insights
@@ -55,7 +55,7 @@ Always complete earlier steps before jumping to implementation.
 ### GROW (Iteration)
 - FEEDBACK: Collect user feedback
 - ANALYZE: Study metrics and behavior
-- ITERATE: Plan next cycle (back to EAGLE_SIGHT)
+- ITERATE: Plan next cycle (back to PLAN)
 ```
 
 ## Why This Works

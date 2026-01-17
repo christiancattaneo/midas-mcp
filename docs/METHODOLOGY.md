@@ -14,7 +14,7 @@ The complete methodology that Midas teaches and enforces.
 
 ## The Two Phases
 
-### Phase 1: Eagle Sight (Pre-Build)
+### Phase 1: Plan (Pre-Build)
 
 ```
 💡 IDEA → 🔍 RESEARCH → 🧠 BRAINLIFT → 📋 PRD → 🗺️ GAMEPLAN → ⚡ BUILD

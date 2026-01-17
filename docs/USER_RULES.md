@@ -38,10 +38,10 @@ RULES → INDEX → READ → RESEARCH → IMPLEMENT → TEST → DEBUG
 Always complete earlier steps before jumping to implementation.
 
 ## The 4 Phases:
-1. EAGLE_SIGHT: Plan before coding (brainlift, PRD, gameplan)
+1. PLAN: Plan before coding (brainlift, PRD, gameplan)
 2. BUILD: The 7-step cycle above
 3. SHIP: Review, deploy, monitor
-4. GROW: Feedback, analyze, iterate back to EAGLE_SIGHT
+4. GROW: Feedback, analyze, iterate back to PLAN
 ```
 
 ## How to Add

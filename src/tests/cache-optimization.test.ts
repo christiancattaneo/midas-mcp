@@ -102,7 +102,7 @@ Graduation checklist:
 ## Response Format:
 Respond ONLY with valid JSON matching this schema:
 {
-  "phase": "EAGLE_SIGHT" | "BUILD" | "SHIP" | "GROW" | "IDLE",
+  "phase": "PLAN" | "BUILD" | "SHIP" | "GROW" | "IDLE",
   "step": "step name within phase",
   "summary": "one-line project summary",
   "techStack": ["detected", "technologies"],
@@ -246,7 +246,7 @@ If there are unresolved errors with multiple fix attempts, suggest Tornado debug
 
 Respond ONLY with valid JSON:
 {
-  "phase": "EAGLE_SIGHT" | "BUILD" | "SHIP" | "GROW" | "IDLE",
+  "phase": "PLAN" | "BUILD" | "SHIP" | "GROW" | "IDLE",
   "step": "step name",
   "summary": "one-line project summary",
   "techStack": ["tech1", "tech2"],

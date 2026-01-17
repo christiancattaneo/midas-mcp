@@ -9,6 +9,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { sanitizePath } from './security.js';
+import { discoverDocsSync, getPlanningContext } from './docs-discovery.js';
 
 // ============================================================================
 // PERSISTENCE
@@ -842,21 +843,15 @@ export function inferProjectProfile(projectPath: string): ProjectProfile {
     industry: [],
   };
   
-  // Read docs
-  const brainliftPath = join(safePath, 'docs', 'brainlift.md');
-  const prdPath = join(safePath, 'docs', 'prd.md');
+  // Discover and read all planning docs (intelligent detection)
+  const docsResult = discoverDocsSync(safePath);
+  let content = getPlanningContext(docsResult).toLowerCase();
+  
+  // Also check README if not already included
   const readmePath = join(safePath, 'README.md');
   const packagePath = join(safePath, 'package.json');
   
-  let content = '';
-  
-  if (existsSync(brainliftPath)) {
-    content += readFileSync(brainliftPath, 'utf-8').toLowerCase() + '\n';
-  }
-  if (existsSync(prdPath)) {
-    content += readFileSync(prdPath, 'utf-8').toLowerCase() + '\n';
-  }
-  if (existsSync(readmePath)) {
+  if (existsSync(readmePath) && !docsResult.readme) {
     content += readFileSync(readmePath, 'utf-8').toLowerCase() + '\n';
   }
   
@@ -964,19 +959,10 @@ export function inferProjectProfile(projectPath: string): ProjectProfile {
 function fillPromptTemplate(template: string, profile: ProjectProfile, projectPath: string): string {
   const safePath = sanitizePath(projectPath);
   
-  // Read docs for context
-  let brainliftContent = '';
-  let prdContent = '';
-  
-  const brainliftPath = join(safePath, 'docs', 'brainlift.md');
-  const prdPath = join(safePath, 'docs', 'prd.md');
-  
-  if (existsSync(brainliftPath)) {
-    brainliftContent = readFileSync(brainliftPath, 'utf-8');  // Read full doc for accurate inference
-  }
-  if (existsSync(prdPath)) {
-    prdContent = readFileSync(prdPath, 'utf-8');  // Read full doc for accurate inference
-  }
+  // Use intelligent docs discovery
+  const docsResult = discoverDocsSync(safePath);
+  const brainliftContent = docsResult.brainlift?.content || '';
+  const prdContent = docsResult.prd?.content || '';
   
   // Build replacements
   const replacements: Record<string, string> = {
@@ -1130,23 +1116,11 @@ export async function filterChecksWithAI(
   
   const safePath = sanitizePath(projectPath);
   
-  // Read full docs for context
-  let docsContent = '';
-  const brainliftPath = join(safePath, 'docs', 'brainlift.md');
-  const prdPath = join(safePath, 'docs', 'prd.md');
-  const readmePath = join(safePath, 'README.md');
+  // Use intelligent docs discovery
+  const docsResult = discoverDocsSync(safePath);
+  const docsContent = getPlanningContext(docsResult);
   
-  if (existsSync(brainliftPath)) {
-    docsContent += `## Brainlift:\n${readFileSync(brainliftPath, 'utf-8').slice(0, 4000)}\n\n`;
-  }
-  if (existsSync(prdPath)) {
-    docsContent += `## PRD:\n${readFileSync(prdPath, 'utf-8').slice(0, 4000)}\n\n`;
-  }
-  if (existsSync(readmePath)) {
-    docsContent += `## README:\n${readFileSync(readmePath, 'utf-8').slice(0, 2000)}\n`;
-  }
-  
-  if (!docsContent) {
+  if (!docsContent || docsResult.totalDocsFound === 0) {
     // No docs to analyze - return checks as-is
     return { filtered: checks, additions: [], removals: [] };
   }

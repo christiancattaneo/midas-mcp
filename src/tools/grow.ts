@@ -444,7 +444,7 @@ export function startNextCycle(input: NextCycleInput): {
   // Reset phase to PLAN:IDEA
   const state = loadState(projectPath);
   state.history.push(state.current);
-  state.current = { phase: 'EAGLE_SIGHT', step: 'IDEA' };
+  state.current = { phase: 'PLAN', step: 'IDEA' };
   state.startedAt = timestamp;
   saveState(projectPath, state);
   

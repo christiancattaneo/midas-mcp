@@ -61,7 +61,7 @@ export function suggestPrompt(input: SuggestPromptInput): PromptSuggestion {
 
   // Phase-specific prompt templates
   const prompts: Record<string, Record<string, { prompt: string; explanation: string }>> = {
-    EAGLE_SIGHT: {
+    PLAN: {
       IDEA: {
         prompt: 'I want to build [describe your idea]. Help me think through: What problem does this solve? Who is it for? Why now?',
         explanation: 'Start by clearly defining your idea and its value proposition.',
@@ -195,8 +195,8 @@ export function advancePhase(input: AdvancePhaseInput): AdvancePhaseResult {
   const previous = state.current;
   const next = getNextPhase(previous);
   
-  // Check if advancing from EAGLE_SIGHT (Plan) to BUILD - validate planning docs
-  if (previous.phase === 'EAGLE_SIGHT' && next.phase === 'BUILD' && !input.force) {
+  // Check if advancing from PLAN (Plan) to BUILD - validate planning docs
+  if (previous.phase === 'PLAN' && next.phase === 'BUILD' && !input.force) {
     const validation = validatePlanningDocs({ projectPath });
     
     if (!validation.readyForBuild) {

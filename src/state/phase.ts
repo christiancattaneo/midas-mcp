@@ -2,12 +2,15 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
 // Full lifecycle phases
-export type EagleSightStep = 
+export type PlanStep = 
   | 'IDEA'
   | 'RESEARCH'
   | 'BRAINLIFT'
   | 'PRD'
   | 'GAMEPLAN';
+
+// Backwards compatibility alias
+export type EagleSightStep = PlanStep;
 
 export type BuildStep =
   | 'RULES'
@@ -27,7 +30,7 @@ export type GrowStep = 'DONE';  // Graduation - project shipped, here's what's n
 
 export type Phase =
   | { phase: 'IDLE' }
-  | { phase: 'EAGLE_SIGHT'; step: EagleSightStep }
+  | { phase: 'PLAN'; step: PlanStep }
   | { phase: 'BUILD'; step: BuildStep }
   | { phase: 'SHIP'; step: ShipStep }
   | { phase: 'GROW'; step: GrowStep };
@@ -109,7 +112,7 @@ export function setPhase(projectPath: string, newPhase: Phase): PhaseState {
 
 // Phase metadata for display and guidance
 export const PHASE_INFO = {
-  EAGLE_SIGHT: {
+  PLAN: {
     name: 'Plan',
     description: 'Plan before you build',
     why: 'Code without context is just syntax. The AI doesn\'t know your domain, constraints, or users. You do.',
@@ -201,11 +204,11 @@ export function getPhaseGuidance(phase: Phase): { nextSteps: string[]; prompt?: 
 
 export function getNextPhase(current: Phase): Phase {
   const allSteps: Array<{ phase: Phase['phase']; step: string }> = [
-    { phase: 'EAGLE_SIGHT', step: 'IDEA' },
-    { phase: 'EAGLE_SIGHT', step: 'RESEARCH' },
-    { phase: 'EAGLE_SIGHT', step: 'BRAINLIFT' },
-    { phase: 'EAGLE_SIGHT', step: 'PRD' },
-    { phase: 'EAGLE_SIGHT', step: 'GAMEPLAN' },
+    { phase: 'PLAN', step: 'IDEA' },
+    { phase: 'PLAN', step: 'RESEARCH' },
+    { phase: 'PLAN', step: 'BRAINLIFT' },
+    { phase: 'PLAN', step: 'PRD' },
+    { phase: 'PLAN', step: 'GAMEPLAN' },
     { phase: 'BUILD', step: 'RULES' },
     { phase: 'BUILD', step: 'INDEX' },
     { phase: 'BUILD', step: 'READ' },
@@ -220,7 +223,7 @@ export function getNextPhase(current: Phase): Phase {
   ];
 
   if (current.phase === 'IDLE') {
-    return { phase: 'EAGLE_SIGHT', step: 'IDEA' };
+    return { phase: 'PLAN', step: 'IDEA' };
   }
 
   const currentIdx = allSteps.findIndex(
@@ -228,13 +231,13 @@ export function getNextPhase(current: Phase): Phase {
   );
 
   if (currentIdx === -1 || currentIdx >= allSteps.length - 1) {
-    // Loop back to Eagle Sight for next iteration
-    return { phase: 'EAGLE_SIGHT', step: 'IDEA' };
+    // Loop back to Plan for next iteration
+    return { phase: 'PLAN', step: 'IDEA' };
   }
 
   const next = allSteps[currentIdx + 1];
   
-  if (next.phase === 'EAGLE_SIGHT') return { phase: 'EAGLE_SIGHT', step: next.step as EagleSightStep };
+  if (next.phase === 'PLAN') return { phase: 'PLAN', step: next.step as PlanStep };
   if (next.phase === 'BUILD') return { phase: 'BUILD', step: next.step as BuildStep };
   if (next.phase === 'SHIP') return { phase: 'SHIP', step: next.step as ShipStep };
   if (next.phase === 'GROW') return { phase: 'GROW', step: next.step as GrowStep };
@@ -244,11 +247,11 @@ export function getNextPhase(current: Phase): Phase {
 
 export function getPrevPhase(current: Phase): Phase {
   const allSteps: Array<{ phase: Phase['phase']; step: string }> = [
-    { phase: 'EAGLE_SIGHT', step: 'IDEA' },
-    { phase: 'EAGLE_SIGHT', step: 'RESEARCH' },
-    { phase: 'EAGLE_SIGHT', step: 'BRAINLIFT' },
-    { phase: 'EAGLE_SIGHT', step: 'PRD' },
-    { phase: 'EAGLE_SIGHT', step: 'GAMEPLAN' },
+    { phase: 'PLAN', step: 'IDEA' },
+    { phase: 'PLAN', step: 'RESEARCH' },
+    { phase: 'PLAN', step: 'BRAINLIFT' },
+    { phase: 'PLAN', step: 'PRD' },
+    { phase: 'PLAN', step: 'GAMEPLAN' },
     { phase: 'BUILD', step: 'RULES' },
     { phase: 'BUILD', step: 'INDEX' },
     { phase: 'BUILD', step: 'READ' },
@@ -272,7 +275,7 @@ export function getPrevPhase(current: Phase): Phase {
 
   const prev = allSteps[currentIdx - 1];
   
-  if (prev.phase === 'EAGLE_SIGHT') return { phase: 'EAGLE_SIGHT', step: prev.step as EagleSightStep };
+  if (prev.phase === 'PLAN') return { phase: 'PLAN', step: prev.step as PlanStep };
   if (prev.phase === 'BUILD') return { phase: 'BUILD', step: prev.step as BuildStep };
   if (prev.phase === 'SHIP') return { phase: 'SHIP', step: prev.step as ShipStep };
   if (prev.phase === 'GROW') return { phase: 'GROW', step: prev.step as GrowStep };
