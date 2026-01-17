@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, watch } from 'fs';
+import { existsSync, readFileSync, mkdirSync, statSync, readdirSync, watch } from 'fs';
 import { join, relative } from 'path';
 import { execSync } from 'child_process';
+import writeFileAtomic from 'write-file-atomic';
 import { loadState, saveState, getNextPhase, createHistoryEntry, type Phase } from './state/phase.js';
 import { sanitizePath, isShellSafe } from './security.js';
 import { logger } from './logger.js';
@@ -149,7 +150,8 @@ export function loadTracker(projectPath: string): TrackerState {
 export function saveTracker(projectPath: string, tracker: TrackerState): void {
   ensureDir(projectPath);
   tracker.lastUpdated = new Date().toISOString();
-  writeFileSync(getTrackerPath(projectPath), JSON.stringify(tracker, null, 2));
+  // Use atomic write to prevent corruption from concurrent access
+  writeFileAtomic.sync(getTrackerPath(projectPath), JSON.stringify(tracker, null, 2));
 }
 
 function getDefaultTracker(): TrackerState {

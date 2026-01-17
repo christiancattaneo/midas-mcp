@@ -6,7 +6,8 @@
  * and generates context-aware prompts for Cursor.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, mkdirSync } from 'fs';
+import writeFileAtomic from 'write-file-atomic';
 import { join } from 'path';
 import { sanitizePath } from './security.js';
 import { discoverDocsSync, getPlanningContext } from './docs-discovery.js';
@@ -53,7 +54,8 @@ function saveRealityState(projectPath: string, state: RealityStateFile): void {
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
-  writeFileSync(getRealityStatePath(projectPath), JSON.stringify(state, null, 2));
+  // Use atomic write to prevent corruption from concurrent access
+  writeFileAtomic.sync(getRealityStatePath(projectPath), JSON.stringify(state, null, 2));
 }
 
 function hashProfile(profile: ProjectProfile): string {
