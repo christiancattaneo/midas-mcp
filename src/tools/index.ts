@@ -164,3 +164,11 @@ export {
   realityUpdate,
   realityUpdateSchema,
 } from './reality.js';
+
+// Gameplan progress tracking - compare plan to implementation
+export {
+  analyzeGameplanTool,
+  analyzeGameplanSchema,
+  getGameplanProgressTool,
+  getProgressSchema,
+} from './gameplan.js';

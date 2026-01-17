@@ -115,6 +115,11 @@ import {
   realityCheckSchema,
   realityUpdate,
   realityUpdateSchema,
+  // Gameplan progress tracking
+  analyzeGameplanTool,
+  analyzeGameplanSchema,
+  getGameplanProgressTool,
+  getProgressSchema,
 } from './tools/index.js';
 import { registerAllPrompts } from './prompts/index.js';
 import { registerAllResources } from './resources/index.js';
@@ -559,6 +564,21 @@ export function createServer(): McpServer {
     'Update the status of a reality check (mark as completed or skipped). Persisted between sessions.',
     realityUpdateSchema.shape,
     wrapTool('midas_reality_update', realityUpdate)
+  );
+
+  // Gameplan progress tracking
+  server.tool(
+    'midas_gameplan_analyze',
+    'Analyze gameplan progress. Parses tasks from gameplan.md, cross-references with code, detects what is implemented vs missing.',
+    analyzeGameplanSchema.shape,
+    wrapTool('midas_gameplan_analyze', analyzeGameplanTool)
+  );
+
+  server.tool(
+    'midas_gameplan_progress',
+    'Get quick gameplan progress summary. Shows documented vs actual progress percentage.',
+    getProgressSchema.shape,
+    wrapTool('midas_gameplan_progress', getGameplanProgressTool)
   );
 
   // Register prompts
