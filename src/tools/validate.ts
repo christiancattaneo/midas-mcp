@@ -10,7 +10,7 @@ import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
 import { sanitizePath } from '../security.js';
-import { loadState, saveState, type Phase } from '../state/phase.js';
+import { loadState, saveState, createHistoryEntry, type Phase } from '../state/phase.js';
 import { logger } from '../logger.js';
 
 // ============================================================================
@@ -262,7 +262,7 @@ export function enforceGatesAndAdvance(input: EnforceGatesInput): {
   
   // Advance phase
   const state = loadState(projectPath);
-  state.history.push(state.current);
+  state.history.push(createHistoryEntry(state.current));
   
   let newPhase: Phase;
   const upperPhase = targetPhase.toUpperCase();

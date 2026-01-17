@@ -1,5 +1,10 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { existsSync } from 'fs';
 import { join } from 'path';
+import { 
+  readStateAtomic, 
+  writeStateAtomicSync, 
+  type VersionedState 
+} from '../atomic-state.js';
 
 // Full lifecycle phases
 export type PlanStep = 
@@ -43,9 +48,16 @@ export interface HotfixState {
   startedAt?: string;
 }
 
-export interface PhaseState {
+// History entry with unique ID for proper merge handling
+export interface HistoryEntry {
+  id: string;           // Unique ID for this entry
+  phase: Phase;         // The phase that was transitioned from
+  timestamp: string;    // When this transition happened
+}
+
+export interface PhaseState extends VersionedState {
   current: Phase;
-  history: Phase[];
+  history: HistoryEntry[];  // Now with unique IDs for merge safety
   startedAt: string;
   docs: {
     brainlift: boolean;
@@ -63,13 +75,6 @@ function getStatePath(projectPath: string): string {
   return join(projectPath, STATE_DIR, STATE_FILE);
 }
 
-function ensureStateDir(projectPath: string): void {
-  const dir = join(projectPath, STATE_DIR);
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
-}
-
 export function getDefaultState(): PhaseState {
   return {
     current: { phase: 'IDLE' },
@@ -80,48 +85,75 @@ export function getDefaultState(): PhaseState {
       prd: false,
       gameplan: false,
     },
+    // Versioning for atomic state management
+    _version: 0,
+    _lastModified: new Date().toISOString(),
+    _processId: '',
   };
 }
 
+/**
+ * Load state with atomic read and schema migration
+ */
 export function loadState(projectPath: string): PhaseState {
   const statePath = getStatePath(projectPath);
-  if (!existsSync(statePath)) {
-    return getDefaultState();
-  }
-  try {
-    const raw = readFileSync(statePath, 'utf-8');
-    if (!raw || raw.trim() === '') {
-      return getDefaultState();
-    }
-    const parsed = JSON.parse(raw);
-    
-    // Validate that parsed is a valid object with required structure
-    if (!parsed || typeof parsed !== 'object' || !parsed.current) {
-      return getDefaultState();
-    }
-    
-    // Merge with defaults to handle missing fields (schema evolution)
-    const defaults = getDefaultState();
-    return {
-      ...defaults,
-      ...parsed,
-      // Ensure nested objects are merged properly
-      docs: { ...defaults.docs, ...(parsed.docs || {}) },
-    };
-  } catch {
-    return getDefaultState();
-  }
+  
+  const state = readStateAtomic(statePath, getDefaultState);
+  
+  // Merge with defaults for schema evolution
+  const defaults = getDefaultState();
+  return {
+    ...defaults,
+    ...state,
+    docs: { ...defaults.docs, ...(state.docs || {}) },
+  };
 }
 
+/**
+ * Save state atomically with conflict detection and array merging.
+ * History entries are never lost - they're union-merged on conflict.
+ * 
+ * IMPORTANT: Version tracking uses the _version field FROM the state object,
+ * not a module-level variable, so concurrent operations each track their own
+ * read version correctly.
+ */
 export function saveState(projectPath: string, state: PhaseState): void {
-  ensureStateDir(projectPath);
   const statePath = getStatePath(projectPath);
-  writeFileSync(statePath, JSON.stringify(state, null, 2));
+  
+  // The expectedVersion is the version from the state we're saving
+  // (which was the version when we loaded it)
+  const expectedVersion = state._version ?? 0;
+  
+  // Atomic write with conflict detection
+  // Arrays (history) are union-merged to never lose entries
+  writeStateAtomicSync(statePath, state, {
+    expectedVersion,
+    arrayKeys: ['history'],  // History entries are union-merged on conflict
+  });
+}
+
+// Generate unique ID for history entries
+function generateHistoryId(): string {
+  return `${Date.now()}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Create a history entry with unique ID.
+ * Use this when adding to history to ensure proper merge handling.
+ */
+export function createHistoryEntry(phase: Phase): HistoryEntry {
+  return {
+    id: generateHistoryId(),
+    phase,
+    timestamp: new Date().toISOString(),
+  };
 }
 
 export function setPhase(projectPath: string, newPhase: Phase): PhaseState {
   const state = loadState(projectPath);
-  state.history.push(state.current);
+  
+  // Create history entry with unique ID (enables proper merge under concurrency)
+  state.history.push(createHistoryEntry(state.current));
   state.current = newPhase;
   saveState(projectPath, state);
   return state;

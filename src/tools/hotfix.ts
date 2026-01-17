@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { loadState, saveState, type Phase } from '../state/phase.js';
+import { loadState, saveState, createHistoryEntry, type Phase } from '../state/phase.js';
 import { saveToJournal } from './journal.js';
 import { sanitizePath } from '../security.js';
 import { logEvent } from '../events.js';
@@ -48,7 +48,7 @@ export function startHotfix(input: StartHotfixInput): StartHotfixResult {
   
   // Jump to BUILD/DEBUG step
   state.current = { phase: 'BUILD', step: 'DEBUG' };
-  state.history.push(previousPhase);
+  state.history.push(createHistoryEntry(previousPhase));
   saveState(projectPath, state);
   
   // Auto-create minimal journal entry

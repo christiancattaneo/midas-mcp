@@ -72,7 +72,10 @@ describe('Phase State Machine', () => {
 
       const state = loadState(testDir);
       assert.strictEqual(state.history.length, 2);
-      assert.deepStrictEqual(state.history[1], { phase: 'PLAN', step: 'IDEA' });
+      // History entries are now HistoryEntry objects with id, phase, and timestamp
+      assert.deepStrictEqual(state.history[1].phase, { phase: 'PLAN', step: 'IDEA' });
+      assert.ok(state.history[1].id);  // Has unique ID
+      assert.ok(state.history[1].timestamp);  // Has timestamp
     });
   });
 

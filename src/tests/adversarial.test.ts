@@ -15,7 +15,7 @@ import { tmpdir } from 'os';
 // Imports from actual modules
 import { discoverSourceFiles, readSourceFiles, discoverAndReadCode } from '../code-discovery.js';
 import { discoverDocs, discoverDocsSync } from '../docs-discovery.js';
-import { loadState, saveState, getDefaultState, setPhase } from '../state/phase.js';
+import { loadState, saveState, getDefaultState, setPhase, createHistoryEntry, type HistoryEntry } from '../state/phase.js';
 import { loadTracker, saveTracker, recordError, getStuckErrors } from '../tracker.js';
 import { inferProjectProfile, getRealityChecks, updateCheckStatus, resetCheckStatuses } from '../reality.js';
 import { estimateTokens } from '../context.js';
@@ -97,15 +97,15 @@ describe('Race Conditions', () => {
     const read1 = loadState(testDir);
     const read2 = loadState(testDir);
     
-    read1.history.push({ phase: 'PLAN', step: 'IDEA' });
-    read2.history.push({ phase: 'BUILD', step: 'TEST' });
+    read1.history.push(createHistoryEntry({ phase: 'PLAN', step: 'IDEA' }));
+    read2.history.push(createHistoryEntry({ phase: 'BUILD', step: 'TEST' }));
     
     saveState(testDir, read1);
-    saveState(testDir, read2); // This overwrites read1's changes
+    saveState(testDir, read2); // With atomic merge, this MERGES, not overwrites
     
     const final = loadState(testDir);
-    // One change is lost, but state is still valid
-    assert.strictEqual(final.history.length, 1);
+    // With atomic merge, BOTH changes are preserved (no lost updates)
+    assert.strictEqual(final.history.length, 2);
   });
 });
 
@@ -268,7 +268,7 @@ describe('State File Corruption', () => {
     // Create state with huge history
     const state = getDefaultState();
     for (let i = 0; i < 10000; i++) {
-      state.history.push({ phase: 'BUILD', step: 'IMPLEMENT' });
+      state.history.push(createHistoryEntry({ phase: 'BUILD', step: 'IMPLEMENT' }));
     }
     
     saveState(testDir, state);

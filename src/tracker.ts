@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, watch } from 'fs';
 import { join, relative } from 'path';
 import { execSync } from 'child_process';
-import { loadState, saveState, getNextPhase, type Phase } from './state/phase.js';
+import { loadState, saveState, getNextPhase, createHistoryEntry, type Phase } from './state/phase.js';
 import { sanitizePath, isShellSafe } from './security.js';
 import { logger } from './logger.js';
 import { discoverDocsSync } from './docs-discovery.js';
@@ -886,7 +886,7 @@ export function maybeAutoAdvance(projectPath: string): { advanced: boolean; from
       const nextPhase = getNextPhase(currentPhase);
       
       // Update state
-      state.history.push(currentPhase);
+      state.history.push(createHistoryEntry(currentPhase));
       state.current = nextPhase;
       saveState(projectPath, state);
       

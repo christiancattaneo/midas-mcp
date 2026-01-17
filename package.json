@@ -1,6 +1,6 @@
 {
   "name": "midas-mcp",
-  "version": "5.20.0",
+  "version": "5.21.0",
   "description": "MCP server for Golden Code methodology - everything you vibecode turns to gold",
   "main": "dist/index.js",
   "bin": {
@@ -37,11 +37,13 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "update-notifier": "^7.3.1",
+    "write-file-atomic": "^7.0.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/update-notifier": "^6.0.8",
+    "@types/write-file-atomic": "^4.0.3",
     "typescript": "^5.0.0"
   },
   "engines": {

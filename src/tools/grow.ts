@@ -10,7 +10,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 
 import { join } from 'path';
 import { execSync } from 'child_process';
 import { sanitizePath } from '../security.js';
-import { loadState, saveState } from '../state/phase.js';
+import { loadState, saveState, createHistoryEntry } from '../state/phase.js';
 
 // ============================================================================
 // SCHEMAS
@@ -443,7 +443,7 @@ export function startNextCycle(input: NextCycleInput): {
   
   // Reset phase to PLAN:IDEA
   const state = loadState(projectPath);
-  state.history.push(state.current);
+  state.history.push(createHistoryEntry(state.current));
   state.current = { phase: 'PLAN', step: 'IDEA' };
   state.startedAt = timestamp;
   saveState(projectPath, state);

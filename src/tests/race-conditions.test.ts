@@ -21,7 +21,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 
 // Module imports
-import { loadState, saveState, getDefaultState, setPhase, type PhaseState } from '../state/phase.js';
+import { loadState, saveState, getDefaultState, setPhase, createHistoryEntry, type PhaseState, type HistoryEntry } from '../state/phase.js';
 import { loadTracker, saveTracker, recordError, getUnresolvedErrors, type TrackerState } from '../tracker.js';
 import { updateCheckStatus, getAllCheckStatuses, resetCheckStatuses } from '../reality.js';
 
@@ -188,7 +188,7 @@ describe('Concurrent Writes - Multiple Writers', () => {
     await runConcurrently(50, async (i) => {
       const state = getDefaultState();
       state.current = { phase: 'BUILD', step: 'IMPLEMENT' };
-      state.history.push({ phase: 'PLAN', step: 'IDEA' });
+      state.history.push(createHistoryEntry({ phase: 'PLAN', step: 'IDEA' }));
       await saveState(testDir, state);
     });
     
@@ -219,7 +219,7 @@ describe('Interleaved Read-Modify-Write', () => {
         () => loadState(testDir),
         (state) => {
           const s = state as PhaseState;
-          s.history.push({ phase: 'PLAN', step: 'IDEA' });
+          s.history.push(createHistoryEntry({ phase: 'PLAN', step: 'IDEA' }));
           return s;
         },
         (state) => saveState(testDir, state as PhaseState),
@@ -306,7 +306,7 @@ describe('Interleaved Read-Modify-Write', () => {
     const writer = (async () => {
       for (let i = 0; i < 5; i++) {
         const state = loadState(testDir);
-        state.history.push({ phase: 'BUILD', step: 'TEST' });
+        state.history.push(createHistoryEntry({ phase: 'BUILD', step: 'TEST' }));
         await sleep(2);
         saveState(testDir, state);
       }
@@ -347,7 +347,7 @@ describe('Check-Then-Act Patterns', () => {
       // Act
       if (!exists) {
         const state = getDefaultState();
-        state.history.push({ phase: 'PLAN', step: 'IDEA' }); // Mark who created it
+        state.history.push(createHistoryEntry({ phase: 'PLAN', step: 'IDEA' })); // Mark who created it
         saveState(testDir, state);
         return 'created';
       }
@@ -461,7 +461,7 @@ describe('Stress Testing', () => {
         case 0:
           // Save state
           const state = getDefaultState();
-          state.history.push({ phase: 'PLAN', step: 'IDEA' });
+          state.history.push(createHistoryEntry({ phase: 'PLAN', step: 'IDEA' }));
           saveState(testDir, state);
           break;
         case 1:
@@ -546,7 +546,7 @@ describe('Lost Update Detection', () => {
     await runConcurrently(expectedIncrements, async (i) => {
       const state = loadState(testDir);
       await sleep(Math.random() * 10);  // Random delay to maximize race chance
-      state.history.push({ phase: 'BUILD', step: 'TEST' });
+      state.history.push(createHistoryEntry({ phase: 'BUILD', step: 'TEST' }));
       saveState(testDir, state);
     });
     
@@ -879,21 +879,23 @@ describe('Sequential vs Parallel Behavior', () => {
     // Sequential: guaranteed to produce 10 history entries
     for (let i = 0; i < 10; i++) {
       const state = loadState(testDir);
-      state.history.push({ phase: 'PLAN', step: 'IDEA' });
+      state.history.push(createHistoryEntry({ phase: 'PLAN', step: 'IDEA' }));
       saveState(testDir, state);
     }
     
     const sequential = loadState(testDir);
     assert.strictEqual(sequential.history.length, 10);
     
-    // Reset
+    // Reset with fresh state
     saveState(testDir, getDefaultState());
     
-    // Parallel: may lose updates
+    // Parallel: with atomic merge, ALL updates are preserved
+    // Each concurrent operation reads version 0, adds 1 entry, and saves
+    // When conflicts occur, arrays are union-merged, so all entries preserved
     await runConcurrently(10, async (i) => {
       const state = loadState(testDir);
       await sleep(1);
-      state.history.push({ phase: 'BUILD', step: 'TEST' });
+      state.history.push(createHistoryEntry({ phase: 'BUILD', step: 'TEST' }));
       saveState(testDir, state);
     });
     
@@ -901,8 +903,10 @@ describe('Sequential vs Parallel Behavior', () => {
     
     console.log(`  [INFO] Sequential: ${sequential.history.length}, Parallel: ${parallel.history.length}`);
     
-    // Document the difference
-    assert.ok(parallel.history.length >= 1);
-    assert.ok(parallel.history.length <= 10);
+    // With atomic merge, parallel should preserve all entries (10)
+    // May get more due to merge bringing in entries from concurrent reads
+    // The key is: NO LOST UPDATES (>= 10)
+    assert.ok(parallel.history.length >= 10, 
+      `Expected >= 10 history entries, got ${parallel.history.length}`);
   });
 });
