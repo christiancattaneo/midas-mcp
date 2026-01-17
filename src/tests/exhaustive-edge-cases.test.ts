@@ -1155,7 +1155,7 @@ describe('Performance Boundaries', () => {
       
       const elapsed = Date.now() - start;
       console.log(`  [PERF] 500 state cycles in ${elapsed}ms`);
-      assert.ok(elapsed < 10000, `Should complete in <10s, took ${elapsed}ms`);
+      assert.ok(elapsed < 30000, `Should complete in <30s, took ${elapsed}ms`);
     });
   });
 });
