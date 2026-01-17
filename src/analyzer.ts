@@ -11,6 +11,7 @@ import { logger } from './logger.js';
 import { estimateTokens } from './context.js';
 import { isCursorAvailable, getRecentMessages, getCursorInfo } from './cursor.js';
 import { discoverDocsSync } from './docs-discovery.js';
+import { discoverAndReadCode, type CodeContext } from './code-discovery.js';
 
 // ============================================================================
 // SKILL LEVEL ADAPTERS
@@ -311,9 +312,24 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
     };
   }
 
-  // Gather context
-  const files = scanFiles(safePath);
-  const fileList = files.map(f => f.replace(safePath + '/', '')).join('\n');
+  // Get current state for context-aware discovery
+  const currentState = loadState(safePath);
+  const tracker = loadTracker(safePath);
+  const unresolvedErrors = getUnresolvedErrors(safePath);
+  
+  // Build context for intelligent code discovery
+  const codeContext: CodeContext = {
+    phase: currentState.current,
+    errors: unresolvedErrors.map(e => e.error),
+    recentCommits: tracker.gitActivity?.recentCommits || [],
+    mentions: tracker.recentFiles.map(f => f.path),
+  };
+  
+  // Intelligent code discovery - reads files based on context, phase, and relevance
+  const codeResult = discoverAndReadCode(safePath, codeContext);
+  const files = codeResult.files.map(f => f.path);
+  const fileList = codeResult.fileList;
+  const codeSamples = codeResult.codeContext;
   
   // Discover and classify planning docs (intelligent detection)
   const docsResult = discoverDocsSync(safePath);
@@ -328,9 +344,7 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
   // Check for deployment/monitoring
   const hasDockerfile = existsSync(join(safePath, 'Dockerfile')) || existsSync(join(safePath, 'docker-compose.yml'));
   const hasCI = existsSync(join(safePath, '.github', 'workflows'));
-  // Detect test files with expanded patterns
-  const testPatterns = ['.test.', '.spec.', '__tests__', 'tests/', '_test.', 'test_', 'spec/'];
-  const hasTests = files.some(f => testPatterns.some(p => f.includes(p)));
+  const hasTests = codeResult.testFiles.length > 0;
 
   // Extract package.json for AI to analyze (let AI determine project type dynamically)
   let packageJsonContent = '';
@@ -368,23 +382,9 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
   const journalContext = journalEntries.length > 0 
     ? journalEntries.map(e => `### ${e.title} (${e.timestamp.slice(0, 10)})\n${limitLength(e.conversation, 2000)}`).join('\n\n')
     : 'No journal entries yet';
-  
-  // Sample key code files - prioritize tests, main entry, and config
-  const priorityPatterns = ['.test.', '.spec.', 'index.', 'main.', 'app.', 'server.', 'config.'];
-  const priorityFiles = files.filter(f => priorityPatterns.some(p => f.includes(p))).slice(0, 10);
-  const otherFiles = files.filter(f => !priorityPatterns.some(p => f.includes(p))).slice(0, 10);
-  const sampleFiles = [...priorityFiles, ...otherFiles].slice(0, 15);
-  
-  const codeSamples = sampleFiles.map(f => {
-    const content = readFile(f, 100); // Read more lines per file
-    return `--- ${f.replace(safePath + '/', '')} ---\n${content}`;
-  }).join('\n\n');
 
-  // Get current state for context
-  const currentState = loadState(safePath);
-  const tracker = loadTracker(safePath);
+  // Get gates status (currentState, tracker, unresolvedErrors already loaded above)
   const gatesStatus = getGatesStatus(safePath);
-  const unresolvedErrors = getUnresolvedErrors(safePath);
   
   // Build error context - show all errors with full messages
   const errorContext = unresolvedErrors.length > 0
@@ -541,11 +541,11 @@ ${hasSetupPy ? '- Has setup.py (Python)' : ''}
 ${hasGoMod ? '- Has go.mod (Go)' : ''}
 
 ## Infrastructure:
-- Tests: ${hasTests ? 'yes' : 'no'} (found ${files.filter(f => testPatterns.some(p => f.includes(p))).length} test files)
+- Tests: ${hasTests ? 'yes' : 'no'} (found ${codeResult.testFiles.length} test files)
 - Dockerfile/compose: ${hasDockerfile ? 'yes' : 'no'}
 - CI/CD: ${hasCI ? 'yes' : 'no'}
 
-## Code Samples (${sampleFiles.length} files):
+## Code Context (${codeResult.files.length} files analyzed):
 ${codeSamples || 'No code files yet'}
 
 ## Recent Conversations (${journalEntries.length} entries):
@@ -675,9 +675,24 @@ export async function analyzeProjectStreaming(
     };
   }
 
-  // Gather all context (same as analyzeProject)
-  const files = scanFiles(safePath);
-  const fileList = files.map(f => f.replace(safePath + '/', '')).join('\n');
+  // Get current state for context-aware discovery
+  const currentState = loadState(safePath);
+  const tracker = loadTracker(safePath);
+  const unresolvedErrors = getUnresolvedErrors(safePath);
+  
+  // Build context for intelligent code discovery
+  const codeContext: CodeContext = {
+    phase: currentState.current,
+    errors: unresolvedErrors.map(e => e.error),
+    recentCommits: tracker.gitActivity?.recentCommits || [],
+    mentions: tracker.recentFiles.map(f => f.path),
+  };
+  
+  // Intelligent code discovery - reads files based on context, phase, and relevance
+  const codeResult = discoverAndReadCode(safePath, codeContext);
+  const files = codeResult.files.map(f => f.path);
+  const fileList = codeResult.fileList;
+  const codeSamples = codeResult.codeContext;
   
   // Discover and classify planning docs (intelligent detection)
   const docsResult = discoverDocsSync(safePath);
@@ -691,9 +706,7 @@ export async function analyzeProjectStreaming(
   
   const hasDockerfile = existsSync(join(safePath, 'Dockerfile')) || existsSync(join(safePath, 'docker-compose.yml'));
   const hasCI = existsSync(join(safePath, '.github', 'workflows'));
-  // Detect test files with expanded patterns
-  const testPatterns = ['.test.', '.spec.', '__tests__', 'tests/', '_test.', 'test_', 'spec/'];
-  const hasTests = files.some(f => testPatterns.some(p => f.includes(p)));
+  const hasTests = codeResult.testFiles.length > 0;
 
   let packageJsonContent = '';
   const packageJsonPath = join(safePath, 'package.json');
@@ -723,21 +736,8 @@ export async function analyzeProjectStreaming(
   const journalContext = journalEntries.length > 0 
     ? journalEntries.map(e => `### ${e.title} (${e.timestamp.slice(0, 10)})\n${limitLength(e.conversation, 2000)}`).join('\n\n')
     : 'No journal entries yet';
-  
-  const priorityPatterns = ['.test.', '.spec.', 'index.', 'main.', 'app.', 'server.', 'config.'];
-  const priorityFiles = files.filter(f => priorityPatterns.some(p => f.includes(p))).slice(0, 10);
-  const otherFiles = files.filter(f => !priorityPatterns.some(p => f.includes(p))).slice(0, 10);
-  const sampleFiles = [...priorityFiles, ...otherFiles].slice(0, 15);
-  
-  const codeSamples = sampleFiles.map(f => {
-    const content = readFile(f, 100);
-    return `--- ${f.replace(safePath + '/', '')} ---\n${content}`;
-  }).join('\n\n');
 
-  const currentState = loadState(safePath);
-  const tracker = loadTracker(safePath);
   const gatesStatus = getGatesStatus(safePath);
-  const unresolvedErrors = getUnresolvedErrors(safePath);
   
   const errorContext = unresolvedErrors.length > 0
     ? unresolvedErrors.slice(0, 10).map(e => 
@@ -780,7 +780,8 @@ export async function analyzeProjectStreaming(
     journalContext,
     journalEntries,
     codeSamples,
-    sampleFiles,
+    filesAnalyzed: codeResult.files.length,
+    testFilesCount: codeResult.testFiles.length,
     currentState,
     gatesStatus,
     errorContext,
@@ -971,7 +972,8 @@ function buildUserPrompt(ctx: {
   journalContext: string;
   journalEntries: Array<{ title: string; timestamp: string; conversation: string }>;
   codeSamples: string;
-  sampleFiles: string[];
+  filesAnalyzed: number;
+  testFilesCount: number;
   currentState: { current: Phase };
   gatesStatus: ReturnType<typeof getGatesStatus>;
   errorContext: string;
@@ -1010,7 +1012,7 @@ ${ctx.rejectionContext}
 - Dockerfile: ${ctx.hasDockerfile ? 'yes' : 'no'}
 - CI/CD: ${ctx.hasCI ? 'yes' : 'no'}
 
-## Code Samples (${ctx.sampleFiles.length} files):
+## Code Context (${ctx.filesAnalyzed} files analyzed, ${ctx.testFilesCount} tests):
 ${ctx.codeSamples || 'No code files yet'}
 
 ## Recent Conversations (${ctx.journalEntries.length} entries):

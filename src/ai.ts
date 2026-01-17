@@ -1,65 +1,9 @@
 import { getApiKey } from './config.js';
 import { chat, getCurrentModel, getProviderCapabilities } from './providers.js';
 import { getActiveProvider } from './config.js';
-import { readdirSync, readFileSync, statSync } from 'fs';
-import { join, extname } from 'path';
-
-/**
- * Scan codebase for ALL source files - no artificial limits.
- * Complete visibility is essential for accurate analysis.
- */
-function scanCodebase(projectPath: string): string[] {
-  const files: string[] = [];
-  const importantExtensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.swift', '.md', '.json', '.yaml', '.yml'];
-  const ignoreDirs = ['node_modules', '.git', 'dist', 'build', '.next', '__pycache__', '.midas', 'coverage'];
-
-  function scan(dir: string, depth = 0): void {
-    if (depth > 6) return; // Reasonable depth for most project structures
-
-    try {
-      const entries = readdirSync(dir, { withFileTypes: true });
-      
-      for (const entry of entries) {
-        if (entry.name.startsWith('.')) continue;
-        if (ignoreDirs.includes(entry.name)) continue;
-
-        const fullPath = join(dir, entry.name);
-        
-        if (entry.isDirectory()) {
-          scan(fullPath, depth + 1);
-        } else if (entry.isFile()) {
-          const ext = extname(entry.name);
-          if (importantExtensions.includes(ext)) {
-            files.push(fullPath);
-          }
-        }
-      }
-    } catch {
-      // Permission denied or other error
-    }
-  }
-
-  scan(projectPath);
-  return files;
-}
-
-/**
- * Read file content with smart truncation for very large files.
- */
-function getFileContent(filePath: string, maxLines = 300): string {
-  try {
-    const content = readFileSync(filePath, 'utf-8');
-    const lines = content.split('\n');
-    if (lines.length <= maxLines) return content;
-    
-    // For large files, take beginning + end (important context at both ends)
-    const head = lines.slice(0, Math.floor(maxLines * 0.7));
-    const tail = lines.slice(-Math.floor(maxLines * 0.3));
-    return [...head, '\n// ... middle truncated ...\n', ...tail].join('\n');
-  } catch {
-    return '';
-  }
-}
+import { existsSync } from 'fs';
+import { join } from 'path';
+import { discoverAndReadCode } from './code-discovery.js';
 
 export interface CodebaseContext {
   files: string[];
@@ -71,18 +15,19 @@ export interface CodebaseContext {
 export async function analyzeCodebase(projectPath: string): Promise<CodebaseContext> {
   const apiKey = getApiKey();
   
-  // Get file list
-  const files = scanCodebase(projectPath);
+  // Use intelligent code discovery
+  const codeResult = discoverAndReadCode(projectPath);
+  const files = codeResult.files.map(f => f.path);
   
   if (!apiKey) {
     // Return basic analysis without AI
     const techStack: string[] = [];
     
     // Detect tech stack from files
-    const hasPackageJson = files.some(f => f.endsWith('package.json'));
-    const hasTsConfig = files.some(f => f.endsWith('tsconfig.json'));
-    const hasRequirements = files.some(f => f.endsWith('requirements.txt'));
-    const hasCargoToml = files.some(f => f.endsWith('Cargo.toml'));
+    const hasPackageJson = existsSync(join(projectPath, 'package.json'));
+    const hasTsConfig = existsSync(join(projectPath, 'tsconfig.json'));
+    const hasRequirements = existsSync(join(projectPath, 'requirements.txt'));
+    const hasCargoToml = existsSync(join(projectPath, 'Cargo.toml'));
     
     if (hasPackageJson) techStack.push('Node.js');
     if (hasTsConfig) techStack.push('TypeScript');
@@ -92,25 +37,11 @@ export async function analyzeCodebase(projectPath: string): Promise<CodebaseCont
     
     return {
       files,
-      summary: `Found ${files.length} source files`,
+      summary: `Found ${codeResult.totalFiles} source files`,
       techStack,
       suggestedNextStep: 'Continue with current phase',
     };
   }
-
-  // Build context for AI - prioritize key files
-  const fileList = files.map(f => f.replace(projectPath, '')).join('\n');
-  
-  // Prioritize tests, main entry, and config files
-  const priorityPatterns = ['.test.', '.spec.', 'index.', 'main.', 'app.', 'server.', 'config.'];
-  const priorityFiles = files.filter(f => priorityPatterns.some(p => f.includes(p))).slice(0, 10);
-  const otherFiles = files.filter(f => !priorityPatterns.some(p => f.includes(p))).slice(0, 10);
-  const sampleFiles = [...priorityFiles, ...otherFiles].slice(0, 15);
-  
-  const sampleContent = sampleFiles.map(f => {
-    const content = getFileContent(f, 100);
-    return `--- ${f.replace(projectPath, '')} ---\n${content}`;
-  }).join('\n\n');
 
   try {
     const provider = getActiveProvider();
@@ -122,11 +53,9 @@ export async function analyzeCodebase(projectPath: string): Promise<CodebaseCont
 2. The tech stack (list)
 3. The most important next step for production readiness
 
-Files:
-${fileList}
+${codeResult.fileList}
 
-Sample content:
-${sampleContent}
+${codeResult.codeContext}
 
 Respond in JSON format:
 {"summary": "...", "techStack": ["..."], "suggestedNextStep": "..."}`,
@@ -139,14 +68,14 @@ Respond in JSON format:
     const parsed = JSON.parse(response.content);
     return {
       files,
-      summary: parsed.summary || `Found ${files.length} source files`,
+      summary: parsed.summary || `Found ${codeResult.totalFiles} source files`,
       techStack: parsed.techStack || [],
       suggestedNextStep: parsed.suggestedNextStep || 'Continue with current phase',
     };
-  } catch (error) {
+  } catch {
     return {
       files,
-      summary: `Found ${files.length} source files`,
+      summary: `Found ${codeResult.totalFiles} source files`,
       techStack: [],
       suggestedNextStep: 'Continue with current phase',
     };
