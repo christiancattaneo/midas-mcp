@@ -2,6 +2,24 @@ import { resolve, normalize, relative, isAbsolute } from 'path';
 import { existsSync } from 'fs';
 
 /**
+ * Remove dangerous characters from paths:
+ * - Null bytes (can truncate paths in C-based systems)
+ * - Unicode control characters (can manipulate display)
+ * - URL-encoded sequences
+ */
+function stripDangerousChars(input: string): string {
+  return input
+    // Remove null bytes
+    .replace(/\x00/g, '')
+    // Remove unicode control characters (including RTL override, BOM, etc.)
+    .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u2028-\u202F\uFEFF]/g, '')
+    // Remove URL-encoded null bytes and traversal
+    .replace(/%00/gi, '')
+    .replace(/%2e%2e/gi, '..')
+    .replace(/%2f/gi, '/');
+}
+
+/**
  * Sanitize and validate a project path to prevent path traversal attacks.
  * Returns a safe, absolute path within allowed boundaries.
  */
@@ -12,8 +30,11 @@ export function sanitizePath(inputPath: string | undefined, basePath?: string): 
     return base;
   }
   
+  // First, strip dangerous characters
+  const cleaned = stripDangerousChars(inputPath);
+  
   // Normalize to remove .. and . segments
-  const normalized = normalize(inputPath);
+  const normalized = normalize(cleaned);
   
   // If absolute, verify it doesn't escape intended directories
   if (isAbsolute(normalized)) {
@@ -42,7 +63,8 @@ export function sanitizePath(inputPath: string | undefined, basePath?: string): 
  */
 export function isShellSafe(path: string): boolean {
   // Reject paths with shell metacharacters
-  const dangerousChars = /[;&|`$(){}[\]<>\\!#*?'"]/;
+  // Including newlines, carriage returns, and unicode control chars
+  const dangerousChars = /[;&|`$(){}[\]<>\\!#*?'"\n\r\x00-\x1f\x7f-\x9f\u200b-\u200f\u2028-\u202f]/;
   return !dangerousChars.test(path);
 }
 

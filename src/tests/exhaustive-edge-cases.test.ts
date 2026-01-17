@@ -667,65 +667,65 @@ describe('Path Security', () => {
   });
 
   describe('Null Byte Injection', () => {
-    it('should handle null byte in path', () => {
+    it('should strip null bytes from path', () => {
       const nullPath = 'file.ts\x00.exe';
-      const sanitized = sanitizePath(nullPath);
-      // Note: Current implementation relies on Node's path.normalize
-      // which may or may not strip null bytes depending on platform
-      assert.ok(typeof sanitized === 'string');
+      const sanitized = sanitizePath(nullPath, testDir);
+      // Null bytes should be stripped
+      assert.ok(!sanitized.includes('\x00'), 'Should remove null bytes');
     });
 
-    it('should handle null bytes in middle of path', () => {
+    it('should block traversal even with null bytes', () => {
       const nullPath = 'safe/\x00/../../etc/passwd';
-      const sanitized = sanitizePath(nullPath);
-      // The path traversal should be blocked regardless of null bytes
-      // Current behavior: returns cwd if path escapes base
-      assert.ok(typeof sanitized === 'string');
+      const sanitized = sanitizePath(nullPath, testDir);
+      // Should not escape the base directory
+      assert.ok(!sanitized.includes('etc'), 'Should block traversal');
+      assert.ok(!sanitized.includes('passwd'), 'Should not reach passwd');
     });
   });
 
   describe('Shell Injection', () => {
-    // These payloads contain characters in the dangerousChars regex: [;&|`$(){}[\]<>\\!#*?'"]
+    // All these payloads should be rejected
     const shellPayloads = [
-      { payload: '; rm -rf /', expected: false },
-      { payload: '$(rm -rf /)', expected: false },
-      { payload: '`rm -rf /`', expected: false },
-      { payload: '| cat /etc/passwd', expected: false },
-      { payload: '&& cat /etc/passwd', expected: false },
-      { payload: '|| cat /etc/passwd', expected: false },
-      { payload: '> /dev/null', expected: false },
-      { payload: '< /etc/passwd', expected: false },
-      { payload: "'; DROP TABLE users; --", expected: false },
+      '; rm -rf /',
+      '$(rm -rf /)',
+      '`rm -rf /`',
+      '| cat /etc/passwd',
+      '&& cat /etc/passwd',
+      '|| cat /etc/passwd',
+      '> /dev/null',
+      '< /etc/passwd',
+      "'; DROP TABLE users; --",
+      '\n cat /etc/passwd',      // Newline injection
+      '\r\n whoami',             // CRLF injection
     ];
 
-    for (const { payload, expected } of shellPayloads) {
-      it(`should reject shell payload: ${payload.slice(0, 20)}...`, () => {
-        assert.strictEqual(isShellSafe(payload), expected, `Should reject: ${payload}`);
+    for (const payload of shellPayloads) {
+      it(`should reject shell payload: ${payload.slice(0, 20).replace(/\n/g, '\\n')}...`, () => {
+        assert.strictEqual(isShellSafe(payload), false, `Should reject: ${payload}`);
       });
     }
-
-    // Note: newline is not in the current dangerous chars list
-    it('should handle newline in path (known gap)', () => {
-      const newlinePath = '\n cat /etc/passwd';
-      const result = isShellSafe(newlinePath);
-      // Current behavior: newline not blocked (potential improvement)
-      assert.ok(typeof result === 'boolean');
-    });
   });
 
   describe('Unicode Normalization Attacks', () => {
     it('should handle Unicode homoglyphs', () => {
       const homoglyph = 'pаssword';  // Contains Cyrillic а
-      const sanitized = sanitizePath(homoglyph);
+      const sanitized = sanitizePath(homoglyph, testDir);
       assert.ok(typeof sanitized === 'string');
     });
 
-    it('should handle right-to-left override (known gap)', () => {
+    it('should reject right-to-left override', () => {
       const rtlOverride = 'file\u202Etxt.exe';
       const safe = isShellSafe(rtlOverride);
-      // Current behavior: RTL override not detected
-      // This is a potential security gap for display-based attacks
-      assert.ok(typeof safe === 'boolean');
+      // RTL override characters should be rejected
+      assert.strictEqual(safe, false, 'Should reject RTL override character');
+    });
+
+    it('should strip unicode control chars from paths', () => {
+      const withControl = 'file\u200B\u200D\uFEFFtest.ts';  // Zero-width chars, BOM
+      const sanitized = sanitizePath(withControl, testDir);
+      // Should strip control characters
+      assert.ok(!sanitized.includes('\u200B'));
+      assert.ok(!sanitized.includes('\uFEFF'));
     });
   });
 });
