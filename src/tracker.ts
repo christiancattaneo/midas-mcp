@@ -132,14 +132,54 @@ function ensureDir(projectPath: string): void {
   }
 }
 
+/**
+ * Validate and sanitize loaded tracker state.
+ * Handles null values, wrong types, and missing fields.
+ */
+function sanitizeTracker(raw: unknown): TrackerState {
+  const defaults = getDefaultTracker();
+  
+  // If not an object, return defaults
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return defaults;
+  }
+  
+  const data = raw as Record<string, unknown>;
+  
+  return {
+    ...defaults,
+    // Only merge valid fields
+    lastUpdated: typeof data.lastUpdated === 'string' ? data.lastUpdated : defaults.lastUpdated,
+    recentFiles: Array.isArray(data.recentFiles) ? data.recentFiles as typeof defaults.recentFiles : defaults.recentFiles,
+    recentToolCalls: Array.isArray(data.recentToolCalls) ? data.recentToolCalls as typeof defaults.recentToolCalls : defaults.recentToolCalls,
+    gitActivity: data.gitActivity && typeof data.gitActivity === 'object' ? data.gitActivity as typeof defaults.gitActivity : defaults.gitActivity,
+    completionSignals: data.completionSignals && typeof data.completionSignals === 'object' 
+      ? { ...defaults.completionSignals, ...(data.completionSignals as object) }
+      : defaults.completionSignals,
+    inferredPhase: data.inferredPhase && typeof data.inferredPhase === 'object' 
+      ? data.inferredPhase as typeof defaults.inferredPhase 
+      : defaults.inferredPhase,
+    confidence: typeof data.confidence === 'number' ? data.confidence : defaults.confidence,
+    gates: data.gates && typeof data.gates === 'object' 
+      ? { ...defaults.gates, ...(data.gates as object) }
+      : defaults.gates,
+    errorMemory: Array.isArray(data.errorMemory) ? data.errorMemory as typeof defaults.errorMemory : defaults.errorMemory,
+    currentTask: data.currentTask && typeof data.currentTask === 'object' ? data.currentTask as typeof defaults.currentTask : defaults.currentTask,
+    lastAnalysis: typeof data.lastAnalysis === 'number' ? data.lastAnalysis : defaults.lastAnalysis,
+    suggestionHistory: Array.isArray(data.suggestionHistory) ? data.suggestionHistory as typeof defaults.suggestionHistory : defaults.suggestionHistory,
+    phaseEnteredAt: typeof data.phaseEnteredAt === 'number' || data.phaseEnteredAt === null ? data.phaseEnteredAt : defaults.phaseEnteredAt,
+    lastProgressAt: typeof data.lastProgressAt === 'number' || data.lastProgressAt === null ? data.lastProgressAt : defaults.lastProgressAt,
+  };
+}
+
 export function loadTracker(projectPath: string): TrackerState {
   const safePath = sanitizePath(projectPath);
   const path = getTrackerPath(safePath);
   if (existsSync(path)) {
     try {
       const data = JSON.parse(readFileSync(path, 'utf-8'));
-      // Merge with defaults to handle schema evolution
-      return { ...getDefaultTracker(), ...data };
+      // Sanitize and validate the loaded data
+      return sanitizeTracker(data);
     } catch (error) {
       logger.error('Failed to parse tracker state', error);
     }

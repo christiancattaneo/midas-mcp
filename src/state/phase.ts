@@ -93,20 +93,77 @@ export function getDefaultState(): PhaseState {
 }
 
 /**
+ * Validate and sanitize a loaded state object.
+ * Handles null values, wrong types, and missing fields.
+ */
+function sanitizeState(raw: unknown): PhaseState {
+  const defaults = getDefaultState();
+  
+  // If not an object, return defaults
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return defaults;
+  }
+  
+  const state = raw as Record<string, unknown>;
+  
+  // Validate current - must be an object with a string phase
+  let current = defaults.current;
+  if (state.current && typeof state.current === 'object' && !Array.isArray(state.current)) {
+    const curr = state.current as Record<string, unknown>;
+    if (typeof curr.phase === 'string') {
+      current = state.current as typeof defaults.current;
+    }
+  }
+  
+  // Validate history - must be an array
+  let history = defaults.history;
+  if (Array.isArray(state.history)) {
+    // Filter out invalid entries and ensure each has required fields
+    history = (state.history as unknown[])
+      .filter(entry => entry && typeof entry === 'object' && !Array.isArray(entry))
+      .map((entry: unknown) => {
+        const e = entry as Record<string, unknown>;
+        return {
+          id: typeof e.id === 'string' ? e.id : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          phase: e.phase && typeof e.phase === 'object' ? e.phase as PhaseState['current'] : { phase: 'IDLE' as const },
+          timestamp: typeof e.timestamp === 'string' ? e.timestamp : new Date().toISOString(),
+        };
+      }) as typeof defaults.history;
+  }
+  
+  // Validate docs - must be an object with boolean values
+  let docs = defaults.docs;
+  if (state.docs && typeof state.docs === 'object' && !Array.isArray(state.docs)) {
+    const d = state.docs as Record<string, unknown>;
+    docs = {
+      brainlift: typeof d.brainlift === 'boolean' ? d.brainlift : defaults.docs.brainlift,
+      prd: typeof d.prd === 'boolean' ? d.prd : defaults.docs.prd,
+      gameplan: typeof d.gameplan === 'boolean' ? d.gameplan : defaults.docs.gameplan,
+    };
+  }
+  
+  return {
+    current,
+    history,
+    docs,
+    startedAt: typeof state.startedAt === 'string' ? state.startedAt : defaults.startedAt,
+    _version: typeof state._version === 'number' ? state._version : defaults._version,
+    _lastModified: typeof state._lastModified === 'string' ? state._lastModified : defaults._lastModified,
+    _processId: typeof state._processId === 'string' ? state._processId : defaults._processId,
+    ...(state.hotfix && typeof state.hotfix === 'object' ? { hotfix: state.hotfix as PhaseState['hotfix'] } : {}),
+  };
+}
+
+/**
  * Load state with atomic read and schema migration
  */
 export function loadState(projectPath: string): PhaseState {
   const statePath = getStatePath(projectPath);
   
-  const state = readStateAtomic(statePath, getDefaultState);
+  const raw = readStateAtomic(statePath, getDefaultState);
   
-  // Merge with defaults for schema evolution
-  const defaults = getDefaultState();
-  return {
-    ...defaults,
-    ...state,
-    docs: { ...defaults.docs, ...(state.docs || {}) },
-  };
+  // Sanitize and validate the loaded state
+  return sanitizeState(raw);
 }
 
 /**
