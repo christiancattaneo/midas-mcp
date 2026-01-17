@@ -1,6 +1,6 @@
 {
   "name": "midas-mcp",
-  "version": "5.18.0",
+  "version": "5.19.0",
   "description": "MCP server for Golden Code methodology - everything you vibecode turns to gold",
   "main": "dist/index.js",
   "bin": {

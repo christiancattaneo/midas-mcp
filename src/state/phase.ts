@@ -90,7 +90,24 @@ export function loadState(projectPath: string): PhaseState {
   }
   try {
     const raw = readFileSync(statePath, 'utf-8');
-    return JSON.parse(raw) as PhaseState;
+    if (!raw || raw.trim() === '') {
+      return getDefaultState();
+    }
+    const parsed = JSON.parse(raw);
+    
+    // Validate that parsed is a valid object with required structure
+    if (!parsed || typeof parsed !== 'object' || !parsed.current) {
+      return getDefaultState();
+    }
+    
+    // Merge with defaults to handle missing fields (schema evolution)
+    const defaults = getDefaultState();
+    return {
+      ...defaults,
+      ...parsed,
+      // Ensure nested objects are merged properly
+      docs: { ...defaults.docs, ...(parsed.docs || {}) },
+    };
   } catch {
     return getDefaultState();
   }
