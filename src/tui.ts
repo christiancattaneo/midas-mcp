@@ -385,6 +385,11 @@ function drawUI(state: TUIState, projectPath: string): string {
       lines.push(row(`${dim}Streak:${reset} ${state.sessionStreak} days`));
     }
     
+    // Scope drift - informational, projects grow naturally
+    if (state.scopeDrift && state.scopeDrift.driftPercentage > 0) {
+      lines.push(row(`${dim}Scope Growth:${reset} +${state.scopeDrift.driftPercentage}%`));
+    }
+    
     lines.push(emptyRow());
     lines.push(`${cyan}╠${hLine}╣${reset}`);
     lines.push(row(`${dim}Press any key to close${reset}`));
@@ -749,11 +754,6 @@ function drawUI(state: TUIState, projectPath: string): string {
     lines.push(row(`${red}[STUCK]${reset} No progress for ${formatDuration(stuckInfo.timeSinceProgress)}`));
   }
   
-  // Scope drift: only show if severe (>100%)
-  if (state.scopeDrift && state.scopeDrift.driftPercentage > 100) {
-    lines.push(row(`${red}[SCOPE +${state.scopeDrift.driftPercentage}%]${reset} Consider splitting or deferring`));
-  }
-
   // Files changed: subtle reminder
   if (state.filesChanged) {
     lines.push(row(`${dim}Files changed - press [r] to refresh${reset}`));
