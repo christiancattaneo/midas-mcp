@@ -518,13 +518,14 @@ function add(a, b) {
       const cjk = '中文测试'.repeat(100);
       const estimate = estimateTokens(cjk);
       // Each CJK char ≈ 2-3 tokens, so 400 chars ≈ 800-1200 tokens
-      // Our estimate: 400/4 = 100
+      // With unicode adjustment: estimate is now improved but still underestimates
       const expectedMin = cjk.length * 2;  // Conservative estimate
       
       const ratio = expectedMin / estimate;
       console.log(`  [INFO] CJK underestimation ratio: ${ratio.toFixed(2)}x`);
       
-      assert.ok(ratio >= 5, 'CJK should show significant underestimation');
+      // Unicode adjustment improved estimation from 5x+ to ~4x underestimation
+      assert.ok(ratio >= 3, 'CJK should still show some underestimation');
     });
 
     it('documents underestimation for emoji', () => {
