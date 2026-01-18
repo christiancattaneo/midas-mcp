@@ -337,6 +337,9 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
   const hasPrd = !!docsResult.prd;
   const hasGameplan = !!docsResult.gameplan;
   
+  // Check for .cursorrules (RULES step completion)
+  const hasCursorrules = existsSync(join(safePath, '.cursorrules'));
+  
   const brainliftContent = docsResult.brainlift?.content || '';
   const prdContent = docsResult.prd?.content || '';
   const gameplanContent = docsResult.gameplan?.content || '';
@@ -439,7 +442,7 @@ WHY: Code without context is just syntax. The AI doesn't know your domain, const
 Steps: RULES → INDEX → READ → RESEARCH → IMPLEMENT → TEST → DEBUG
 Purpose: Code methodically with verification at each step.
 WHY: Jumping straight to code means hours of debugging. Each step reduces the blast radius of mistakes.
-- RULES: Set up .cursorrules with project conventions (WHY: Reading first prevents "works but doesn't fit" code)
+- RULES: Set up .cursorrules with project conventions. COMPLETE when .cursorrules exists - move to INDEX.
 - INDEX: Understand codebase structure (WHY: You can't extend what you don't understand)
 - READ: Study relevant existing code (WHY: Understand before touching to avoid breaking things)
 - RESEARCH: Look up APIs, patterns, best practices (WHY: The right library can turn 200 lines into 5)
@@ -526,6 +529,7 @@ ${fileList}
 - brainlift.md: ${hasbrainlift ? 'exists' : 'missing'}
 - prd.md: ${hasPrd ? 'exists' : 'missing'}
 - gameplan.md: ${hasGameplan ? 'exists' : 'missing'}
+- .cursorrules: ${hasCursorrules ? 'exists (RULES step complete)' : 'missing'}
 
 ${brainliftContent ? `## brainlift.md (full):\n${brainliftContent}` : ''}
 
@@ -700,6 +704,9 @@ export async function analyzeProjectStreaming(
   const hasPrd = !!docsResult.prd;
   const hasGameplan = !!docsResult.gameplan;
   
+  // Check for .cursorrules (RULES step completion)
+  const hasCursorrules = existsSync(join(safePath, '.cursorrules'));
+  
   const brainliftContent = docsResult.brainlift?.content || '';
   const prdContent = docsResult.prd?.content || '';
   const gameplanContent = docsResult.gameplan?.content || '';
@@ -767,6 +774,7 @@ export async function analyzeProjectStreaming(
     hasbrainlift,
     hasPrd,
     hasGameplan,
+    hasCursorrules,
     brainliftContent,
     prdContent,
     gameplanContent,
@@ -903,7 +911,7 @@ WHY: Code without context is just syntax. The AI doesn't know your domain, const
 Steps: RULES → INDEX → READ → RESEARCH → IMPLEMENT → TEST → DEBUG
 Purpose: Code methodically with verification at each step.
 WHY: Jumping straight to code means hours of debugging. Each step reduces the blast radius of mistakes.
-- RULES: Set up .cursorrules with project conventions
+- RULES: Set up .cursorrules with project conventions. COMPLETE when .cursorrules exists - move to INDEX.
 - INDEX: Understand codebase structure
 - READ: Study relevant existing code
 - RESEARCH: Look up APIs, patterns, best practices
@@ -959,6 +967,7 @@ function buildUserPrompt(ctx: {
   hasbrainlift: boolean;
   hasPrd: boolean;
   hasGameplan: boolean;
+  hasCursorrules: boolean;
   brainliftContent: string;
   prdContent: string;
   gameplanContent: string;
@@ -989,6 +998,7 @@ ${ctx.fileList.slice(0, 3000)}
 - brainlift.md: ${ctx.hasbrainlift ? 'exists' : 'missing'}
 - prd.md: ${ctx.hasPrd ? 'exists' : 'missing'}
 - gameplan.md: ${ctx.hasGameplan ? 'exists' : 'missing'}
+- .cursorrules: ${ctx.hasCursorrules ? 'exists (RULES step complete - skip to INDEX)' : 'missing'}
 
 ${ctx.brainliftContent ? `## Brainlift Content:\n${ctx.brainliftContent.slice(0, 2000)}\n` : ''}
 ${ctx.prdContent ? `## PRD Content:\n${ctx.prdContent.slice(0, 2000)}\n` : ''}
