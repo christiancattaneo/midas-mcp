@@ -29,7 +29,7 @@ import type { TrackerState } from '../tracker.js';
 // Helper to load reality state (simplified since not all exports are available)
 function loadRealityState(dir: string): { checkStatuses: Record<string, unknown> } {
   try {
-    const content = readFileSync(join(dir, STATE_DIR, REALITY_FILE), 'utf-8');
+    const content = readFileSync(join(dir, STATE_DIR, PREFLIGHT_FILE), 'utf-8');
     const parsed = JSON.parse(content);
     return { checkStatuses: parsed.checkStatuses || {} };
   } catch {
@@ -44,7 +44,7 @@ function loadRealityState(dir: string): { checkStatuses: Record<string, unknown>
 const STATE_DIR = '.midas';
 const STATE_FILE = 'state.json';
 const TRACKER_FILE = 'tracker.json';
-const REALITY_FILE = 'reality-checks.json';
+const PREFLIGHT_FILE = 'preflight-checks.json';
 
 // ============================================================================
 // TEST SETUP
@@ -81,7 +81,7 @@ function writeTracker(dir: string, content: string): void {
 }
 
 function writeReality(dir: string, content: string): void {
-  writeFileSync(join(dir, STATE_DIR, REALITY_FILE), content);
+  writeFileSync(join(dir, STATE_DIR, PREFLIGHT_FILE), content);
 }
 
 beforeEach(() => {

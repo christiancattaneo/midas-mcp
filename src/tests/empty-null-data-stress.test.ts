@@ -25,7 +25,7 @@ import { discoverAndReadCode, discoverSourceFiles } from '../code-discovery.js';
 import { discoverDocsSync } from '../docs-discovery.js';
 import { loadState, getDefaultState, saveState } from '../state/phase.js';
 import { loadTracker } from '../tracker.js';
-import { inferProjectProfile, getRealityChecks } from '../reality.js';
+import { inferProjectProfile, getPreflightChecks } from '../preflight.js';
 import { estimateTokens } from '../context.js';
 
 // Helper to get default tracker (not exported)
@@ -735,7 +735,7 @@ describe('Reality Checks with Empty Data', () => {
   it('should handle reality checks with empty profile', async () => {
     const dir = createTestDir('reality-empty');
     
-    const checks = await getRealityChecks(dir);
+    const checks = await getPreflightChecks(dir);
     
     assert.ok(checks !== null);
     assert.ok(Array.isArray(checks.checks));
@@ -745,7 +745,7 @@ describe('Reality Checks with Empty Data', () => {
     const dir = createTestDir('reality-minimal');
     writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'test' }));
     
-    const checks = await getRealityChecks(dir);
+    const checks = await getPreflightChecks(dir);
     
     assert.ok(checks !== null);
   });
@@ -755,7 +755,7 @@ describe('Reality Checks with Empty Data', () => {
     mkdirSync(join(dir, 'docs'));
     writeFileSync(join(dir, 'docs', 'brainlift.md'), '');
     
-    const checks = await getRealityChecks(dir);
+    const checks = await getPreflightChecks(dir);
     
     assert.ok(checks !== null);
   });

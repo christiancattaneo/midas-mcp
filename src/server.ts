@@ -110,11 +110,11 @@ import {
   checkScopeCreepSchema,
   setScopeBaseline,
   setScopeBaselineSchema,
-  // Reality check - before-you-ship requirements
-  realityCheck,
-  realityCheckSchema,
-  realityUpdate,
-  realityUpdateSchema,
+  // Preflight - before-you-ship requirements
+  preflightCheck,
+  preflightCheckSchema,
+  preflightUpdate,
+  preflightUpdateSchema,
   // Gameplan progress tracking
   analyzeGameplanTool,
   analyzeGameplanSchema,
@@ -553,17 +553,17 @@ export function createServer(): McpServer {
   );
 
   server.tool(
-    'midas_reality_check',
+    'midas_preflight',
     'Get before-you-ship requirements based on project profile. Returns prompts to generate docs like privacy policy, terms, etc.',
-    realityCheckSchema.shape,
-    wrapTool('midas_reality_check', realityCheck)
+    preflightCheckSchema.shape,
+    wrapTool('midas_preflight', preflightCheck)
   );
 
   server.tool(
-    'midas_reality_update',
-    'Update the status of a reality check (mark as completed or skipped). Persisted between sessions.',
-    realityUpdateSchema.shape,
-    wrapTool('midas_reality_update', realityUpdate)
+    'midas_preflight_update',
+    'Update the status of a preflight check (mark as completed or skipped). Persisted between sessions.',
+    preflightUpdateSchema.shape,
+    wrapTool('midas_preflight_update', preflightUpdate)
   );
 
   // Gameplan progress tracking

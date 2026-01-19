@@ -157,13 +157,18 @@ export {
   setScopeBaselineSchema,
 } from './scope.js';
 
-// Reality check - before-you-ship requirements
+// Preflight - before-you-ship requirements
 export {
+  preflightCheck,
+  preflightCheckSchema,
+  preflightUpdate,
+  preflightUpdateSchema,
+  // Backward compatibility aliases
   realityCheck,
   realityCheckSchema,
   realityUpdate,
   realityUpdateSchema,
-} from './reality.js';
+} from './preflight.js';
 
 // Gameplan progress tracking - compare plan to implementation
 export {

@@ -1,26 +1,26 @@
 import { z } from 'zod';
 import { 
-  getRealityChecks, 
-  getRealityChecksWithAI, 
+  getPreflightChecks, 
+  getPreflightChecksWithAI, 
   getTierSymbol,
   updateCheckStatus,
-  type RealityCheckStatus,
-} from '../reality.js';
+  type PreflightCheckStatus,
+} from '../preflight.js';
 import { sanitizePath } from '../security.js';
 import { saveToJournal } from './journal.js';
 
 // ============================================================================
-// midas_reality_check - Get before-you-ship requirements
+// midas_preflight - Get before-you-ship requirements
 // ============================================================================
 
-export const realityCheckSchema = z.object({
+export const preflightCheckSchema = z.object({
   projectPath: z.string().optional().describe('Path to project root'),
   useAI: z.boolean().optional().describe('Use AI to filter checks (more accurate but slower)'),
 });
 
-export type RealityCheckInput = z.infer<typeof realityCheckSchema>;
+export type PreflightCheckInput = z.infer<typeof preflightCheckSchema>;
 
-export interface RealityCheckToolResult {
+export interface PreflightCheckToolResult {
   success: boolean;
   profile: {
     collectsUserData: boolean;
@@ -58,24 +58,23 @@ export interface RealityCheckToolResult {
 }
 
 /**
- * Get reality checks for a project - requirements that should be addressed before shipping.
+ * Get preflight checks for a project - requirements that should be addressed before shipping.
  * 
  * Uses conservative keyword detection + optional AI filtering for accuracy.
  * 
  * Checks are categorized by what AI can do:
- * - generatable (✅): AI can draft the document, just needs human review
- * - assistable (⚠️): AI can create a guide/checklist, needs professional verification  
- * - human_only (🔴): Requires real-world action (signup, purchase, certification)
+ * - ai_assisted (🤖): AI can help draft or implement
+ * - manual (👤): Requires real-world action (signup, purchase, certification)
  */
-export async function realityCheck(input: RealityCheckInput): Promise<RealityCheckToolResult> {
+export async function preflightCheck(input: PreflightCheckInput): Promise<PreflightCheckToolResult> {
   const projectPath = sanitizePath(input.projectPath || process.cwd());
   const useAI = input.useAI ?? true;  // Default to using AI for better accuracy
   
   try {
     // Use AI-filtered version for more accurate results
     const result = useAI 
-      ? await getRealityChecksWithAI(projectPath)
-      : { ...getRealityChecks(projectPath), aiFiltered: false };
+      ? await getPreflightChecksWithAI(projectPath)
+      : { ...getPreflightChecks(projectPath), aiFiltered: false };
     
     const checks = result.checks.map(check => ({
       key: check.key,
@@ -95,7 +94,7 @@ export async function realityCheck(input: RealityCheckInput): Promise<RealityChe
     
     const aiNote = result.aiFiltered ? ' (AI-filtered)' : '';
     const message = result.checks.length === 0
-      ? 'No reality checks detected. Add more details to your brainlift/PRD to get personalized requirements.'
+      ? 'No preflight checks detected. Add more details to your brainlift/PRD to get personalized requirements.'
       : `Found ${result.summary.total} requirements${aiNote}: ${result.summary.critical} critical, ${result.summary.aiAssisted} AI-assisted, ${result.summary.manual} manual.`;
     
     return {
@@ -139,38 +138,38 @@ export async function realityCheck(input: RealityCheckInput): Promise<RealityChe
 }
 
 // ============================================================================
-// midas_reality_update - Update status of a reality check
+// midas_preflight_update - Update status of a preflight check
 // ============================================================================
 
-export const realityUpdateSchema = z.object({
+export const preflightUpdateSchema = z.object({
   projectPath: z.string().optional().describe('Path to project root'),
   checkKey: z.string().describe('The key of the check to update (e.g., PRIVACY_POLICY)'),
   status: z.enum(['pending', 'completed', 'skipped']).describe('New status for the check'),
   skippedReason: z.string().optional().describe('Why the check was skipped (optional)'),
 });
 
-export type RealityUpdateInput = z.infer<typeof realityUpdateSchema>;
+export type PreflightUpdateInput = z.infer<typeof preflightUpdateSchema>;
 
-export interface RealityUpdateResult {
+export interface PreflightUpdateResult {
   success: boolean;
   checkKey: string;
-  status: RealityCheckStatus;
+  status: PreflightCheckStatus;
   message: string;
 }
 
 /**
- * Update the status of a reality check (mark as completed or skipped).
- * Status is persisted between sessions in .midas/reality-checks.json.
+ * Update the status of a preflight check (mark as completed or skipped).
+ * Status is persisted between sessions in .midas/preflight-checks.json.
  * Completed checks are logged to journal for audit trail.
  */
-export function realityUpdate(input: RealityUpdateInput): RealityUpdateResult {
+export function preflightUpdate(input: PreflightUpdateInput): PreflightUpdateResult {
   const projectPath = sanitizePath(input.projectPath || process.cwd());
   
   try {
     updateCheckStatus(
       projectPath,
       input.checkKey,
-      input.status as RealityCheckStatus,
+      input.status as PreflightCheckStatus,
       input.skippedReason
     );
     
@@ -184,17 +183,17 @@ export function realityUpdate(input: RealityUpdateInput): RealityUpdateResult {
     if (input.status === 'completed') {
       saveToJournal({
         projectPath,
-        title: `Reality Check: ${input.checkKey} completed`,
+        title: `Preflight: ${input.checkKey} completed`,
         conversation: `Completed requirement: ${input.checkKey}`,
-        tags: ['reality-check'],
+        tags: ['preflight'],
       });
     }
     
     return {
       success: true,
       checkKey: input.checkKey,
-      status: input.status as RealityCheckStatus,
-      message: `Reality check ${input.checkKey} ${statusMessage}`,
+      status: input.status as PreflightCheckStatus,
+      message: `Preflight check ${input.checkKey} ${statusMessage}`,
     };
   } catch (error) {
     return {
@@ -205,3 +204,18 @@ export function realityUpdate(input: RealityUpdateInput): RealityUpdateResult {
     };
   }
 }
+
+// ============================================================================
+// BACKWARD COMPATIBILITY ALIASES
+// ============================================================================
+
+// Keep old names working for existing code
+export const realityCheckSchema = preflightCheckSchema;
+export type RealityCheckInput = PreflightCheckInput;
+export type RealityCheckToolResult = PreflightCheckToolResult;
+export const realityCheck = preflightCheck;
+
+export const realityUpdateSchema = preflightUpdateSchema;
+export type RealityUpdateInput = PreflightUpdateInput;
+export type RealityUpdateResult = PreflightUpdateResult;
+export const realityUpdate = preflightUpdate;

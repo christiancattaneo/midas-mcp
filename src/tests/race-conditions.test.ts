@@ -23,7 +23,7 @@ import { tmpdir } from 'os';
 // Module imports
 import { loadState, saveState, getDefaultState, setPhase, createHistoryEntry, type PhaseState, type HistoryEntry } from '../state/phase.js';
 import { loadTracker, saveTracker, recordError, getUnresolvedErrors, type TrackerState } from '../tracker.js';
-import { updateCheckStatus, getAllCheckStatuses, resetCheckStatuses } from '../reality.js';
+import { updateCheckStatus, getAllCheckStatuses, resetCheckStatuses } from '../preflight.js';
 
 // ============================================================================
 // HELPERS

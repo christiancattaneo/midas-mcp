@@ -36,13 +36,13 @@ import { checkScopeCreep, type ScopeMetrics } from './tools/scope.js';
 import { getHotfixStatus } from './tools/hotfix.js';
 import { startSession, endSession, recordPromptCopied, recordPhaseChange, loadMetrics } from './metrics.js';
 import { 
-  getRealityChecksWithAI, 
+  getPreflightChecksWithAI, 
   getTierSymbol, 
   getTierDescription, 
   updateCheckStatus,
-  type RealityCheck, 
-  type RealityCheckResult,
-} from './reality.js';
+  type PreflightCheck, 
+  type PreflightResult,
+} from './preflight.js';
 
 // ANSI codes
 const ESC = '\x1b';
@@ -144,9 +144,9 @@ interface TUIState {
   showingHelp: boolean;       // Show help screen
   showingInfo: boolean;       // Show info screen (tech stack, gates, stats)
   showingHistory: boolean;    // Show completed items history
-  showingReality: boolean;    // Show reality check screen
-  realityChecks: RealityCheckResult | null;
-  realityIndex: number;       // Current reality check being viewed
+  showingPreflight: boolean;    // Show preflight check screen
+  preflightChecks: PreflightResult | null;
+  preflightIndex: number;       // Current preflight check being viewed
   beginnerMode: boolean;      // Simplified display for new users
   sessionStarterPrompt: string;
   sessionId: string;
@@ -325,7 +325,7 @@ function drawUI(state: TUIState, projectPath: string): string {
     lines.push(row(`${dim}Info:${reset}`));
     lines.push(row(`  ${bold}[i]${reset} Info        Tech stack, gates, stats`));
     lines.push(row(`  ${bold}[h]${reset} History     View completed items`));
-    lines.push(row(`  ${bold}[y]${reset} Reality     Before-you-ship requirements`));
+    lines.push(row(`  ${bold}[y]${reset} Preflight   Before-you-ship requirements`));
     lines.push(row(`  ${bold}[e]${reset} Example     Show example for current step`));
     lines.push(emptyRow());
     lines.push(row(`${dim}Advanced:${reset}`));
@@ -423,10 +423,10 @@ function drawUI(state: TUIState, projectPath: string): string {
     return lines.join('\n');
   }
 
-  // Reality Check screen - shows before-you-ship requirements
-  if (state.showingReality && state.realityChecks) {
-    const rc = state.realityChecks;
-    const idx = state.realityIndex;
+  // Preflight screen - shows before-you-ship requirements
+  if (state.showingPreflight && state.preflightChecks) {
+    const rc = state.preflightChecks;
+    const idx = state.preflightIndex;
     const check = rc.checks[idx];
     
     lines.push(emptyRow());
@@ -437,7 +437,7 @@ function drawUI(state: TUIState, projectPath: string): string {
     const statusInfo = completedCount > 0 || rc.summary.skipped > 0
       ? `${green}${completedCount}✓${reset} ${dim}${rc.summary.skipped}→${reset}`
       : '';
-    lines.push(row(`${bold}${cyan}REALITY CHECK${reset} ${dim}(${idx + 1}/${rc.checks.length})${reset} ${statusInfo}`));
+    lines.push(row(`${bold}${cyan}PREFLIGHT${reset} ${dim}(${idx + 1}/${rc.checks.length})${reset} ${statusInfo}`));
     lines.push(emptyRow());
     
     if (check) {
@@ -738,7 +738,7 @@ function drawUI(state: TUIState, projectPath: string): string {
 
   // Only show warnings - keep main view clean
   
-  // Reality check hint for SHIP phase
+  // Preflight hint for SHIP phase
   if (a.currentPhase.phase === 'SHIP') {
     lines.push(row(`${yellow}[y]${reset} ${dim}Press Y to check before-you-ship requirements${reset}`));
   }
@@ -848,9 +848,9 @@ export async function runInteractive(): Promise<void> {
     showingHelp: false,
     showingInfo: false,        // Toggle with 'i' key
     showingHistory: false,     // Toggle with 'h' key
-    showingReality: false,     // Toggle with 'y' key (realitY check)
-    realityChecks: null,
-    realityIndex: 0,
+    showingPreflight: false,     // Toggle with 'y' key (realitY check)
+    preflightChecks: null,
+    preflightIndex: 0,
     beginnerMode: false,       // Toggle with 'b' key
     sessionStarterPrompt: getSessionStarterPrompt(projectPath),
     sessionId,
@@ -963,14 +963,14 @@ export async function runInteractive(): Promise<void> {
               recordPhaseChange(projectPath, newPhase);
             }
             
-            // Auto-show reality checks when entering SHIP phase
+            // Auto-show preflight checks when entering SHIP phase
             if (newPhase.phase === 'SHIP') {
               try {
-                tuiState.realityChecks = await getRealityChecksWithAI(projectPath);
-                if (tuiState.realityChecks.checks.length > 0 && tuiState.realityChecks.summary.pending > 0) {
-                  tuiState.realityIndex = 0;
-                  tuiState.showingReality = true;
-                  tuiState.message = `${yellow}SHIP PHASE${reset} Review ${tuiState.realityChecks.summary.pending} requirements before deploying`;
+                tuiState.preflightChecks = await getPreflightChecksWithAI(projectPath);
+                if (tuiState.preflightChecks.checks.length > 0 && tuiState.preflightChecks.summary.pending > 0) {
+                  tuiState.preflightIndex = 0;
+                  tuiState.showingPreflight = true;
+                  tuiState.message = `${yellow}SHIP PHASE${reset} Review ${tuiState.preflightChecks.summary.pending} requirements before deploying`;
                 }
               } catch {
                 // Silently fail - user can still press 'y' manually
@@ -1303,37 +1303,37 @@ export async function runInteractive(): Promise<void> {
         return;
       }
       
-      // Reality check screen - special navigation
-      if (tuiState.showingReality) {
-        const rc = tuiState.realityChecks;
+      // Preflight screen - special navigation
+      if (tuiState.showingPreflight) {
+        const rc = tuiState.preflightChecks;
         
         // Escape or any other key to close (except navigation keys)
         if (key === '\u001b' || key === '\r' || key === '\n') {  // Escape or Enter
-          tuiState.showingReality = false;
+          tuiState.showingPreflight = false;
           render();
           return;
         }
         
         // Arrow keys for navigation
         if (key === '\u001b[C' || key === 'l') {  // Right arrow or 'l'
-          if (rc && tuiState.realityIndex < rc.checks.length - 1) {
-            tuiState.realityIndex++;
+          if (rc && tuiState.preflightIndex < rc.checks.length - 1) {
+            tuiState.preflightIndex++;
           }
           render();
           return;
         }
         
         if (key === '\u001b[D' || key === 'h') {  // Left arrow or 'h'
-          if (tuiState.realityIndex > 0) {
-            tuiState.realityIndex--;
+          if (tuiState.preflightIndex > 0) {
+            tuiState.preflightIndex--;
           }
           render();
           return;
         }
         
         // 'c' to copy current prompt
-        if (key === 'c' && rc && rc.checks[tuiState.realityIndex]) {
-          const check = rc.checks[tuiState.realityIndex];
+        if (key === 'c' && rc && rc.checks[tuiState.preflightIndex]) {
+          const check = rc.checks[tuiState.preflightIndex];
           try {
             await copyToClipboard(check.cursorPrompt);
             tuiState.message = `${green}OK${reset} Copied ${check.key} prompt. Paste in Cursor.`;
@@ -1365,8 +1365,8 @@ export async function runInteractive(): Promise<void> {
         }
         
         // 'd' to mark as done/complete
-        if (key === 'd' && rc && rc.checks[tuiState.realityIndex]) {
-          const check = rc.checks[tuiState.realityIndex];
+        if (key === 'd' && rc && rc.checks[tuiState.preflightIndex]) {
+          const check = rc.checks[tuiState.preflightIndex];
           updateCheckStatus(projectPath, check.key, 'completed');
           check.status = 'completed';
           check.statusUpdatedAt = new Date().toISOString();
@@ -1377,23 +1377,23 @@ export async function runInteractive(): Promise<void> {
           // Log to journal for audit trail
           saveToJournal({
             projectPath,
-            title: `Reality Check: ${check.key} completed`,
+            title: `Preflight: ${check.key} completed`,
             conversation: `Completed requirement: ${check.headline}\n\nCategory: ${check.category}\nTier: ${check.tier}\nPriority: ${check.priority}`,
-            tags: ['reality-check', check.category.toLowerCase()],
+            tags: ['preflight', check.category.toLowerCase()],
           });
           
           // Auto-advance to next pending check
-          const nextPending = rc.checks.findIndex((c, i) => i > tuiState.realityIndex && c.status === 'pending');
+          const nextPending = rc.checks.findIndex((c, i) => i > tuiState.preflightIndex && c.status === 'pending');
           if (nextPending !== -1) {
-            tuiState.realityIndex = nextPending;
+            tuiState.preflightIndex = nextPending;
           }
           render();
           return;
         }
         
         // 'x' to skip
-        if (key === 'x' && rc && rc.checks[tuiState.realityIndex]) {
-          const check = rc.checks[tuiState.realityIndex];
+        if (key === 'x' && rc && rc.checks[tuiState.preflightIndex]) {
+          const check = rc.checks[tuiState.preflightIndex];
           updateCheckStatus(projectPath, check.key, 'skipped');
           check.status = 'skipped';
           check.statusUpdatedAt = new Date().toISOString();
@@ -1402,17 +1402,17 @@ export async function runInteractive(): Promise<void> {
           tuiState.message = `${yellow}→${reset} ${check.key} skipped`;
           
           // Auto-advance to next pending check
-          const nextPending = rc.checks.findIndex((c, i) => i > tuiState.realityIndex && c.status === 'pending');
+          const nextPending = rc.checks.findIndex((c, i) => i > tuiState.preflightIndex && c.status === 'pending');
           if (nextPending !== -1) {
-            tuiState.realityIndex = nextPending;
+            tuiState.preflightIndex = nextPending;
           }
           render();
           return;
         }
         
         // 'r' to reset to pending
-        if (key === 'r' && rc && rc.checks[tuiState.realityIndex]) {
-          const check = rc.checks[tuiState.realityIndex];
+        if (key === 'r' && rc && rc.checks[tuiState.preflightIndex]) {
+          const check = rc.checks[tuiState.preflightIndex];
           const oldStatus = check.status;
           updateCheckStatus(projectPath, check.key, 'pending');
           check.status = 'pending';
@@ -1425,8 +1425,8 @@ export async function runInteractive(): Promise<void> {
           return;
         }
         
-        // Any other key closes the reality screen
-        tuiState.showingReality = false;
+        // Any other key closes the preflight screen
+        tuiState.showingPreflight = false;
         render();
         return;
       }
@@ -1662,22 +1662,22 @@ export async function runInteractive(): Promise<void> {
     }
 
     if (key === 'y') {
-      // Show reality check screen (async with AI filtering)
+      // Show preflight screen (async with AI filtering)
       tuiState.message = `${magenta}...${reset} Analyzing project requirements (AI filtering)...`;
       render();
       
       try {
         // Use AI-filtered version for more accurate results
-        tuiState.realityChecks = await getRealityChecksWithAI(projectPath);
-        tuiState.realityIndex = 0;
+        tuiState.preflightChecks = await getPreflightChecksWithAI(projectPath);
+        tuiState.preflightIndex = 0;
         
-        if (tuiState.realityChecks.checks.length === 0) {
-          tuiState.message = `${green}OK${reset} No reality checks apply yet. Add more details to brainlift/PRD.`;
+        if (tuiState.preflightChecks.checks.length === 0) {
+          tuiState.message = `${green}OK${reset} No preflight checks apply yet. Add more details to brainlift/PRD.`;
           render();
         } else {
-          const pending = tuiState.realityChecks.summary.pending;
-          const total = tuiState.realityChecks.summary.total;
-          tuiState.showingReality = true;
+          const pending = tuiState.preflightChecks.summary.pending;
+          const total = tuiState.preflightChecks.summary.total;
+          tuiState.showingPreflight = true;
           tuiState.message = pending < total 
             ? `${cyan}${pending}/${total}${reset} checks remaining`
             : '';

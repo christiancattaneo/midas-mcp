@@ -35,7 +35,7 @@ import { tmpdir } from 'os';
 // Module imports
 import { loadState, saveState, getDefaultState, setPhase, createHistoryEntry, type PhaseState } from '../state/phase.js';
 import { loadTracker, saveTracker, recordError, getStuckErrors } from '../tracker.js';
-import { inferProjectProfile, getRealityChecks, updateCheckStatus } from '../reality.js';
+import { inferProjectProfile, getPreflightChecks, updateCheckStatus } from '../preflight.js';
 import { estimateTokens } from '../context.js';
 import { sanitizePath, isShellSafe } from '../security.js';
 import { discoverDocs, discoverDocsSync } from '../docs-discovery.js';
@@ -924,7 +924,7 @@ describe('Reality Check Edge Cases', () => {
   describe('Non-existent Checks', () => {
     it('should handle update to non-existent check', () => {
       updateCheckStatus(testDir, 'DOES_NOT_EXIST_12345', 'completed');
-      const result = getRealityChecks(testDir);
+      const result = getPreflightChecks(testDir);
       assert.ok(result !== undefined);
     });
   });
@@ -934,7 +934,7 @@ describe('Reality Check Edge Cases', () => {
       const longReason = 'a'.repeat(10000);
       updateCheckStatus(testDir, 'PRIVACY_POLICY', 'skipped', longReason);
       
-      const result = getRealityChecks(testDir);
+      const result = getPreflightChecks(testDir);
       assert.ok(result !== undefined);
     });
   });
@@ -949,7 +949,7 @@ describe('Reality Check Edge Cases', () => {
         );
       }
       
-      const result = getRealityChecks(testDir);
+      const result = getPreflightChecks(testDir);
       assert.ok(result !== undefined);
     });
   });

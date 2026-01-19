@@ -6,15 +6,15 @@ import { tmpdir } from 'node:os';
 
 import {
   inferProjectProfile,
-  getRealityChecks,
+  getPreflightChecks,
   getTierSymbol,
   getTierDescription,
   updateCheckStatus,
   detectGeneratedDocs,
   resetCheckStatuses,
   type ProjectProfile,
-  type RealityCheck,
-} from '../reality.js';
+  type PreflightCheck,
+} from '../preflight.js';
 
 // ============================================================================
 // Test Utilities
@@ -131,10 +131,10 @@ describe('inferProjectProfile', () => {
 });
 
 // ============================================================================
-// getRealityChecks Tests
+// getPreflightChecks Tests
 // ============================================================================
 
-describe('getRealityChecks', () => {
+describe('getPreflightChecks', () => {
   let testDir: string;
 
   beforeEach(() => {
@@ -146,7 +146,7 @@ describe('getRealityChecks', () => {
   });
 
   it('returns empty checks for minimal project', () => {
-    const result = getRealityChecks(testDir);
+    const result = getPreflightChecks(testDir);
     
     assert.ok(Array.isArray(result.checks));
     assert.ok(result.profile);
@@ -159,7 +159,7 @@ describe('getRealityChecks', () => {
       '# App\nUser accounts with email and password.'
     );
     
-    const result = getRealityChecks(testDir);
+    const result = getPreflightChecks(testDir);
     const privacyCheck = result.checks.find(c => c.key === 'PRIVACY_POLICY');
     
     assert.ok(privacyCheck, 'Should have privacy policy check');
@@ -174,9 +174,9 @@ describe('getRealityChecks', () => {
     );
     
     // Need to run twice to get past progressive disclosure
-    getRealityChecks(testDir);
-    getRealityChecks(testDir);
-    const result = getRealityChecks(testDir);
+    getPreflightChecks(testDir);
+    getPreflightChecks(testDir);
+    const result = getPreflightChecks(testDir);
     
     const hipaaCheck = result.checks.find(c => c.key === 'HIPAA_COMPLIANCE');
     assert.ok(hipaaCheck, 'Should have HIPAA check for healthcare');
@@ -189,9 +189,9 @@ describe('getRealityChecks', () => {
     );
     
     // Run multiple times to get past progressive disclosure
-    getRealityChecks(testDir);
-    getRealityChecks(testDir);
-    const result = getRealityChecks(testDir);
+    getPreflightChecks(testDir);
+    getPreflightChecks(testDir);
+    const result = getPreflightChecks(testDir);
     
     const ferpaCheck = result.checks.find(c => c.key === 'FERPA_COMPLIANCE');
     assert.ok(ferpaCheck, 'Should have FERPA check for education');
@@ -203,7 +203,7 @@ describe('getRealityChecks', () => {
       '# App\nUser accounts, payments via Stripe, AI-powered features.'
     );
     
-    const result = getRealityChecks(testDir);
+    const result = getPreflightChecks(testDir);
     
     assert.strictEqual(result.summary.total, result.checks.length);
     assert.strictEqual(
@@ -225,7 +225,7 @@ describe('getRealityChecks', () => {
     // Reset to ensure fresh state
     resetCheckStatuses(testDir);
     
-    const result = getRealityChecks(testDir);
+    const result = getPreflightChecks(testDir);
     
     assert.ok(result.isFirstSession, 'Should be first session');
     if (result.totalAvailable && result.totalAvailable > 4) {
@@ -245,11 +245,11 @@ describe('getRealityChecks', () => {
     resetCheckStatuses(testDir);
     
     // First two views
-    getRealityChecks(testDir);
-    getRealityChecks(testDir);
+    getPreflightChecks(testDir);
+    getPreflightChecks(testDir);
     
     // Third view should show all
-    const result = getRealityChecks(testDir);
+    const result = getPreflightChecks(testDir);
     
     assert.strictEqual(result.isFirstSession, false);
     assert.strictEqual(result.checks.length, result.totalAvailable);
@@ -302,7 +302,7 @@ describe('updateCheckStatus', () => {
   it('marks check as completed', () => {
     updateCheckStatus(testDir, 'PRIVACY_POLICY', 'completed');
     
-    const result = getRealityChecks(testDir);
+    const result = getPreflightChecks(testDir);
     const check = result.checks.find(c => c.key === 'PRIVACY_POLICY');
     
     assert.strictEqual(check?.status, 'completed');
@@ -311,7 +311,7 @@ describe('updateCheckStatus', () => {
   it('marks check as skipped with reason', () => {
     updateCheckStatus(testDir, 'PRIVACY_POLICY', 'skipped', 'Not applicable');
     
-    const result = getRealityChecks(testDir);
+    const result = getPreflightChecks(testDir);
     const check = result.checks.find(c => c.key === 'PRIVACY_POLICY');
     
     assert.strictEqual(check?.status, 'skipped');
@@ -322,11 +322,11 @@ describe('updateCheckStatus', () => {
     updateCheckStatus(testDir, 'PRIVACY_POLICY', 'completed');
     
     // Get fresh result
-    const result1 = getRealityChecks(testDir);
+    const result1 = getPreflightChecks(testDir);
     const check1 = result1.checks.find(c => c.key === 'PRIVACY_POLICY');
     
     // Get another fresh result
-    const result2 = getRealityChecks(testDir);
+    const result2 = getPreflightChecks(testDir);
     const check2 = result2.checks.find(c => c.key === 'PRIVACY_POLICY');
     
     assert.strictEqual(check1?.status, 'completed');
@@ -334,12 +334,12 @@ describe('updateCheckStatus', () => {
   });
 
   it('updates summary counts correctly', () => {
-    const before = getRealityChecks(testDir);
+    const before = getPreflightChecks(testDir);
     const pendingBefore = before.summary.pending;
     
     updateCheckStatus(testDir, 'PRIVACY_POLICY', 'completed');
     
-    const after = getRealityChecks(testDir);
+    const after = getPreflightChecks(testDir);
     
     assert.strictEqual(after.summary.completed, 1);
     assert.strictEqual(after.summary.pending, pendingBefore - 1);
@@ -436,7 +436,7 @@ describe('resetCheckStatuses', () => {
     updateCheckStatus(testDir, 'PRIVACY_POLICY', 'completed');
     
     // Verify it's completed
-    let result = getRealityChecks(testDir);
+    let result = getPreflightChecks(testDir);
     let check = result.checks.find(c => c.key === 'PRIVACY_POLICY');
     assert.strictEqual(check?.status, 'completed');
     
@@ -444,31 +444,31 @@ describe('resetCheckStatuses', () => {
     resetCheckStatuses(testDir);
     
     // Verify it's pending again
-    result = getRealityChecks(testDir);
+    result = getPreflightChecks(testDir);
     check = result.checks.find(c => c.key === 'PRIVACY_POLICY');
     assert.strictEqual(check?.status, 'pending');
   });
 
   it('resets view count for progressive disclosure', () => {
     // View multiple times
-    getRealityChecks(testDir);
-    getRealityChecks(testDir);
-    getRealityChecks(testDir);
+    getPreflightChecks(testDir);
+    getPreflightChecks(testDir);
+    getPreflightChecks(testDir);
     
     // Reset
     resetCheckStatuses(testDir);
     
     // Should be first session again
-    const result = getRealityChecks(testDir);
+    const result = getPreflightChecks(testDir);
     assert.strictEqual(result.isFirstSession, true);
   });
 });
 
 // ============================================================================
-// RealityCheck Structure Tests
+// PreflightCheck Structure Tests
 // ============================================================================
 
-describe('RealityCheck structure', () => {
+describe('PreflightCheck structure', () => {
   let testDir: string;
 
   beforeEach(() => {
@@ -484,7 +484,7 @@ describe('RealityCheck structure', () => {
   });
 
   it('includes all required fields', () => {
-    const result = getRealityChecks(testDir);
+    const result = getPreflightChecks(testDir);
     const check = result.checks[0];
     
     assert.ok(check.key, 'Should have key');
@@ -499,7 +499,7 @@ describe('RealityCheck structure', () => {
   });
 
   it('has valid tier value', () => {
-    const result = getRealityChecks(testDir);
+    const result = getPreflightChecks(testDir);
     
     for (const check of result.checks) {
       assert.ok(
@@ -510,7 +510,7 @@ describe('RealityCheck structure', () => {
   });
 
   it('has valid priority value', () => {
-    const result = getRealityChecks(testDir);
+    const result = getPreflightChecks(testDir);
     
     const validPriorities = ['critical', 'high', 'medium', 'low'];
     for (const check of result.checks) {
@@ -522,7 +522,7 @@ describe('RealityCheck structure', () => {
   });
 
   it('has valid status value', () => {
-    const result = getRealityChecks(testDir);
+    const result = getPreflightChecks(testDir);
     
     const validStatuses = ['pending', 'completed', 'skipped'];
     for (const check of result.checks) {
@@ -534,7 +534,7 @@ describe('RealityCheck structure', () => {
   });
 
   it('cursorPrompt references docs', () => {
-    const result = getRealityChecks(testDir);
+    const result = getPreflightChecks(testDir);
     
     // AI-assisted checks should reference reading docs
     const aiChecks = result.checks.filter(c => c.tier === 'ai_assisted');

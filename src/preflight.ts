@@ -1,5 +1,5 @@
 /**
- * Reality Check Module
+ * Preflight Check Module
  * 
  * Analyzes project docs to infer what requirements apply,
  * categorizes them by what AI can/cannot do,
@@ -17,28 +17,28 @@ import { discoverDocsSync, getPlanningContext } from './docs-discovery.js';
 // ============================================================================
 
 const MIDAS_DIR = '.midas';
-const REALITY_STATE_FILE = 'reality-checks.json';
+const PREFLIGHT_STATE_FILE = 'preflight-checks.json';
 
-export type RealityCheckStatus = 'pending' | 'completed' | 'skipped';
+export type PreflightCheckStatus = 'pending' | 'completed' | 'skipped';
 
 export interface PersistedCheckState {
-  status: RealityCheckStatus;
+  status: PreflightCheckStatus;
   updatedAt: string;
   skippedReason?: string;  // Why user skipped (optional)
 }
 
-interface RealityStateFile {
+interface PreflightStateFile {
   checkStates: Record<string, PersistedCheckState>;
   lastProfileHash: string;  // Detect when project profile changes
-  viewCount?: number;       // How many times reality checks have been viewed
+  viewCount?: number;       // How many times preflight checks have been viewed
 }
 
-function getRealityStatePath(projectPath: string): string {
-  return join(projectPath, MIDAS_DIR, REALITY_STATE_FILE);
+function getPreflightStatePath(projectPath: string): string {
+  return join(projectPath, MIDAS_DIR, PREFLIGHT_STATE_FILE);
 }
 
-function loadRealityState(projectPath: string): RealityStateFile {
-  const path = getRealityStatePath(projectPath);
+export function loadPreflightState(projectPath: string): PreflightStateFile {
+  const path = getPreflightStatePath(projectPath);
   if (existsSync(path)) {
     try {
       return JSON.parse(readFileSync(path, 'utf-8'));
@@ -46,16 +46,25 @@ function loadRealityState(projectPath: string): RealityStateFile {
       return { checkStates: {}, lastProfileHash: '' };
     }
   }
+  // Try legacy reality-checks.json for backward compatibility
+  const legacyPath = join(projectPath, MIDAS_DIR, 'reality-checks.json');
+  if (existsSync(legacyPath)) {
+    try {
+      return JSON.parse(readFileSync(legacyPath, 'utf-8'));
+    } catch {
+      return { checkStates: {}, lastProfileHash: '' };
+    }
+  }
   return { checkStates: {}, lastProfileHash: '' };
 }
 
-function saveRealityState(projectPath: string, state: RealityStateFile): void {
+function savePreflightState(projectPath: string, state: PreflightStateFile): void {
   const dir = join(projectPath, MIDAS_DIR);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
   // Use atomic write to prevent corruption from concurrent access
-  writeFileAtomic.sync(getRealityStatePath(projectPath), JSON.stringify(state, null, 2));
+  writeFileAtomic.sync(getPreflightStatePath(projectPath), JSON.stringify(state, null, 2));
 }
 
 function hashProfile(profile: ProjectProfile): string {
@@ -67,16 +76,16 @@ function hashProfile(profile: ProjectProfile): string {
 }
 
 /**
- * Update the status of a reality check
+ * Update the status of a preflight check
  */
 export function updateCheckStatus(
   projectPath: string,
   checkKey: string,
-  status: RealityCheckStatus,
+  status: PreflightCheckStatus,
   skippedReason?: string
 ): void {
   const safePath = sanitizePath(projectPath);
-  const state = loadRealityState(safePath);
+  const state = loadPreflightState(safePath);
   
   state.checkStates[checkKey] = {
     status,
@@ -84,7 +93,7 @@ export function updateCheckStatus(
     ...(skippedReason ? { skippedReason } : {}),
   };
   
-  saveRealityState(safePath, state);
+  savePreflightState(safePath, state);
 }
 
 /**
@@ -92,7 +101,7 @@ export function updateCheckStatus(
  */
 export function getCheckStatus(projectPath: string, checkKey: string): PersistedCheckState | undefined {
   const safePath = sanitizePath(projectPath);
-  const state = loadRealityState(safePath);
+  const state = loadPreflightState(safePath);
   return state.checkStates[checkKey];
 }
 
@@ -101,7 +110,7 @@ export function getCheckStatus(projectPath: string, checkKey: string): Persisted
  */
 export function getAllCheckStatuses(projectPath: string): Record<string, PersistedCheckState> {
   const safePath = sanitizePath(projectPath);
-  const state = loadRealityState(safePath);
+  const state = loadPreflightState(safePath);
   return state.checkStates;
 }
 
@@ -110,7 +119,7 @@ export function getAllCheckStatuses(projectPath: string): Record<string, Persist
  */
 export function resetCheckStatuses(projectPath: string): void {
   const safePath = sanitizePath(projectPath);
-  saveRealityState(safePath, { checkStates: {}, lastProfileHash: '' });
+  savePreflightState(safePath, { checkStates: {}, lastProfileHash: '' });
 }
 
 /**
@@ -140,7 +149,7 @@ const EXPECTED_OUTPUTS: Record<string, string[]> = {
  */
 export function detectGeneratedDocs(projectPath: string): string[] {
   const safePath = sanitizePath(projectPath);
-  const state = loadRealityState(safePath);
+  const state = loadPreflightState(safePath);
   const autoCompleted: string[] = [];
   
   for (const [checkKey, possibleFiles] of Object.entries(EXPECTED_OUTPUTS)) {
@@ -163,7 +172,7 @@ export function detectGeneratedDocs(projectPath: string): string[] {
   }
   
   if (autoCompleted.length > 0) {
-    saveRealityState(safePath, state);
+    savePreflightState(safePath, state);
   }
   
   return autoCompleted;
@@ -178,10 +187,10 @@ export function detectGeneratedDocs(projectPath: string): string[] {
  * - ai_assisted: AI can help (draft docs, create checklists, generate code)
  * - manual: Requires real-world action (signup, purchase, certification)
  */
-export type RealityTier = 'ai_assisted' | 'manual';
+export type PreflightTier = 'ai_assisted' | 'manual';
 
 // Legacy tier mapping for backward compatibility
-const TIER_MAPPING: Record<string, RealityTier> = {
+const TIER_MAPPING: Record<string, PreflightTier> = {
   'generatable': 'ai_assisted',
   'assistable': 'ai_assisted', 
   'human_only': 'manual',
@@ -189,10 +198,10 @@ const TIER_MAPPING: Record<string, RealityTier> = {
   'manual': 'manual',
 };
 
-export interface RealityCheck {
+export interface PreflightCheck {
   key: string;
   category: string;
-  tier: RealityTier;
+  tier: PreflightTier;
   headline: string;
   explanation: string;
   cursorPrompt: string;           // The prompt to copy to Cursor
@@ -202,7 +211,7 @@ export interface RealityCheck {
   priority: 'critical' | 'high' | 'medium' | 'low';
   triggeredBy: string;            // Why this check applies (e.g., "Found 'payment' in PRD")
   // Persisted state
-  status: RealityCheckStatus;
+  status: PreflightCheckStatus;
   statusUpdatedAt?: string;
   skippedReason?: string;
 }
@@ -225,9 +234,9 @@ export interface ProjectProfile {
   industry: string[];              // 'healthcare', 'finance', 'education'
 }
 
-export interface RealityCheckResult {
+export interface PreflightResult {
   profile: ProjectProfile;
-  checks: RealityCheck[];
+  checks: PreflightCheck[];
   summary: {
     total: number;
     critical: number;
@@ -244,11 +253,11 @@ export interface RealityCheckResult {
 }
 
 // ============================================================================
-// REALITY CHECK DEFINITIONS
+// PREFLIGHT CHECK DEFINITIONS
 // ============================================================================
 
 // Static definition type - excludes runtime fields (cursorPrompt, status, triggeredBy)
-type RealityCheckDefinition = Omit<RealityCheck, 'cursorPrompt' | 'status' | 'statusUpdatedAt' | 'skippedReason' | 'triggeredBy'> & { 
+type PreflightCheckDefinition = Omit<PreflightCheck, 'cursorPrompt' | 'status' | 'statusUpdatedAt' | 'skippedReason' | 'triggeredBy'> & { 
   promptTemplate: string; 
   condition: (p: ProjectProfile) => boolean;
   getTriggeredBy?: (p: ProjectProfile) => string;  // Optional - explain why this check applies
@@ -284,7 +293,7 @@ const DEFAULT_TRIGGERS: Record<string, (p: ProjectProfile) => string> = {
     : 'Enterprise customers require data location clarity',
 };
 
-const REALITY_CHECKS: Record<string, RealityCheckDefinition> = {
+const PREFLIGHT_CHECKS: Record<string, PreflightCheckDefinition> = {
   // ✅ GENERATABLE - AI can draft these
   PRIVACY_POLICY: {
     key: 'PRIVACY_POLICY',
@@ -998,22 +1007,22 @@ function fillPromptTemplate(template: string, profile: ProjectProfile, projectPa
 }
 
 /**
- * Get all applicable reality checks for a project
+ * Get all applicable preflight checks for a project
  */
-export function getRealityChecks(projectPath: string): RealityCheckResult {
+export function getPreflightChecks(projectPath: string): PreflightResult {
   const safePath = sanitizePath(projectPath);
   
   // Auto-detect generated docs and mark checks complete (feedback loop)
   detectGeneratedDocs(safePath);
   
   const profile = inferProjectProfile(safePath);
-  const checks: RealityCheck[] = [];
+  const checks: PreflightCheck[] = [];
   
   // Load persisted state (after detection so it includes auto-completions)
-  const persistedState = loadRealityState(safePath);
+  const persistedState = loadPreflightState(safePath);
   const checkStates = persistedState.checkStates;
   
-  for (const check of Object.values(REALITY_CHECKS)) {
+  for (const check of Object.values(PREFLIGHT_CHECKS)) {
     if (check.condition(profile)) {
       const cursorPrompt = fillPromptTemplate(check.promptTemplate, profile, safePath);
       const persisted = checkStates[check.key];
@@ -1060,7 +1069,7 @@ export function getRealityChecks(projectPath: string): RealityCheckResult {
   
   // Increment view count
   const newState = { ...persistedState, viewCount: viewCount + 1 };
-  saveRealityState(safePath, newState);
+  savePreflightState(safePath, newState);
   
   // On first sessions, limit to critical + 2 non-critical
   let displayChecks = checks;
@@ -1092,7 +1101,7 @@ export function getRealityChecks(projectPath: string): RealityCheckResult {
 // ============================================================================
 
 /**
- * AI-powered reality check filter
+ * AI-powered preflight check filter
  * 
  * Conservative defaults may miss edge cases. This AI pass:
  * 1. Reviews the full project context
@@ -1103,9 +1112,9 @@ export function getRealityChecks(projectPath: string): RealityCheckResult {
  */
 export async function filterChecksWithAI(
   profile: ProjectProfile,
-  checks: RealityCheck[],
+  checks: PreflightCheck[],
   projectPath: string
-): Promise<{ filtered: RealityCheck[]; additions: string[]; removals: string[] }> {
+): Promise<{ filtered: PreflightCheck[]; additions: string[]; removals: string[] }> {
   // Dynamic import to avoid circular dependency
   const { getApiKey } = await import('./config.js');
   const { chat } = await import('./providers.js');
@@ -1134,7 +1143,7 @@ Rules: Remove checks that clearly don't apply. Add missing checks from available
 
   // Compact prompt - less tokens, faster response
   const proposed = checks.map(c => c.key).join(',');
-  const available = Object.keys(REALITY_CHECKS).filter(k => !checks.some(c => c.key === k)).join(',');
+  const available = Object.keys(PREFLIGHT_CHECKS).filter(k => !checks.some(c => c.key === k)).join(',');
   
   const prompt = `Docs:\n${docsContent}\n\nProposed: ${proposed}\nAvailable: ${available}\n\nProfile: ${profile.businessModel}, EU:${profile.targetsEU}, AI:${profile.usesAI}, payments:${profile.hasPayments}`;
 
@@ -1170,11 +1179,11 @@ Rules: Remove checks that clearly don't apply. Add missing checks from available
     
     // Add any checks AI says we're missing
     const safePath = sanitizePath(projectPath);
-    const persistedState = loadRealityState(safePath);
+    const persistedState = loadPreflightState(safePath);
     
     for (const key of addKeys) {
-      if (REALITY_CHECKS[key] && !filtered.some(c => c.key === key)) {
-        const check = REALITY_CHECKS[key];
+      if (PREFLIGHT_CHECKS[key] && !filtered.some(c => c.key === key)) {
+        const check = PREFLIGHT_CHECKS[key];
         const cursorPrompt = fillPromptTemplate(check.promptTemplate, profile, projectPath);
         const persisted = persistedState.checkStates[key];
         
@@ -1223,11 +1232,11 @@ Rules: Remove checks that clearly don't apply. Add missing checks from available
 }
 
 /**
- * Get reality checks with AI filtering (async version)
+ * Get preflight checks with AI filtering (async version)
  * Use this when you want the most accurate checks
  */
-export async function getRealityChecksWithAI(projectPath: string): Promise<RealityCheckResult & { aiFiltered: boolean }> {
-  const basic = getRealityChecks(projectPath);
+export async function getPreflightChecksWithAI(projectPath: string): Promise<PreflightResult & { aiFiltered: boolean }> {
+  const basic = getPreflightChecks(projectPath);
   
   try {
     const { filtered, additions, removals } = await filterChecksWithAI(
@@ -1259,7 +1268,7 @@ export async function getRealityChecksWithAI(projectPath: string): Promise<Reali
 /**
  * Get tier symbol for display
  */
-export function getTierSymbol(tier: RealityTier): string {
+export function getTierSymbol(tier: PreflightTier): string {
   const mapped = TIER_MAPPING[tier] || tier;
   switch (mapped) {
     case 'ai_assisted': return '🤖';
@@ -1271,7 +1280,7 @@ export function getTierSymbol(tier: RealityTier): string {
 /**
  * Get tier description
  */
-export function getTierDescription(tier: RealityTier): string {
+export function getTierDescription(tier: PreflightTier): string {
   const mapped = TIER_MAPPING[tier] || tier;
   switch (mapped) {
     case 'ai_assisted': return 'AI can help with this';
@@ -1279,3 +1288,18 @@ export function getTierDescription(tier: RealityTier): string {
     default: return 'Unknown tier';
   }
 }
+
+// ============================================================================
+// BACKWARD COMPATIBILITY ALIASES
+// ============================================================================
+
+// Type aliases for backward compatibility
+export type RealityCheck = PreflightCheck;
+export type RealityCheckResult = PreflightResult;
+export type RealityCheckStatus = PreflightCheckStatus;
+export type RealityTier = PreflightTier;
+
+// Function aliases for backward compatibility
+export const getRealityChecks = getPreflightChecks;
+export const getRealityChecksWithAI = getPreflightChecksWithAI;
+export const loadRealityState = loadPreflightState;

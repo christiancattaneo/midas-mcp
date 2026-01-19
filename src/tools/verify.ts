@@ -14,7 +14,7 @@ import {
 import { sanitizePath } from '../security.js';
 import { loadState } from '../state/phase.js';
 import { logEvent } from '../events.js';
-import { getRealityChecks } from '../reality.js';
+import { getPreflightChecks } from '../preflight.js';
 
 // ============================================================================
 // midas_verify - Run verification gates (build, test, lint)
@@ -86,7 +86,7 @@ export function verify(input: VerifyInput): VerifyResult {
   let realityCheck: VerifyResult['realityCheck'];
   
   if (state.current.phase === 'SHIP') {
-    const rc = getRealityChecks(projectPath);
+    const rc = getPreflightChecks(projectPath);
     const pendingCritical = rc.checks.filter(c => c.priority === 'critical' && c.status === 'pending').length;
     
     realityCheck = {

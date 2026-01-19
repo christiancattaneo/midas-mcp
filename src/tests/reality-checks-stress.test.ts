@@ -24,11 +24,11 @@ import {
   getAllCheckStatuses,
   resetCheckStatuses,
   detectGeneratedDocs,
-  getRealityChecks,
+  getPreflightChecks,
   inferProjectProfile,
-  RealityCheckStatus,
+  PreflightCheckStatus,
   PersistedCheckState,
-} from '../reality.js';
+} from '../preflight.js';
 
 // ============================================================================
 // HELPERS
@@ -70,7 +70,7 @@ function generateString(length: number, pattern = 'x'): string {
 
 // Helper to read raw state file
 function readRawState(dir: string): any {
-  const statePath = join(dir, '.midas', 'reality-checks.json');
+  const statePath = join(dir, '.midas', 'preflight-checks.json');
   if (!existsSync(statePath)) return null;
   try {
     return JSON.parse(readFileSync(statePath, 'utf-8'));
@@ -381,7 +381,7 @@ describe('Rapid Status Updates', () => {
 
   it('should handle rapid status transitions', () => {
     const dir = createTestDir('rapid-transitions');
-    const statuses: RealityCheckStatus[] = ['pending', 'completed', 'skipped', 'pending', 'completed'];
+    const statuses: PreflightCheckStatus[] = ['pending', 'completed', 'skipped', 'pending', 'completed'];
     
     for (const status of statuses) {
       updateCheckStatus(dir, 'test_check', status);
@@ -582,7 +582,7 @@ describe('State Persistence', () => {
 
   it('should handle corrupted state file', () => {
     const dir = createTestDir('corrupted');
-    const statePath = join(dir, '.midas', 'reality-checks.json');
+    const statePath = join(dir, '.midas', 'preflight-checks.json');
     
     writeFileSync(statePath, '{ invalid json');
     
@@ -593,7 +593,7 @@ describe('State Persistence', () => {
 
   it('should handle empty state file', () => {
     const dir = createTestDir('empty-state');
-    const statePath = join(dir, '.midas', 'reality-checks.json');
+    const statePath = join(dir, '.midas', 'preflight-checks.json');
     
     writeFileSync(statePath, '');
     
@@ -603,7 +603,7 @@ describe('State Persistence', () => {
 
   it('should handle null state file', () => {
     const dir = createTestDir('null-state');
-    const statePath = join(dir, '.midas', 'reality-checks.json');
+    const statePath = join(dir, '.midas', 'preflight-checks.json');
     
     writeFileSync(statePath, 'null');
     
@@ -620,7 +620,7 @@ describe('State Persistence', () => {
 
   it('should handle state file with missing checkStates', () => {
     const dir = createTestDir('missing-checkstates');
-    const statePath = join(dir, '.midas', 'reality-checks.json');
+    const statePath = join(dir, '.midas', 'preflight-checks.json');
     
     writeFileSync(statePath, JSON.stringify({ lastProfileHash: 'abc' }));
     
@@ -637,7 +637,7 @@ describe('State Persistence', () => {
 
   it('should handle state file with null checkStates', () => {
     const dir = createTestDir('null-checkstates');
-    const statePath = join(dir, '.midas', 'reality-checks.json');
+    const statePath = join(dir, '.midas', 'preflight-checks.json');
     
     writeFileSync(statePath, JSON.stringify({ checkStates: null }));
     
@@ -647,7 +647,7 @@ describe('State Persistence', () => {
 
   it('should handle binary garbage in state file', () => {
     const dir = createTestDir('binary-state');
-    const statePath = join(dir, '.midas', 'reality-checks.json');
+    const statePath = join(dir, '.midas', 'preflight-checks.json');
     
     writeFileSync(statePath, Buffer.from([0x00, 0x01, 0xFF, 0xFE]));
     
@@ -772,7 +772,7 @@ describe('Reality Checks Integration', () => {
   it('should get reality checks for empty project', async () => {
     const dir = createTestDir('integrate-empty');
     
-    const result = await getRealityChecks(dir);
+    const result = await getPreflightChecks(dir);
     
     assert.ok(result !== null);
     assert.ok(Array.isArray(result.checks));
@@ -787,36 +787,36 @@ describe('Reality Checks Integration', () => {
       },
     }));
     
-    const result = await getRealityChecks(dir);
+    const result = await getPreflightChecks(dir);
     
     assert.ok(result !== null);
     // Should detect payment usage
   });
 
-  it('should integrate check statuses with getRealityChecks', async () => {
+  it('should integrate check statuses with getPreflightChecks', async () => {
     const dir = createTestDir('integrate-status');
     
     // Set some statuses
     updateCheckStatus(dir, 'privacy_policy', 'completed');
     updateCheckStatus(dir, 'terms_of_service', 'skipped', 'Not needed');
     
-    const result = await getRealityChecks(dir);
+    const result = await getPreflightChecks(dir);
     
     assert.ok(result !== null);
     // Statuses should be reflected in checks
   });
 
-  it('should handle rapid getRealityChecks calls', async () => {
+  it('should handle rapid getPreflightChecks calls', async () => {
     const dir = createTestDir('integrate-rapid');
     writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'test' }));
     
     const start = Date.now();
     for (let i = 0; i < 10; i++) {
-      await getRealityChecks(dir);
+      await getPreflightChecks(dir);
     }
     const elapsed = Date.now() - start;
     
-    console.log(`  [INFO] 10 getRealityChecks: ${elapsed}ms`);
+    console.log(`  [INFO] 10 getPreflightChecks: ${elapsed}ms`);
     
     assert.ok(elapsed < 30000, `Too slow: ${elapsed}ms`);
   });
@@ -993,7 +993,7 @@ describe('Edge Case Combinations', () => {
 
   it('should handle corrupted state + update', () => {
     const dir = createTestDir('combo-corrupt-update');
-    const statePath = join(dir, '.midas', 'reality-checks.json');
+    const statePath = join(dir, '.midas', 'preflight-checks.json');
     
     writeFileSync(statePath, '{ invalid }');
     

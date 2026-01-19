@@ -17,7 +17,7 @@ import { discoverSourceFiles, readSourceFiles, discoverAndReadCode } from '../co
 import { discoverDocs, discoverDocsSync } from '../docs-discovery.js';
 import { loadState, saveState, getDefaultState, setPhase, createHistoryEntry, type HistoryEntry } from '../state/phase.js';
 import { loadTracker, saveTracker, recordError, getStuckErrors } from '../tracker.js';
-import { inferProjectProfile, getRealityChecks, updateCheckStatus, resetCheckStatuses } from '../reality.js';
+import { inferProjectProfile, getPreflightChecks, updateCheckStatus, resetCheckStatuses } from '../preflight.js';
 import { estimateTokens } from '../context.js';
 import { sanitizePath, isShellSafe } from '../security.js';
 
@@ -599,7 +599,7 @@ describe('Empty and Null Data', () => {
 
   it('should handle reality checks with no matching conditions', () => {
     // Empty project = no conditions should match
-    const result = getRealityChecks(testDir);
+    const result = getPreflightChecks(testDir);
     
     // Should return result object with checks array, not throw
     assert.ok(result !== undefined);
@@ -611,7 +611,7 @@ describe('Empty and Null Data', () => {
     resetCheckStatuses(testDir);
     
     // Should not throw
-    const result = getRealityChecks(testDir);
+    const result = getPreflightChecks(testDir);
     assert.ok(result !== undefined);
     assert.ok(Array.isArray(result.checks));
   });
@@ -677,7 +677,7 @@ describe('Reality Checks Edge Cases', () => {
     updateCheckStatus(testDir, 'FAKE_CHECK_THAT_DOES_NOT_EXIST', 'completed');
     
     // Should be stored anyway
-    const result = getRealityChecks(testDir);
+    const result = getPreflightChecks(testDir);
     // The fake check won't appear in checks (no definition), but shouldn't crash
     assert.ok(result !== undefined);
     assert.ok(Array.isArray(result.checks));
@@ -697,7 +697,7 @@ describe('Reality Checks Edge Cases', () => {
     }
     
     // Final state should be one of the values
-    const result = getRealityChecks(testDir);
+    const result = getPreflightChecks(testDir);
     assert.ok(result !== undefined);
     assert.ok(Array.isArray(result.checks));
   });
