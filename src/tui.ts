@@ -33,6 +33,7 @@ import {
 import { getJournalEntries } from './tools/journal.js';
 import { showExample } from './tools/examples.js';
 import { checkScopeCreep, type ScopeMetrics } from './tools/scope.js';
+import { getGameplanProgress } from './gameplan-tracker.js';
 import { getHotfixStatus } from './tools/hotfix.js';
 import { startSession, endSession, recordPromptCopied, recordPhaseChange, loadMetrics } from './metrics.js';
 import { 
@@ -675,21 +676,28 @@ function drawUI(state: TUIState, projectPath: string): string {
   lines.push(row(`${bold}PHASE:${reset} ${phaseLabel(a.currentPhase)}  ${confColor}${a.confidence}%${reset}`));
   lines.push(emptyRow());
   
-  // Show step progress bar within current phase (visual aesthetic - keep)
-  if (a.currentPhase.phase !== 'IDLE') {
-    const phaseInfo = PHASE_INFO[a.currentPhase.phase];
-    const steps = Object.keys(phaseInfo.steps);
-    const currentStepIdx = steps.indexOf(a.currentPhase.step);
-    const progress = Math.round(((currentStepIdx + 1) / steps.length) * 100);
-    
-    // Visual progress bar: [████░░░░░░] 40%
-    const barWidth = 20;
-    const filled = Math.round((progress / 100) * barWidth);
-    const empty = barWidth - filled;
-    const progressBar = `${green}${'█'.repeat(filled)}${reset}${dim}${'░'.repeat(empty)}${reset}`;
-    lines.push(row(`[${progressBar}] ${progress}%`));
+  // During BUILD: Show gameplan task completion (the real progress)
+  if (a.currentPhase.phase === 'BUILD' || a.currentPhase.phase === 'SHIP') {
+    const gameplan = getGameplanProgress(projectPath);
+    if (gameplan.documented > 0 || gameplan.actual > 0) {
+      // Use actual implementation progress (more accurate than just checkboxes)
+      const pct = gameplan.actual;
+      const barWidth = 20;
+      const filled = Math.round((pct / 100) * barWidth);
+      const empty = barWidth - filled;
+      const bar = `${green}${'█'.repeat(filled)}${reset}${dim}${'░'.repeat(empty)}${reset}`;
+      
+      // Show next task if available
+      const nextHint = gameplan.nextSuggested 
+        ? `  ${dim}→ ${gameplan.nextSuggested.slice(0, 25)}${gameplan.nextSuggested.length > 25 ? '...' : ''}${reset}`
+        : '';
+      
+      lines.push(row(`${bold}Gameplan:${reset} [${bar}] ${pct}%${nextHint}`));
+    } else {
+      lines.push(row(`${dim}Gameplan: No tasks yet (add: - [ ] Task)${reset}`));
+    }
+    lines.push(emptyRow());
   }
-  lines.push(emptyRow());
 
   lines.push(`${cyan}╠${hLine}╣${reset}`);
 
