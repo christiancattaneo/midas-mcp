@@ -121,3 +121,161 @@ For now, the **pragmatic path** is:
 1. Midas coaches via TUI → user copies prompt to Claude Code
 2. Claude Code calls Midas tools during execution
 3. Midas tracks activity and suggests next steps
+
+[7 tools called]
+
+Based on my research and analysis of your current PLAN phase, here's my assessment:
+
+## Current Flow Analysis
+
+Your current PLAN phase:
+```
+IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN
+```
+
+**What's good:**
+- IDEA first (problem definition) is correct
+- BRAINLIFT captures domain expertise AI lacks
+- GAMEPLAN sequences work with dependencies
+- Strong "why" rationale for each step
+
+**Potential gaps identified:**
+
+### 1. Missing Verification Loops
+
+Most agentic AI frameworks use **Plan → Act → Observe → Reflect** loops. Your current flow is linear with no built-in verification:
+
+```
+Current:  IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN  (one-way)
+
+Better:   IDEA → VALIDATE → RESEARCH → VALIDATE → BRAINLIFT → 
+          PRD → STAKEHOLDER_CHECK → GAMEPLAN → FEASIBILITY_CHECK
+```
+
+**Industry insight:** The "LeanAI" methodology distinguishes **should/can/will** at each stage - what you *should* do (ideal), what you *can* do (constraints), what you *will* commit to.
+
+### 2. Missing Risk Assessment Step
+
+Your current flow doesn't have explicit risk identification before committing to build. Research shows teams that identify risks upfront have significantly fewer mid-project surprises.
+
+**Proposed addition:** `RISKS` step between PRD and GAMEPLAN:
+- Technical risks (scaling, security, dependencies)
+- Business risks (market timing, competition)
+- Integration risks (APIs, third-party services)
+
+### 3. PRD Position May Be Wrong
+
+**Current order:** BRAINLIFT → PRD → GAMEPLAN
+
+**Research suggests:** PRD should come *before* deep domain documentation because:
+- PRD defines *what* to build (goals, constraints, scope)
+- BRAINLIFT then captures *how your context* affects that scope
+- Otherwise you risk documenting irrelevant domain knowledge
+
+**Alternative sequence:**
+```
+IDEA → RESEARCH → PRD → BRAINLIFT → GAMEPLAN
+```
+
+### 4. Missing Spike/Prototype Step
+
+Modern agile and AI-assisted development recommends **prototyping unknowns** during planning:
+
+```
+GAMEPLAN → SPIKE (optional) → BUILD
+```
+
+When the gameplan reveals high-risk technical unknowns, a short prototype validates assumptions before committing.
+
+---
+
+## Recommended Improved Planning Phase
+
+```
+PLAN Phase (v2):
+  IDEA      → Define problem, audience, why now
+  RESEARCH  → Scan landscape, competitors, existing solutions  
+  PRD       → Goals, non-goals, scope, success criteria
+  BRAINLIFT → Your unique context, domain knowledge, constraints
+  RISKS     → Technical/business/integration risks + mitigations
+  GAMEPLAN  → Sequenced tasks, dependencies, estimates
+  [SPIKE]   → Optional: prototype high-risk unknowns
+```
+
+### Verification Gates (new)
+
+Add lightweight verification between phases:
+
+| Transition | Verification Question |
+|------------|----------------------|
+| IDEA → RESEARCH | "Is the problem worth solving?" |
+| RESEARCH → PRD | "Do we understand the landscape enough to scope?" |
+| PRD → BRAINLIFT | "Are requirements clear and bounded?" |
+| BRAINLIFT → RISKS | "Have we captured our unique constraints?" |
+| RISKS → GAMEPLAN | "Are risks understood and mitigated?" |
+| GAMEPLAN → BUILD | "Is this plan feasible and sequenced correctly?" |
+
+---
+
+## Test-Code-Debug Loop Improvements
+
+Your current BUILD phase:
+```
+RULES → INDEX → READ → RESEARCH → IMPLEMENT → TEST → DEBUG
+```
+
+**Industry best practice:** The **Red-Green-Refactor** TDD cycle should be embedded in IMPLEMENT:
+
+```
+IMPLEMENT = [
+  1. Write failing test (red)
+  2. Write minimal code to pass (green)  
+  3. Refactor if needed
+  4. Repeat
+]
+```
+
+**Missing: Verification after DEBUG**
+
+When DEBUG completes, current flow has no explicit "are we done?" check. Add:
+
+```
+DEBUG → VERIFY → (back to IMPLEMENT if more work, or forward to TEST/SHIP)
+```
+
+---
+
+## AI Agent Loop Patterns
+
+Research on autonomous AI agents (Devin-style) shows the most effective pattern is:
+
+```
+PLAN → ACT → OBSERVE → REFLECT → [loop or advance]
+```
+
+Your midas could adopt this at the step level:
+
+```typescript
+// Pseudo-structure
+interface StepExecution {
+  plan: string;      // What we'll do
+  act: () => void;   // Do it
+  observe: () => Result;  // Check result
+  reflect: () => Decision; // Continue, retry, or escalate?
+}
+```
+
+---
+
+## Summary: Recommended Changes
+
+| Change | Impact | Effort |
+|--------|--------|--------|
+| Add RISKS step between PRD and GAMEPLAN | High - prevents mid-build surprises | Low |
+| Swap PRD ↔ BRAINLIFT order | Medium - better scoping | Low |
+| Add verification gates between steps | High - catches bad assumptions | Medium |
+| Add optional SPIKE step | Medium - de-risks unknowns | Low |
+| Embed TDD cycle in IMPLEMENT | High - catches bugs earlier | Already have it |
+| Add VERIFY after DEBUG | Medium - confirms completion | Low |
+
+Would you like me to draft the updated `PHASE_INFO` structure with these changes? Switch to agent mode and I can implement it.
