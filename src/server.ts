@@ -120,6 +120,11 @@ import {
   analyzeGameplanSchema,
   getGameplanProgressTool,
   getProgressSchema,
+  // Code complexity and simplification
+  analyzeComplexity,
+  complexitySchema,
+  analyzeSimplify,
+  simplifySchema,
 } from './tools/index.js';
 import { registerAllPrompts } from './prompts/index.js';
 import { registerAllResources } from './resources/index.js';
@@ -581,6 +586,21 @@ export function createServer(): McpServer {
     wrapTool('midas_gameplan_progress', getGameplanProgressTool)
   );
 
+  // Code complexity and simplification
+  server.tool(
+    'midas_complexity',
+    'Analyze code complexity across the project. Returns cyclomatic complexity, nesting depth, function length metrics. Identifies hotspots that need refactoring.',
+    complexitySchema.shape,
+    wrapTool('midas_complexity', analyzeComplexity)
+  );
+
+  server.tool(
+    'midas_simplify',
+    'Analyze code for simplification opportunities. Detects deep nesting, long functions, duplication, dead code. Returns prioritized suggestions.',
+    simplifySchema.shape,
+    wrapTool('midas_simplify', analyzeSimplify)
+  );
+
   // Register prompts
   registerAllPrompts(server);
   logger.debug('Registered prompts');
@@ -589,6 +609,6 @@ export function createServer(): McpServer {
   registerAllResources(server);
   logger.debug('Registered resources');
 
-  logger.info('Midas MCP server ready', { tools: 35, prompts: 20, resources: 5 });
+  logger.info('Midas MCP server ready', { tools: 37, prompts: 20, resources: 5 });
   return server;
 }

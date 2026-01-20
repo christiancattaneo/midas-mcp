@@ -177,3 +177,11 @@ export {
   getGameplanProgressTool,
   getProgressSchema,
 } from './gameplan.js';
+
+// Code complexity analysis and simplification
+export {
+  analyzeComplexity,
+  complexitySchema,
+  analyzeSimplify,
+  simplifySchema,
+} from './complexity.js';
