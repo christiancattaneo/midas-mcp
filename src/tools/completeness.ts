@@ -145,6 +145,24 @@ function checkSecurity(projectPath: string): CategoryScore {
   const recommendations: string[] = [];
   let score = 0;
 
+  // Track detected security features
+  const detected = {
+    gitignore: false,
+    noSecrets: false,
+    noVulnerabilities: false,
+    rateLimit: false,
+    helmet: false,
+    cors: false,
+    inputValidation: false,
+    orm: false,
+    passwordHashing: false,
+    authHeaders: false,
+  };
+
+  // =========================================================================
+  // 1. SECRETS MANAGEMENT
+  // =========================================================================
+  
   // Check .gitignore
   const gitignorePath = join(projectPath, '.gitignore');
   if (existsSync(gitignorePath)) {
@@ -152,16 +170,16 @@ function checkSecurity(projectPath: string): CategoryScore {
     const patterns = ['.env', 'node_modules', '*.key', '*.pem', 'secrets'];
     const found = patterns.filter(p => content.includes(p));
     if (found.length >= 3) {
-      score += 25;
+      detected.gitignore = true;
       findings.push('.gitignore covers sensitive files');
     } else {
-      recommendations.push('Add more sensitive patterns to .gitignore');
+      recommendations.push('Add .env, *.key, *.pem to .gitignore');
     }
   } else {
     recommendations.push('Create .gitignore to exclude sensitive files');
   }
 
-  // Check for hardcoded secrets (basic check)
+  // Check for hardcoded secrets
   const secretPatterns = [
     /api[_-]?key\s*[:=]\s*['"][a-zA-Z0-9]{20,}/i,
     /secret\s*[:=]\s*['"][a-zA-Z0-9]{20,}/i,
@@ -199,13 +217,16 @@ function checkSecurity(projectPath: string): CategoryScore {
   scanForSecrets(projectPath);
 
   if (!foundSecrets) {
-    score += 25;
+    detected.noSecrets = true;
     findings.push('No hardcoded secrets detected');
   } else {
-    recommendations.push('Remove hardcoded secrets and use environment variables');
+    recommendations.push('Remove hardcoded secrets, use environment variables');
   }
 
-  // Check npm audit
+  // =========================================================================
+  // 2. DEPENDENCY VULNERABILITIES
+  // =========================================================================
+  
   try {
     const audit = execSync('npm audit --json 2>/dev/null || echo "{}"', {
       cwd: projectPath,
@@ -219,7 +240,7 @@ function checkSecurity(projectPath: string): CategoryScore {
     const high = vulns.high || 0;
 
     if (critical === 0 && high === 0) {
-      score += 25;
+      detected.noVulnerabilities = true;
       findings.push('No critical/high vulnerabilities');
     } else {
       findings.push(`${critical} critical, ${high} high vulnerabilities`);
@@ -227,30 +248,158 @@ function checkSecurity(projectPath: string): CategoryScore {
     }
   } catch {
     findings.push('npm audit skipped');
-    score += 10;  // Neutral
   }
 
-  // Check for security headers / rate limiting mentions
-  const srcDir = join(projectPath, 'src');
-  if (existsSync(srcDir)) {
+  // =========================================================================
+  // 3. SECURITY PATTERNS IN CODE
+  // =========================================================================
+  
+  function scanForPatterns(dir: string, depth = 0): void {
+    if (depth > 4) return;
     try {
-      const files = readdirSync(srcDir);
-      for (const f of files.slice(0, 50)) {  // Check more files
-        try {
-          const content = readFileSync(join(srcDir, f), 'utf-8');
-          if (content.includes('rate-limit') || content.includes('rateLimit') ||
-              content.includes('helmet') || content.includes('cors')) {
-            score += 25;
-            findings.push('Security middleware detected');
-            break;
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist') continue;
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          scanForPatterns(path, depth + 1);
+        } else if (['.ts', '.js', '.tsx', '.jsx'].includes(extname(entry.name))) {
+          try {
+            const content = readFileSync(path, 'utf-8');
+            
+            // Rate limiting
+            if (!detected.rateLimit && (
+              content.includes('rate-limit') || 
+              content.includes('rateLimit') ||
+              content.includes('express-rate-limit') ||
+              content.includes('@nestjs/throttler')
+            )) {
+              detected.rateLimit = true;
+              findings.push('Rate limiting detected');
+            }
+            
+            // Helmet (security headers)
+            if (!detected.helmet && content.includes('helmet')) {
+              detected.helmet = true;
+              findings.push('Helmet security headers detected');
+            }
+            
+            // CORS
+            if (!detected.cors && (
+              content.includes("cors(") || 
+              content.includes("'cors'") ||
+              content.includes('"cors"')
+            )) {
+              detected.cors = true;
+              findings.push('CORS configuration detected');
+            }
+            
+            // Input validation (zod, yup, joi, class-validator)
+            if (!detected.inputValidation && (
+              content.includes('from "zod"') ||
+              content.includes("from 'zod'") ||
+              content.includes('from "yup"') ||
+              content.includes("from 'yup'") ||
+              content.includes('from "joi"') ||
+              content.includes("from 'joi'") ||
+              content.includes('class-validator')
+            )) {
+              detected.inputValidation = true;
+              findings.push('Input validation library detected');
+            }
+            
+            // ORM (SQL injection prevention)
+            if (!detected.orm && (
+              content.includes('from "prisma"') ||
+              content.includes("from 'prisma'") ||
+              content.includes('@prisma/client') ||
+              content.includes('from "drizzle') ||
+              content.includes("from 'drizzle") ||
+              content.includes('typeorm') ||
+              content.includes('sequelize') ||
+              content.includes('knex') ||
+              content.includes('mongoose')
+            )) {
+              detected.orm = true;
+              findings.push('ORM/query builder detected (SQL injection prevention)');
+            }
+            
+            // Password hashing
+            if (!detected.passwordHashing && (
+              content.includes('bcrypt') ||
+              content.includes('argon2') ||
+              content.includes('scrypt')
+            )) {
+              detected.passwordHashing = true;
+              findings.push('Password hashing detected');
+            }
+            
+            // Authorization headers
+            if (!detected.authHeaders && (
+              content.includes('authorization') ||
+              content.includes('Authorization') ||
+              content.includes('bearer') ||
+              content.includes('Bearer') ||
+              content.includes('jwt') ||
+              content.includes('JWT')
+            )) {
+              detected.authHeaders = true;
+              findings.push('Authorization/JWT handling detected');
+            }
+            
+          } catch {
+            // Skip unreadable
           }
-        } catch {
-          // Skip
         }
       }
     } catch {
-      // Skip
+      // Skip inaccessible
     }
+  }
+  
+  scanForPatterns(projectPath);
+
+  // =========================================================================
+  // 4. SCORE CALCULATION
+  // =========================================================================
+  
+  // Secrets management (25 points)
+  if (detected.gitignore) score += 10;
+  if (detected.noSecrets) score += 15;
+  
+  // Vulnerabilities (15 points)
+  if (detected.noVulnerabilities) score += 15;
+  
+  // API protection (30 points)
+  if (detected.rateLimit) score += 10;
+  if (detected.helmet) score += 10;
+  if (detected.cors) score += 5;
+  if (detected.authHeaders) score += 5;
+  
+  // Injection prevention (20 points)
+  if (detected.inputValidation) score += 10;
+  if (detected.orm) score += 10;
+  
+  // Password security (10 points)
+  if (detected.passwordHashing) score += 10;
+
+  // =========================================================================
+  // 5. RECOMMENDATIONS FOR MISSING ITEMS
+  // =========================================================================
+  
+  if (!detected.rateLimit) {
+    recommendations.push('Add rate limiting (express-rate-limit for Node.js)');
+  }
+  if (!detected.helmet) {
+    recommendations.push('Add security headers with helmet middleware');
+  }
+  if (!detected.cors) {
+    recommendations.push('Configure CORS (avoid wildcard * in production)');
+  }
+  if (!detected.inputValidation) {
+    recommendations.push('Add input validation (zod, yup, or joi)');
+  }
+  if (!detected.orm && existsSync(join(projectPath, 'src'))) {
+    recommendations.push('Use ORM/query builder to prevent SQL injection');
   }
 
   return {

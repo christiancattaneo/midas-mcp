@@ -11,22 +11,37 @@ Every app needs these. Without them, nothing works.
 ### 1. Frontend
 What users see and touch. UI, buttons, screens, interactions.
 
-**Checklist:**
+**Responsiveness:**
 - [ ] Responsive design (mobile, tablet, desktop)
-- [ ] Accessibility basics (labels, contrast, keyboard nav)
+- [ ] Touch-friendly targets (44px minimum)
+
+**User Feedback:**
 - [ ] Loading states for async operations
 - [ ] Error states with recovery options
+- [ ] Success confirmations for actions
+
+**Quality:**
+- [ ] Accessibility basics (labels, contrast, keyboard nav)
 - [ ] Consistent component patterns
+- [ ] Form validation with clear error messages
 
 ### 2. Backend
 Server logic, APIs, business rules.
 
-**Checklist:**
-- [ ] RESTful or GraphQL API structure
-- [ ] Input validation on all endpoints
-- [ ] Proper HTTP status codes
+**API Structure:**
+- [ ] RESTful or GraphQL API design
+- [ ] Proper HTTP status codes (200, 201, 400, 401, 403, 404, 500)
+- [ ] Consistent response format (envelope pattern or JSON:API)
+
+**Input Handling:**
+- [ ] Input validation on all endpoints (zod, yup, joi)
+- [ ] Request body size limits
+- [ ] File upload validation (type, size)
+
+**Resilience:**
 - [ ] Rate limiting on public endpoints
-- [ ] Graceful error responses
+- [ ] Graceful error responses (no stack traces in production)
+- [ ] Request timeouts configured
 
 ### 3. Database
 Where data lives and persists.
@@ -41,12 +56,20 @@ Where data lives and persists.
 ### 4. Authentication
 Who users are, login/signup, permissions.
 
-**Checklist:**
-- [ ] Secure password hashing (bcrypt/argon2)
-- [ ] Session/token management
-- [ ] Password reset flow
-- [ ] Account lockout after failed attempts
+**Password Security:**
+- [ ] Secure password hashing (bcrypt/argon2, never MD5/SHA1)
+- [ ] Salt per password (automatic with bcrypt/argon2)
+- [ ] Minimum password requirements enforced
+
+**Session Management:**
+- [ ] JWT or session tokens with expiration
 - [ ] Secure cookie settings (httpOnly, secure, sameSite)
+- [ ] Token refresh mechanism
+
+**Account Protection:**
+- [ ] Account lockout after failed attempts
+- [ ] Password reset flow with expiring tokens
+- [ ] Email verification on signup
 
 ---
 
@@ -103,12 +126,29 @@ Proving it works before shipping.
 ### 9. Security
 Protection from attacks, data safety.
 
-**Checklist:**
-- [ ] SQL injection prevention (parameterized queries)
-- [ ] XSS prevention (output encoding)
-- [ ] CSRF protection
+**API Protection:**
+- [ ] Rate limiting on endpoints (express-rate-limit, etc.)
+- [ ] Authorization headers required on protected routes
+- [ ] IP block list for abuse prevention (public APIs)
+- [ ] CORS configured properly (not wildcard in production)
+- [ ] Security middleware enabled (helmet for Node.js)
+- [ ] File upload limits set (size, type validation)
+
+**Injection Prevention:**
+- [ ] SQL injection prevention (ORM or parameterized queries)
+- [ ] XSS prevention (output encoding, CSP headers)
+- [ ] CSRF protection (tokens on state-changing requests)
+- [ ] Input validation on frontend and backend (zod, yup, joi)
+
+**Secrets Management:**
 - [ ] Secrets not in code or logs
-- [ ] Dependencies audited for vulnerabilities
+- [ ] Environment variables for all credentials
+- [ ] API keys rotatable without deploy
+
+**Dependencies:**
+- [ ] Dependencies audited for vulnerabilities (npm audit)
+- [ ] Lock file committed (package-lock.json)
+- [ ] Automated security updates (Dependabot, Renovate)
 
 ### 10. Error Handling
 Graceful failures, logging, recovery.
