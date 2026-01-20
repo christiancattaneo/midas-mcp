@@ -279,3 +279,125 @@ interface StepExecution {
 | Add VERIFY after DEBUG | Medium - confirms completion | Low |
 
 Would you like me to draft the updated `PHASE_INFO` structure with these changes? Switch to agent mode and I can implement it.
+
+
+[5 tools called]
+
+This is a profound question about the **meta-layer** of development. Let me analyze what exists and synthesize options.
+
+## Current Architecture
+
+| Layer | What It Does | Gap |
+|-------|--------------|-----|
+| **Phase/Step** | Tactical position (BUILD→IMPLEMENT) | Tells you WHERE, not WHY |
+| **Gameplan** | Task checklist | Convergent, not divergent |
+| **Brainlift** | Domain knowledge dump | Static, captured once |
+| **Analyzer** | "What's next?" | Reactive, not visionary |
+
+**The missing layer**: A **vision keeper** that asks "Is this still the most transformative path?"
+
+## Research Synthesis
+
+From industry patterns and AI agent research:
+
+1. **Teleological agents** (goal-directed) outperform reactive agents when goals can shift mid-execution
+2. **North Star prompts** periodically re-evaluate: "Does this still serve the ultimate purpose?"
+3. **Divergent checkpoints** ask boundary-pushing questions that might invalidate current work (scary but valuable)
+
+## Proposed: The "Oracle" Layer
+
+A periodic high-level prompt that:
+
+```
+┌─ ORACLE CHECK ──────────────────────────────────────┐
+│ Vision: "Democratize AI coding for non-engineers"  │
+│                                                     │
+│ Current trajectory: Building syntax highlighter     │
+│                                                     │
+│ ⚡ Questions:                                       │
+│ • Is this the highest-leverage work right now?     │
+│ • What would 10x the impact of this project?       │
+│ • What assumption, if wrong, invalidates this?     │
+│ • Is there a simpler path to the vision?           │
+└─────────────────────────────────────────────────────┘
+```
+
+### Three Design Options
+
+**Option A: Vision Doc + Periodic Oracle Prompt**
+- New `docs/vision.md` - the transformative goal (stable)
+- Oracle prompt triggers every N tasks or on demand
+- Asks: "Given vision X, is current work Y optimal?"
+
+**Option B: Embedded in Analyzer**
+- Add to analysis: "Vision alignment score: 72%"
+- When < 50%, suggest: "Consider pivoting to higher-leverage work"
+- Passive, always running
+
+**Option C: Separate "Diverge" Mode**
+- Hotkey `[d]` in TUI: "Diverge - challenge assumptions"
+- Enters a Socratic dialogue:
+  - "What's the ultimate goal?"
+  - "What would make this 10x more valuable?"
+  - "What's the riskiest assumption?"
+- Outputs either: "Stay the course" or "Consider: [alternative]"
+
+## Highest-IQ Implementation
+
+I'd recommend **Option A + C combined**:
+
+1. **vision.md** - Captures the north star (1 paragraph max)
+2. **Oracle prompt** (MCP prompt) - "Challenge my current trajectory"
+3. **TUI integration** - `[o]` Oracle: shows vision + asks if current work aligns
+
+### vision.md Example
+
+```markdown
+# Vision
+
+Create something so valuable that users can't imagine working without it.
+The test: Would someone pay for this even if alternatives existed?
+
+## Current Bet
+[What we're betting will achieve this]
+
+## Kill Conditions  
+[If X happens, we should pivot]
+```
+
+### Oracle Prompt Logic
+
+```typescript
+// Trigger conditions:
+// 1. Every 5 gameplan tasks completed
+// 2. On-demand via 'o' key
+// 3. When stuck for > 30 minutes
+
+const oraclePrompt = `
+Given this vision: ${vision}
+And current work: ${currentTask}
+
+Ask yourself:
+1. Does this directly serve the vision, or is it adjacent?
+2. What's the fastest path to something users would pay for?
+3. What am I avoiding that might be more important?
+4. If I had to ship tomorrow, what would I cut?
+
+Respond with: CONTINUE, PIVOT, or SIMPLIFY with reasoning.
+`;
+```
+
+## My Recommendation
+
+Start minimal:
+
+1. Add `docs/vision.md` as a first-class planning doc (like brainlift)
+2. Add one Oracle prompt in `src/prompts/oracle.ts`
+3. Show vision summary in TUI info screen
+4. Add `[o]` key to trigger Oracle reflection
+
+This keeps the checklist (convergent execution) while adding periodic divergent thinking.
+
+---
+
+Want me to sketch out the implementation? You're in ask mode - switch to agent mode if you want me to build it.

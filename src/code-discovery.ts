@@ -14,6 +14,14 @@ import { join, extname, basename, relative } from 'path';
 import { sanitizePath } from './security.js';
 import { estimateTokens } from './context.js';
 import { logger } from './logger.js';
+import { 
+  loadIndex, 
+  saveIndex, 
+  getCachedMetadata, 
+  indexFile, 
+  hasFileChanged,
+  type FileMetadata 
+} from './file-index.js';
 import type { Phase } from './state/phase.js';
 
 // ============================================================================
@@ -169,6 +177,9 @@ export function discoverSourceFiles(
   const safePath = sanitizePath(projectPath);
   const files: SourceFile[] = [];
   
+  // Load file index for caching
+  const fileIndex = loadIndex(safePath);
+  
   function scan(dir: string, depth: number = 0): void {
     if (depth > 10) return; // Prevent infinite recursion
     if (!existsSync(dir)) return;
@@ -196,6 +207,9 @@ export function discoverSourceFiles(
             
             // Include source files and config files
             if (ALL_SOURCE_EXTENSIONS.has(ext) || isConfigFile(entry)) {
+              // Check if we have cached metadata
+              const cached = getCachedMetadata(relativePath, safePath);
+              
               const file: SourceFile = {
                 path: relativePath,
                 absolutePath: fullPath,
@@ -203,8 +217,15 @@ export function discoverSourceFiles(
                 extension: ext,
                 sizeBytes: stat.size,
                 lastModified: stat.mtimeMs,
-                relevanceScore: 0,
-                reasons: [],
+                relevanceScore: cached?.relevanceScore || 0,
+                reasons: cached?.reasons || [],
+                // Use cached line count and tokens if available and file unchanged
+                lineCount: (!hasFileChanged(fullPath, fileIndex, relativePath) && cached?.lineCount) 
+                  ? cached.lineCount 
+                  : undefined,
+                tokenEstimate: (!hasFileChanged(fullPath, fileIndex, relativePath) && cached?.tokenEstimate) 
+                  ? cached.tokenEstimate 
+                  : undefined,
               };
               
               // Calculate relevance score
@@ -226,7 +247,40 @@ export function discoverSourceFiles(
   // Sort by relevance score (highest first)
   files.sort((a, b) => b.relevanceScore - a.relevanceScore);
   
+  // Update index with discovered files (in background, non-blocking)
+  updateIndexFromDiscovery(files, safePath, fileIndex);
+  
   return files;
+}
+
+/**
+ * Update file index with discovery results (lightweight, async-like)
+ */
+function updateIndexFromDiscovery(
+  files: SourceFile[],
+  projectPath: string,
+  index: ReturnType<typeof loadIndex>
+): void {
+  let updated = false;
+  
+  for (const file of files) {
+    // Only update if we don't have metadata or file changed
+    if (!index.files[file.path] || hasFileChanged(file.absolutePath, index, file.path)) {
+      const metadata = indexFile(file.path, projectPath);
+      if (metadata) {
+        // Preserve relevance score from discovery
+        metadata.relevanceScore = file.relevanceScore;
+        metadata.reasons = file.reasons;
+        index.files[file.path] = metadata;
+        updated = true;
+      }
+    }
+  }
+  
+  if (updated) {
+    index.lastFullScan = Date.now();
+    saveIndex(projectPath, index);
+  }
 }
 
 function isConfigFile(filename: string): boolean {
