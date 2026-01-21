@@ -32,7 +32,7 @@ import {
 } from './tracker.js';
 import { getJournalEntries } from './tools/journal.js';
 import { showExample } from './tools/examples.js';
-import { checkScopeCreep, type ScopeMetrics } from './tools/scope.js';
+import { checkScopeCreep, detectProjectType, type ScopeMetrics } from './tools/scope.js';
 import { getGameplanProgress } from './gameplan-tracker.js';
 import { getHotfixStatus } from './tools/hotfix.js';
 import { startSession, endSession, recordPromptCopied, recordPhaseChange, loadMetrics } from './metrics.js';
@@ -549,11 +549,15 @@ function drawUI(state: TUIState, projectPath: string): string {
     lines.push(emptyRow());
     
     lines.push(`${cyan}╠${hLine}╣${reset}`);
-    lines.push(row(`${bold}Now grow your project:${reset}`));
+    
+    // Detect project type for relevant checklist
+    const projectType = detectProjectType({ projectPath }).type;
+    const typeLabel = projectType !== 'unknown' ? ` (${projectType})` : '';
+    lines.push(row(`${bold}Now grow your ${projectType}:${reset}`));
     lines.push(emptyRow());
     
-    // Show the 8-step graduation checklist
-    const checklist = getGraduationChecklist();
+    // Show project-type-specific graduation checklist (max 10 steps)
+    const checklist = getGraduationChecklist(projectType);
     for (let i = 0; i < checklist.length; i++) {
       const item = checklist[i];
       lines.push(row(`${yellow}${i + 1}.${reset} ${bold}${item.name.toUpperCase()}${reset} - ${item.action}`));
@@ -1472,10 +1476,11 @@ export async function runInteractive(): Promise<void> {
       // In GROW phase, copy the graduation checklist
       if (tuiState.analysis?.currentPhase?.phase === 'GROW') {
         try {
-          const checklist = formatGraduationChecklist();
+          const projectType = detectProjectType({ projectPath }).type;
+          const checklist = formatGraduationChecklist(projectType);
           await copyToClipboard(checklist);
-          tuiState.message = `${green}OK${reset} Graduation checklist copied!`;
-          logEvent(projectPath, { type: 'prompt_copied', message: 'Graduation checklist copied' });
+          tuiState.message = `${green}OK${reset} Graduation checklist (${projectType}) copied!`;
+          logEvent(projectPath, { type: 'prompt_copied', message: `Graduation checklist (${projectType}) copied` });
         } catch {
           tuiState.message = `${yellow}!${reset} Could not copy.`;
         }

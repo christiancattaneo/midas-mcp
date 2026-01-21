@@ -397,21 +397,106 @@ export interface GraduationItem {
   detail: string;
 }
 
+// Project-type-specific graduation checklists (max 10 steps each)
+type ProjectType = 'cli' | 'library' | 'web-app' | 'api' | 'mobile' | 'monorepo' | 'unknown';
+
+const PROJECT_CHECKLISTS: Record<ProjectType, GraduationItem[]> = {
+  'cli': [
+    { key: 'NPM', name: 'Publish', action: 'Publish to npm with proper keywords', detail: 'npm publish - make it discoverable with good keywords and description' },
+    { key: 'README', name: 'Docs', action: 'Add usage examples and GIFs to README', detail: 'Show, don\'t tell - terminal screenshots/GIFs convert better' },
+    { key: 'HOMEBREW', name: 'Homebrew', action: 'Create a Homebrew formula', detail: 'Mac users expect `brew install` - it\'s table stakes for CLI tools' },
+    { key: 'ANNOUNCE', name: 'Announce', action: 'Post to r/commandline, HN, dev.to', detail: 'CLI users hang out in tech communities - share your tool' },
+    { key: 'COMPARE', name: 'Compare', action: 'Add "vs alternatives" section', detail: 'Why use yours over existing tools? Be honest about tradeoffs' },
+    { key: 'ALIAS', name: 'Alias', action: 'Add shell completion and aliases', detail: 'Power users expect tab completion - it\'s a quality signal' },
+    { key: 'CHANGELOG', name: 'Changelog', action: 'Start a CHANGELOG.md', detail: 'Users want to know what changed before upgrading' },
+    { key: 'SPONSOR', name: 'Sponsor', action: 'Add GitHub Sponsors', detail: 'If people use it daily, some will pay - make it easy' },
+  ],
+  'library': [
+    { key: 'NPM', name: 'Publish', action: 'Publish to npm with types', detail: 'Include TypeScript types - it\'s expected in 2024+' },
+    { key: 'DOCS', name: 'Docs', action: 'Generate API docs from JSDoc', detail: 'Use typedoc or similar - auto-generated docs stay current' },
+    { key: 'EXAMPLES', name: 'Examples', action: 'Add /examples folder with use cases', detail: 'Real code > documentation - show how to use it' },
+    { key: 'BUNDLE', name: 'Bundle', action: 'Check bundle size on bundlephobia', detail: 'Library size matters - document and optimize it' },
+    { key: 'COMPARE', name: 'Compare', action: 'Document vs alternatives', detail: 'Why choose this over X? Help users decide quickly' },
+    { key: 'BADGES', name: 'Badges', action: 'Add npm version, downloads, tests badges', detail: 'Badges signal quality and maintenance' },
+    { key: 'ANNOUNCE', name: 'Announce', action: 'Post to relevant Discord/Slack', detail: 'Find where your target developers hang out' },
+    { key: 'CHANGELOG', name: 'Changelog', action: 'Follow semantic versioning', detail: 'Breaking changes need major bumps - respect your users' },
+  ],
+  'web-app': [
+    { key: 'ANALYTICS', name: 'Analytics', action: 'Set up Plausible/Posthog', detail: 'Know your users - privacy-friendly analytics exist' },
+    { key: 'SEO', name: 'SEO', action: 'Add meta tags, OG images, sitemap', detail: 'First impressions in search results and shares matter' },
+    { key: 'LAUNCH', name: 'Launch', action: 'Post to Product Hunt, IndieHackers', detail: 'Web apps get discovered on product directories' },
+    { key: 'FEEDBACK', name: 'Feedback', action: 'Add feedback widget (Canny, email)', detail: 'Make it trivial for users to tell you what\'s broken' },
+    { key: 'PERF', name: 'Performance', action: 'Run Lighthouse, fix scores', detail: 'Slow sites lose users - aim for 90+ scores' },
+    { key: 'A11Y', name: 'Accessibility', action: 'Run axe, fix critical issues', detail: 'Accessibility is legal requirement in many places' },
+    { key: 'SOCIAL', name: 'Social', action: 'Create demo video/screenshots', detail: 'Visual content gets shared - make it easy to share' },
+    { key: 'ITERATE', name: 'Iterate', action: 'Ship one user-requested feature', detail: 'Show you listen - fastest way to build loyalty' },
+    { key: 'WAITLIST', name: 'Waitlist', action: 'Add email capture for updates', detail: 'Build an audience for future launches' },
+    { key: 'PRICING', name: 'Pricing', action: 'Add pricing page (even if free)', detail: 'Clarity on cost/value - even free products need this' },
+  ],
+  'api': [
+    { key: 'DOCS', name: 'API Docs', action: 'Generate OpenAPI/Swagger docs', detail: 'Interactive API docs are expected - use Swagger UI or similar' },
+    { key: 'SDK', name: 'SDK', action: 'Create JS/Python client SDK', detail: 'Make integration trivial - SDKs reduce friction' },
+    { key: 'AUTH', name: 'Auth', action: 'Document authentication flow', detail: 'Clear auth docs prevent 90% of support questions' },
+    { key: 'RATE', name: 'Rate Limits', action: 'Document rate limits clearly', detail: 'Surprise rate limits frustrate developers' },
+    { key: 'STATUS', name: 'Status', action: 'Add status page (Betterstack/Upptime)', detail: 'Show uptime history - builds trust with API consumers' },
+    { key: 'ERRORS', name: 'Errors', action: 'Document error codes and handling', detail: 'Good error messages save hours of debugging' },
+    { key: 'POSTMAN', name: 'Postman', action: 'Create Postman collection', detail: 'Developers expect to test before integrating' },
+    { key: 'ANNOUNCE', name: 'Announce', action: 'Post to API directories', detail: 'RapidAPI, ProgrammableWeb, relevant Discords' },
+    { key: 'CHANGELOG', name: 'Changelog', action: 'Document breaking changes', detail: 'API consumers need time to migrate - announce early' },
+  ],
+  'mobile': [
+    { key: 'STORE', name: 'App Store', action: 'Submit to App Store/Play Store', detail: 'Follow guidelines carefully - rejections delay launches' },
+    { key: 'ASO', name: 'ASO', action: 'Optimize title, keywords, screenshots', detail: 'App Store Optimization is SEO for mobile' },
+    { key: 'SCREENS', name: 'Screenshots', action: 'Create compelling store screenshots', detail: 'Screenshots sell apps - invest time in them' },
+    { key: 'VIDEO', name: 'Preview', action: 'Add app preview video', detail: 'Motion shows value better than static images' },
+    { key: 'REVIEW', name: 'Reviews', action: 'Prompt for reviews at right moment', detail: 'Happy path completion = good time to ask for review' },
+    { key: 'CRASH', name: 'Crash', action: 'Set up Sentry/Crashlytics', detail: 'Know when your app crashes before 1-star reviews' },
+    { key: 'PUSH', name: 'Push', action: 'Implement push notifications', detail: 'Re-engagement drives retention - use wisely' },
+    { key: 'DEEP', name: 'Deep Links', action: 'Add deep linking for sharing', detail: 'Users share content - make links open in-app' },
+    { key: 'BETA', name: 'Beta', action: 'Set up TestFlight/Beta testing', detail: 'Get feedback before wide release' },
+    { key: 'ITERATE', name: 'Iterate', action: 'Ship update within 2 weeks', detail: 'Active updates signal maintenance - algorithms reward it' },
+  ],
+  'monorepo': [
+    { key: 'DOCS', name: 'Docs', action: 'Document package relationships', detail: 'New contributors need to understand the structure' },
+    { key: 'PUBLISH', name: 'Publish', action: 'Set up changesets or lerna publish', detail: 'Coordinated versioning prevents dependency hell' },
+    { key: 'CI', name: 'CI', action: 'Set up affected-only CI', detail: 'Only test/build what changed - saves CI minutes' },
+    { key: 'CONTRIB', name: 'Contribute', action: 'Write CONTRIBUTING.md', detail: 'Monorepos are complex - help contributors navigate' },
+    { key: 'ANNOUNCE', name: 'Announce', action: 'Announce each package separately', detail: 'Each package may have different audiences' },
+    { key: 'EXAMPLES', name: 'Examples', action: 'Add example apps using packages', detail: 'Show how packages work together' },
+    { key: 'UPGRADE', name: 'Upgrade', action: 'Document upgrade paths', detail: 'Breaking changes across packages need coordination' },
+    { key: 'SPONSOR', name: 'Sponsor', action: 'Set up sponsorship', detail: 'Monorepo maintenance is significant - make it sustainable' },
+  ],
+  'unknown': [
+    { key: 'ANNOUNCE', name: 'Announce', action: 'Post to 3 communities', detail: 'Reddit, Discord, Twitter, Hacker News - wherever your users hang out' },
+    { key: 'NETWORK', name: 'Network', action: 'DM 10 people who would find this useful', detail: 'Personal outreach converts 10x better than public posts' },
+    { key: 'FEEDBACK', name: 'Feedback', action: 'Ask 5 users: what\'s confusing? what\'s missing?', detail: 'Real users reveal blind spots you can\'t see' },
+    { key: 'PROOF', name: 'Proof', action: 'Get 3 testimonials, screenshot your metrics', detail: 'Social proof compounds - collect it early' },
+    { key: 'ITERATE', name: 'Iterate', action: 'Ship one improvement based on feedback', detail: 'Show users you listen - fastest way to build loyalty' },
+    { key: 'CONTENT', name: 'Content', action: 'Write "what I learned building X" post', detail: 'Teaching builds authority and attracts users who trust you' },
+    { key: 'MEASURE', name: 'Measure', action: 'Set up analytics for your key metric', detail: 'Users, downloads, revenue - you can\'t improve what you don\'t measure' },
+    { key: 'AUTOMATE', name: 'Automate', action: 'Set up one recurring growth loop', detail: 'Newsletter, social schedule, referral system - consistency compounds' },
+  ],
+};
+
 /**
- * Get the graduation checklist for projects that have shipped
+ * Get the graduation checklist for projects that have shipped.
+ * Dynamically selects checklist based on project type.
+ * 
+ * @param projectType - Detected project type (cli, library, web-app, api, mobile, monorepo)
  */
-export function getGraduationChecklist(): GraduationItem[] {
-  const growInfo = PHASE_INFO.GROW as { checklist?: GraduationItem[] };
-  return growInfo.checklist || [];
+export function getGraduationChecklist(projectType?: ProjectType): GraduationItem[] {
+  const type = projectType || 'unknown';
+  return PROJECT_CHECKLISTS[type] || PROJECT_CHECKLISTS['unknown'];
 }
 
 /**
  * Format the graduation checklist as copyable text
  */
-export function formatGraduationChecklist(): string {
-  const items = getGraduationChecklist();
+export function formatGraduationChecklist(projectType?: ProjectType): string {
+  const items = getGraduationChecklist(projectType);
+  const typeLabel = projectType && projectType !== 'unknown' ? ` (${projectType})` : '';
   const lines = [
-    '🎉 YOU SHIPPED! Now grow your project:',
+    `🎉 YOU SHIPPED${typeLabel}! Now grow your project:`,
     '',
     ...items.map((item, i) => `${i + 1}. ${item.name.toUpperCase()} - ${item.action}`),
     '',
