@@ -297,6 +297,110 @@ export interface ProjectAnalysis {
   techStack: string[];
 }
 
+// ============================================================================
+// DETERMINISTIC PROGRESS CALCULATION
+// ============================================================================
+
+import { getGameplanProgress } from './gameplan-tracker.js';
+
+export interface DeterministicProgress {
+  percentage: number;       // 0-100, calculated from artifacts
+  breakdown: {
+    planning: number;       // 0-25 based on docs
+    implementation: number; // 0-50 based on gameplan tasks
+    quality: number;        // 0-25 based on tests/gates
+  };
+  label: string;           // Human-readable status
+}
+
+/**
+ * Calculate progress deterministically from artifacts, not AI assessment.
+ * 
+ * Formula:
+ * - PLAN phase: planning docs progress (brainlift, prd, gameplan)
+ * - BUILD phase: gameplan task completion
+ * - SHIP phase: gates + preflight checks
+ * - GROW phase: deployment + monitoring artifacts
+ */
+export function calculateDeterministicProgress(projectPath: string): DeterministicProgress {
+  const safePath = sanitizePath(projectPath);
+  const state = loadState(safePath);
+  const phase = state.current.phase;
+  
+  // Discover artifacts
+  const docsResult = discoverDocsSync(safePath);
+  const hasBrainlift = !!docsResult.brainlift;
+  const hasPrd = !!docsResult.prd;
+  const hasGameplan = !!docsResult.gameplan;
+  const hasCursorrules = existsSync(join(safePath, '.cursorrules'));
+  
+  // Gates status
+  const gatesStatus = getGatesStatus(safePath);
+  const gatesScore = gatesStatus.allPass ? 25 : 
+                     gatesStatus.failing.length === 1 ? 15 :
+                     gatesStatus.failing.length === 2 ? 5 : 0;
+  
+  // Gameplan progress
+  const gameplan = getGameplanProgress(safePath);
+  const gameplanScore = Math.round((gameplan.actual / 100) * 50);
+  
+  // Planning docs score (0-25)
+  let planningScore = 0;
+  if (hasBrainlift) planningScore += 6;
+  if (hasPrd) planningScore += 6;
+  if (hasGameplan) planningScore += 8;
+  if (hasCursorrules) planningScore += 5;
+  
+  // Calculate based on phase
+  let percentage: number;
+  let label: string;
+  
+  switch (phase) {
+    case 'IDLE':
+      percentage = 0;
+      label = 'Not started';
+      break;
+      
+    case 'PLAN':
+      // In PLAN, we care about planning artifacts
+      percentage = planningScore;
+      label = `${planningScore}/25 planning`;
+      break;
+      
+    case 'BUILD':
+      // In BUILD, planning is done (25) + gameplan progress (0-50)
+      percentage = 25 + gameplanScore;
+      label = `${gameplan.actual}% implemented`;
+      break;
+      
+    case 'SHIP':
+      // In SHIP, planning (25) + implementation mostly done (40) + quality gates
+      percentage = 65 + gatesScore;
+      label = gatesStatus.allPass ? 'Ready to ship' : `Fixing: ${gatesStatus.failing.join(', ')}`;
+      break;
+      
+    case 'GROW':
+      // In GROW, we're at 90-100%
+      percentage = 90 + gatesScore / 2.5;  // Gates add up to 10 more points
+      label = 'Live & iterating';
+      break;
+      
+    default:
+      percentage = 0;
+      label = 'Unknown';
+  }
+  
+  return {
+    percentage: Math.min(100, Math.round(percentage)),
+    breakdown: {
+      planning: planningScore,
+      implementation: gameplanScore,
+      quality: gatesScore,
+    },
+    label,
+  };
+}
+
 export async function analyzeProject(projectPath: string): Promise<ProjectAnalysis> {
   const safePath = sanitizePath(projectPath);
   const apiKey = getApiKey();

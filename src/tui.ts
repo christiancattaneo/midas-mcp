@@ -15,7 +15,7 @@ function debugLog(msg: string): void {
 import { loadState, saveState, setPhase, type Phase, PHASE_INFO, getGraduationChecklist, formatGraduationChecklist } from './state/phase.js';
 import { hasApiKey, ensureApiKey, getSkillLevel } from './config.js';
 import { logEvent, watchEvents, type MidasEvent } from './events.js';
-import { analyzeProject, analyzeProjectStreaming, analyzeResponse, type ProjectAnalysis, type AnalysisProgress } from './analyzer.js';
+import { analyzeProject, analyzeProjectStreaming, analyzeResponse, calculateDeterministicProgress, type ProjectAnalysis, type AnalysisProgress } from './analyzer.js';
 import { saveToJournal } from './tools/journal.js';
 import { 
   getActivitySummary, 
@@ -671,32 +671,29 @@ function drawUI(state: TUIState, projectPath: string): string {
   lines.push(row(phaseBarText));
   lines.push(emptyRow());
 
-  // Current phase with confidence
-  const confColor = a.confidence >= 70 ? green : a.confidence >= 40 ? yellow : red;
-  lines.push(row(`${bold}PHASE:${reset} ${phaseLabel(a.currentPhase)}  ${confColor}${a.confidence}%${reset}`));
+  // Current phase with deterministic progress (calculated from artifacts, not AI)
+  const progress = calculateDeterministicProgress(projectPath);
+  const pct = progress.percentage;
+  const pctColor = pct >= 75 ? green : pct >= 40 ? yellow : red;
+  
+  // Progress bar (always shown, reflects overall project progress)
+  const barWidth = 20;
+  const filled = Math.round((pct / 100) * barWidth);
+  const empty = barWidth - filled;
+  const bar = `${green}${'█'.repeat(filled)}${reset}${dim}${'░'.repeat(empty)}${reset}`;
+  
+  lines.push(row(`${bold}PHASE:${reset} ${phaseLabel(a.currentPhase)}  [${bar}] ${pctColor}${pct}%${reset}`));
+  lines.push(row(`${dim}${progress.label}${reset}`));
   lines.push(emptyRow());
   
-  // During BUILD: Show gameplan task completion (the real progress)
+  // During BUILD/SHIP: Show next gameplan task hint
   if (a.currentPhase.phase === 'BUILD' || a.currentPhase.phase === 'SHIP') {
     const gameplan = getGameplanProgress(projectPath);
-    if (gameplan.documented > 0 || gameplan.actual > 0) {
-      // Use actual implementation progress (more accurate than just checkboxes)
-      const pct = gameplan.actual;
-      const barWidth = 20;
-      const filled = Math.round((pct / 100) * barWidth);
-      const empty = barWidth - filled;
-      const bar = `${green}${'█'.repeat(filled)}${reset}${dim}${'░'.repeat(empty)}${reset}`;
-      
-      // Show next task if available
-      const nextHint = gameplan.nextSuggested 
-        ? `  ${dim}→ ${gameplan.nextSuggested.slice(0, 25)}${gameplan.nextSuggested.length > 25 ? '...' : ''}${reset}`
-        : '';
-      
-      lines.push(row(`${bold}Gameplan:${reset} [${bar}] ${pct}%${nextHint}`));
-    } else {
-      lines.push(row(`${dim}Gameplan: No tasks yet (add: - [ ] Task)${reset}`));
+    if (gameplan.nextSuggested) {
+      const nextHint = `Next: ${gameplan.nextSuggested.slice(0, 45)}${gameplan.nextSuggested.length > 45 ? '...' : ''}`;
+      lines.push(row(`${dim}${nextHint}${reset}`));
+      lines.push(emptyRow());
     }
-    lines.push(emptyRow());
   }
 
   lines.push(`${cyan}╠${hLine}╣${reset}`);
