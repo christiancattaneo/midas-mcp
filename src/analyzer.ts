@@ -4,7 +4,7 @@ import { readdirSync, readFileSync, existsSync } from 'fs';
 import { join, extname } from 'path';
 import type { Phase, PlanStep, BuildStep, ShipStep, GrowStep } from './state/phase.js';
 import { loadState } from './state/phase.js';
-import { updateTracker, getActivitySummary, loadTracker, getGatesStatus, getUnresolvedErrors, markAnalysisComplete } from './tracker.js';
+import { updateTracker, getActivitySummary, loadTracker, getGatesStatus, getUnresolvedErrors, markAnalysisComplete, maybeAutoAdvance } from './tracker.js';
 import { getJournalEntries } from './tools/journal.js';
 import { sanitizePath, limitLength, LIMITS } from './security.js';
 import { logger } from './logger.js';
@@ -492,6 +492,18 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
 
   // Get gates status (currentState, tracker, unresolvedErrors already loaded above)
   const gatesStatus = getGatesStatus(safePath);
+  
+  // Auto-advance phase if gates pass (e.g., BUILD:TEST → BUILD:DEBUG when tests pass)
+  // This ensures the AI suggests the right next action instead of re-suggesting tests
+  if (gatesStatus.allPass) {
+    const advanced = maybeAutoAdvance(safePath);
+    if (advanced.advanced) {
+      // Reload state after advancement
+      const newState = loadState(safePath);
+      currentState.current = newState.current;
+      logger.debug('Auto-advanced phase', { from: advanced.from, to: advanced.to });
+    }
+  }
   
   // Build error context - show all errors with full messages
   const errorContext = unresolvedErrors.length > 0
