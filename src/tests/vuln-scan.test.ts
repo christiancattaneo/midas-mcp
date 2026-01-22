@@ -590,6 +590,110 @@ export const config = {
   });
 });
 
+describe('vulnScan - Exclusion Patterns', () => {
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+  });
+  
+  afterEach(() => {
+    try {
+      rmSync(TEST_DIR, { recursive: true, force: true });
+    } catch {}
+  });
+  
+  it('should exclude test files by default', () => {
+    const projectPath = setupProject({
+      'src/index.ts': 'const x = 1;',
+      'src/index.test.ts': `
+const apiKey = "sk-abcdefghijklmnopqrstuvwxyz123456789012345678";
+`,
+    });
+    
+    const result = vulnScan({ projectPath });
+    
+    // Test file should be excluded, no vulns found
+    assert.equal(result.vulnerabilities.length, 0);
+  });
+  
+  it('should include test files when excludeTests: false', () => {
+    const projectPath = setupProject({
+      'src/index.test.ts': `
+const apiKey = "sk-abcdefghijklmnopqrstuvwxyz123456789012345678";
+`,
+    });
+    
+    const result = vulnScan({ projectPath, excludeTests: false });
+    
+    // Test file should be scanned
+    assert.ok(result.vulnerabilities.length > 0, 'Should find vulns in test files');
+  });
+  
+  it('should exclude __tests__ directories by default', () => {
+    const projectPath = setupProject({
+      'src/__tests__/auth.ts': `
+const apiKey = "sk-abcdefghijklmnopqrstuvwxyz123456789012345678";
+`,
+    });
+    
+    const result = vulnScan({ projectPath });
+    
+    assert.equal(result.vulnerabilities.length, 0);
+  });
+  
+  it('should exclude .spec.ts files by default', () => {
+    const projectPath = setupProject({
+      'src/auth.spec.ts': `
+const apiKey = "sk-abcdefghijklmnopqrstuvwxyz123456789012345678";
+`,
+    });
+    
+    const result = vulnScan({ projectPath });
+    
+    assert.equal(result.vulnerabilities.length, 0);
+  });
+  
+  it('should respect custom excludePatterns', () => {
+    const projectPath = setupProject({
+      'src/generated/api.ts': `
+const apiKey = "sk-abcdefghijklmnopqrstuvwxyz123456789012345678";
+`,
+    });
+    
+    const result = vulnScan({ projectPath, excludePatterns: ['generated'] });
+    
+    assert.equal(result.vulnerabilities.length, 0);
+  });
+  
+  it('should respect midas-ignore inline comment', () => {
+    const projectPath = setupProject({
+      'src/config.ts': `
+// midas-ignore: test fixture
+const testApiKey = "sk-abcdefghijklmnopqrstuvwxyz123456789012345678";
+`,
+    });
+    
+    const result = vulnScan({ projectPath });
+    
+    assert.equal(result.vulnerabilities.length, 0);
+  });
+  
+  it('should detect vulns on lines without midas-ignore', () => {
+    const projectPath = setupProject({
+      'src/config.ts': `
+// midas-ignore
+const ignored = "sk-abcdefghijklmnopqrstuvwxyz123456789012345678";
+const notIgnored = "sk-realapikeynotignored1234567890123456789012";
+`,
+    });
+    
+    const result = vulnScan({ projectPath });
+    
+    // Only the non-ignored line should be detected
+    assert.equal(result.vulnerabilities.length, 1);
+    assert.ok(result.vulnerabilities[0].code.includes('notIgnored'));
+  });
+});
+
 describe('vulnScan - Edge Cases', () => {
   beforeEach(() => {
     mkdirSync(TEST_DIR, { recursive: true });

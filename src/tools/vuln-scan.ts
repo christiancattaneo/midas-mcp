@@ -25,9 +25,34 @@ export const vulnScanSchema = z.object({
   projectPath: z.string().optional().describe('Path to project root'),
   checkRegistry: z.boolean().optional().describe('Check npm registry for slopsquatting (requires network)'),
   severity: z.enum(['all', 'critical', 'high', 'medium']).optional().describe('Minimum severity to report'),
+  excludeTests: z.boolean().optional().describe('Exclude test files (default: true)'),
+  excludePatterns: z.array(z.string()).optional().describe('Additional glob patterns to exclude'),
 });
 
 export type VulnScanInput = z.infer<typeof vulnScanSchema>;
+
+// ============================================================================
+// EXCLUSION PATTERNS
+// ============================================================================
+
+// Default patterns to exclude from scanning
+const DEFAULT_EXCLUDE_PATTERNS = [
+  // Scanner itself (self-referential detection is noise)
+  'vuln-scan.ts',
+  'vuln-scan.js',
+];
+
+// Test file patterns (excluded by default)
+const TEST_FILE_PATTERNS = [
+  /\.test\.[jt]sx?$/,
+  /\.spec\.[jt]sx?$/,
+  /__tests__\//,
+  /\/test\//,
+  /\/tests\//,
+];
+
+// Inline ignore comment pattern: // midas-ignore or // midas-ignore: reason
+const IGNORE_COMMENT_PATTERN = /\/\/\s*midas-ignore/;
 
 // ============================================================================
 // TYPES
@@ -148,10 +173,40 @@ const CODE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.
 export function vulnScan(input: VulnScanInput): VulnScanReport {
   const projectPath = sanitizePath(input.projectPath);
   const minSeverity = input.severity || 'all';
+  const excludeTests = input.excludeTests !== false; // Default: true
+  const userExcludePatterns = input.excludePatterns || [];
   
   const vulnerabilities: Vulnerability[] = [];
   const slopsquatting: SlopsquattingResult[] = [];
   let filesScanned = 0;
+  
+  // Check if a file should be excluded
+  function shouldExclude(filePath: string, relativePath: string): boolean {
+    // Check default exclusions (scanner itself)
+    for (const pattern of DEFAULT_EXCLUDE_PATTERNS) {
+      if (relativePath.includes(pattern)) {
+        return true;
+      }
+    }
+    
+    // Check test file exclusions
+    if (excludeTests) {
+      for (const pattern of TEST_FILE_PATTERNS) {
+        if (pattern.test(relativePath)) {
+          return true;
+        }
+      }
+    }
+    
+    // Check user-specified exclusions
+    for (const pattern of userExcludePatterns) {
+      if (relativePath.includes(pattern)) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
   
   // Scan all code files
   function scanDir(dir: string, depth = 0): void {
@@ -163,11 +218,18 @@ export function vulnScan(input: VulnScanInput): VulnScanReport {
         if (IGNORE_DIRS.includes(entry.name) || entry.name.startsWith('.')) continue;
         
         const fullPath = join(dir, entry.name);
+        const relativePath = relative(projectPath, fullPath);
+        
         if (entry.isDirectory()) {
           scanDir(fullPath, depth + 1);
         } else if (entry.isFile()) {
           const ext = extname(entry.name);
           if (CODE_EXTENSIONS.includes(ext)) {
+            // Check exclusions
+            if (shouldExclude(fullPath, relativePath)) {
+              continue;
+            }
+            
             const fileVulns = scanFile(fullPath, projectPath);
             vulnerabilities.push(...fileVulns);
             filesScanned++;
@@ -263,30 +325,35 @@ function scanFile(filePath: string, projectPath: string): Vulnerability[] {
     const lines = content.split('\n');
     const relativePath = relative(projectPath, filePath);
     
-    // Skip test files for some checks
-    const isTestFile = /\.(test|spec)\.[jt]sx?$/.test(filePath) || filePath.includes('__tests__');
+    // Helper to check if a line has midas-ignore comment (same line or previous line)
+    function hasIgnoreComment(lineNum: number): boolean {
+      const line = lines[lineNum - 1] || '';
+      const prevLine = lines[lineNum - 2] || '';
+      return IGNORE_COMMENT_PATTERN.test(line) || IGNORE_COMMENT_PATTERN.test(prevLine);
+    }
     
-    // Check for hardcoded secrets (skip test files)
-    if (!isTestFile) {
-      for (const { pattern, name, severity } of SECRET_PATTERNS) {
-        let match;
-        while ((match = pattern.exec(content)) !== null) {
-          const lineNum = content.slice(0, match.index).split('\n').length;
-          const line = lines[lineNum - 1] || '';
-          
-          // Skip if it's clearly a placeholder or example
-          if (isPlaceholder(match[0])) continue;
-          
-          vulnerabilities.push({
-            type: 'hardcoded-secret',
-            severity,
-            file: relativePath,
-            line: lineNum,
-            code: truncateLine(line),
-            description: `${name} detected in source code`,
-            recommendation: 'Move to environment variable or secrets manager. Never commit secrets to version control.',
-          });
-        }
+    // Check for hardcoded secrets
+    for (const { pattern, name, severity } of SECRET_PATTERNS) {
+      let match;
+      while ((match = pattern.exec(content)) !== null) {
+        const lineNum = content.slice(0, match.index).split('\n').length;
+        const line = lines[lineNum - 1] || '';
+        
+        // Skip if it's clearly a placeholder or example
+        if (isPlaceholder(match[0])) continue;
+        
+        // Skip if line has midas-ignore comment
+        if (hasIgnoreComment(lineNum)) continue;
+        
+        vulnerabilities.push({
+          type: 'hardcoded-secret',
+          severity,
+          file: relativePath,
+          line: lineNum,
+          code: truncateLine(line),
+          description: `${name} detected in source code`,
+          recommendation: 'Move to environment variable or secrets manager. Never commit secrets to version control.',
+        });
       }
     }
     
@@ -296,6 +363,9 @@ function scanFile(filePath: string, projectPath: string): Vulnerability[] {
       while ((match = pattern.exec(content)) !== null) {
         const lineNum = content.slice(0, match.index).split('\n').length;
         const line = lines[lineNum - 1] || '';
+        
+        // Skip if line has midas-ignore comment
+        if (hasIgnoreComment(lineNum)) continue;
         
         vulnerabilities.push({
           type: 'sql-injection',
@@ -316,6 +386,9 @@ function scanFile(filePath: string, projectPath: string): Vulnerability[] {
         const lineNum = content.slice(0, match.index).split('\n').length;
         const line = lines[lineNum - 1] || '';
         
+        // Skip if line has midas-ignore comment
+        if (hasIgnoreComment(lineNum)) continue;
+        
         vulnerabilities.push({
           type: 'command-injection',
           severity: 'critical',
@@ -334,6 +407,9 @@ function scanFile(filePath: string, projectPath: string): Vulnerability[] {
       while ((match = pattern.exec(content)) !== null) {
         const lineNum = content.slice(0, match.index).split('\n').length;
         const line = lines[lineNum - 1] || '';
+        
+        // Skip if line has midas-ignore comment
+        if (hasIgnoreComment(lineNum)) continue;
         
         vulnerabilities.push({
           type: 'xss',
