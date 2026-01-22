@@ -125,6 +125,9 @@ import {
   complexitySchema,
   analyzeSimplify,
   simplifySchema,
+  // Vulnerability scanning
+  vulnScan,
+  vulnScanSchema,
 } from './tools/index.js';
 import { registerAllPrompts } from './prompts/index.js';
 import { registerAllResources } from './resources/index.js';
@@ -599,6 +602,14 @@ export function createServer(): McpServer {
     'Analyze code for simplification opportunities. Detects deep nesting, long functions, duplication, dead code. Returns prioritized suggestions.',
     simplifySchema.shape,
     wrapTool('midas_simplify', analyzeSimplify)
+  );
+
+  // Vulnerability scanning
+  server.tool(
+    'midas_vuln_scan',
+    'Scan codebase for security vulnerabilities. Detects: hardcoded secrets, SQL injection, command injection, XSS, slopsquatting (AI-hallucinated packages). Returns prioritized fixes.',
+    vulnScanSchema.shape,
+    wrapTool('midas_vuln_scan', vulnScan)
   );
 
   // Register prompts

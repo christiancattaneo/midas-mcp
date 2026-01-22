@@ -185,3 +185,10 @@ export {
   analyzeSimplify,
   simplifySchema,
 } from './complexity.js';
+
+// Vulnerability scanning
+export {
+  vulnScan,
+  vulnScanSchema,
+  vulnScanWithRegistry,
+} from './vuln-scan.js';
