@@ -7,7 +7,19 @@
 
 An MCP server that brings the Golden Code methodology into Cursor as an interactive coach. Guides users through the two-phase process, provides expert prompts, and audits projects against the 12 ingredients of production readiness.
 
-## Installation
+## Quick Start
+
+Run Midas instantly (no install required):
+
+```bash
+npx --yes midas-mcp@latest
+```
+
+This launches the interactive TUI coach. Press `?` for help, `p` to copy the recommended prompt.
+
+## Installation (Optional)
+
+For global installation:
 
 ```bash
 npm install -g midas-mcp
