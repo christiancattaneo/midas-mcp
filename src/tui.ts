@@ -22,6 +22,7 @@ import {
   loadTracker, 
   updateTracker,
   hasFilesChangedSinceAnalysis,
+  checkKeyArtifactChanges,
   getSmartPromptSuggestion,
   getGatesStatus,
   recordSuggestion,
@@ -852,7 +853,7 @@ export async function runInteractive(): Promise<void> {
     recentEvents: [],
     message: '',
     hasApiKey: hasApiKey(),
-    showingSessionStart: true, // Start with session starter prompt
+    showingSessionStart: false, // Auto-analyze on startup
     showingRejectionInput: false,
     showingHelp: false,
     showingInfo: false,        // Toggle with 'i' key
@@ -1225,11 +1226,13 @@ export async function runInteractive(): Promise<void> {
 
   render();
 
-  // Don't auto-analyze - show session starter first
-  // User can press [p] to proceed and trigger analysis
+  // Auto-analyze on startup if API key is available
+  if (tuiState.hasApiKey) {
+    runAnalysis();
+  }
 
   // Watch for activity updates (poll tracker every 5s)
-  const activityInterval = setInterval(() => {
+  const activityInterval = setInterval(async () => {
     const newSummary = getActivitySummary(projectPath);
     if (newSummary !== tuiState.activitySummary) {
       tuiState.activitySummary = newSummary;
@@ -1238,8 +1241,21 @@ export async function runInteractive(): Promise<void> {
       render();
     }
     
-    // Check if files changed since last analysis
-    if (!tuiState.filesChanged && tuiState.analysis) {
+    // Check if key artifacts changed - auto-reanalyze if so
+    // This ensures users don't get stuck when creating .cursorrules, brainlift.md, etc.
+    if (!tuiState.isAnalyzing && tuiState.analysis) {
+      const artifactCheck = checkKeyArtifactChanges(projectPath);
+      if (artifactCheck.shouldAutoReanalyze) {
+        const artifactNames = artifactCheck.artifacts.map(a => a.split('/').pop()).join(', ');
+        tuiState.message = `${magenta}...${reset} Detected ${artifactNames} - auto-updating...`;
+        render();
+        await runAnalysis();
+        return; // Don't check other files since we just reanalyzed
+      }
+    }
+    
+    // Check if other files changed since last analysis (show manual refresh prompt)
+    if (!tuiState.filesChanged && tuiState.analysis && !tuiState.isAnalyzing) {
       tuiState.filesChanged = hasFilesChangedSinceAnalysis(projectPath);
       if (tuiState.filesChanged) {
         render();

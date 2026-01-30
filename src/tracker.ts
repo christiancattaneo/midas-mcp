@@ -627,6 +627,55 @@ export function hasFilesChangedSinceAnalysis(projectPath: string): boolean {
   return recentFiles.length > 0;
 }
 
+/**
+ * Check if key artifacts have changed since last analysis.
+ * Key artifacts are files that should trigger auto-reanalysis:
+ * - .cursorrules (rules step completion)
+ * - docs/brainlift.md (brainlift step completion)
+ * - docs/prd.md (prd step completion)
+ * - docs/gameplan.md (gameplan step completion)
+ */
+export function checkKeyArtifactChanges(projectPath: string): { 
+  changed: boolean; 
+  artifacts: string[];
+  shouldAutoReanalyze: boolean;
+} {
+  const safePath = sanitizePath(projectPath);
+  const tracker = loadTracker(safePath);
+  
+  // Key artifacts that trigger auto-reanalysis when created/modified
+  const keyArtifacts = [
+    '.cursorrules',
+    'docs/brainlift.md',
+    'docs/prd.md', 
+    'docs/gameplan.md',
+  ];
+  
+  const changedArtifacts: string[] = [];
+  const lastAnalysis = tracker.lastAnalysis || 0;
+  
+  for (const artifact of keyArtifacts) {
+    const fullPath = join(safePath, artifact);
+    if (existsSync(fullPath)) {
+      try {
+        const stat = statSync(fullPath);
+        if (stat.mtimeMs > lastAnalysis) {
+          changedArtifacts.push(artifact);
+        }
+      } catch {
+        // Ignore stat errors
+      }
+    }
+  }
+  
+  return {
+    changed: changedArtifacts.length > 0,
+    artifacts: changedArtifacts,
+    // Auto-reanalyze if any key artifact changed
+    shouldAutoReanalyze: changedArtifacts.length > 0,
+  };
+}
+
 export function markAnalysisComplete(projectPath: string): void {
   const tracker = loadTracker(projectPath);
   tracker.lastAnalysis = Date.now();
@@ -910,33 +959,74 @@ function getPhaseBasedPrompt(phase: Phase, task: TaskFocus | null): string {
 // AUTO-ADVANCE PHASE
 // ============================================================================
 
-export function maybeAutoAdvance(projectPath: string): { advanced: boolean; from: Phase; to: Phase } {
-  const tracker = loadTracker(projectPath);
-  const gatesStatus = getGatesStatus(projectPath);
-  const state = loadState(projectPath);
-  
+/**
+ * Auto-advance phase based on:
+ * 1. Artifact detection (planning docs, .cursorrules)
+ * 2. Gate status (build/test/lint passing)
+ * 
+ * This prevents users from getting stuck when they've completed a step
+ * but the AI didn't call midas_advance_phase.
+ */
+export function maybeAutoAdvance(projectPath: string): { advanced: boolean; from: Phase; to: Phase; reason?: string } {
+  const safePath = sanitizePath(projectPath);
+  const tracker = loadTracker(safePath);
+  const state = loadState(safePath);
   const currentPhase = state.current;
   
-  // Only auto-advance if all gates pass
-  if (!gatesStatus.allPass) {
-    return { advanced: false, from: currentPhase, to: currentPhase };
+  // Helper to perform advancement
+  const doAdvance = (reason: string): { advanced: boolean; from: Phase; to: Phase; reason: string } => {
+    const nextPhase = getNextPhase(currentPhase);
+    
+    // Update state
+    state.history.push(createHistoryEntry(currentPhase));
+    state.current = nextPhase;
+    saveState(safePath, state);
+    
+    // Update tracker
+    tracker.inferredPhase = nextPhase;
+    saveTracker(safePath, tracker);
+    
+    logger.debug('Auto-advanced phase', { from: currentPhase, to: nextPhase, reason });
+    
+    return { advanced: true, from: currentPhase, to: nextPhase, reason };
+  };
+  
+  // Check for artifact-based advancement in PLAN phase
+  if (currentPhase.phase === 'PLAN') {
+    const docsResult = discoverDocsSync(safePath);
+    
+    // PLAN:BRAINLIFT → PLAN:PRD when brainlift.md exists
+    if (currentPhase.step === 'BRAINLIFT' && docsResult.brainlift) {
+      return doAdvance('brainlift.md created');
+    }
+    
+    // PLAN:PRD → PLAN:GAMEPLAN when prd.md exists
+    if (currentPhase.step === 'PRD' && docsResult.prd) {
+      return doAdvance('prd.md created');
+    }
+    
+    // PLAN:GAMEPLAN → BUILD:RULES when gameplan.md exists
+    if (currentPhase.step === 'GAMEPLAN' && docsResult.gameplan) {
+      return doAdvance('gameplan.md created');
+    }
   }
   
-  // Only auto-advance from BUILD:IMPLEMENT or BUILD:TEST
+  // Check for artifact-based advancement in BUILD phase
   if (currentPhase.phase === 'BUILD') {
+    // BUILD:RULES → BUILD:INDEX when .cursorrules exists
+    if (currentPhase.step === 'RULES') {
+      const hasCursorrules = existsSync(join(safePath, '.cursorrules'));
+      if (hasCursorrules) {
+        return doAdvance('.cursorrules created');
+      }
+    }
+    
+    // BUILD:IMPLEMENT or BUILD:TEST → next step when gates pass
     if (currentPhase.step === 'IMPLEMENT' || currentPhase.step === 'TEST') {
-      const nextPhase = getNextPhase(currentPhase);
-      
-      // Update state
-      state.history.push(createHistoryEntry(currentPhase));
-      state.current = nextPhase;
-      saveState(projectPath, state);
-      
-      // Update tracker
-      tracker.inferredPhase = nextPhase;
-      saveTracker(projectPath, tracker);
-      
-      return { advanced: true, from: currentPhase, to: nextPhase };
+      const gatesStatus = getGatesStatus(safePath);
+      if (gatesStatus.allPass) {
+        return doAdvance('all gates pass');
+      }
     }
   }
   

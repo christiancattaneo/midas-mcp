@@ -13,7 +13,11 @@ import {
   getGitActivity,
   checkCompletionSignals,
   updateTracker,
+  maybeAutoAdvance,
+  checkKeyArtifactChanges,
+  markAnalysisComplete,
 } from '../tracker.js';
+import { setPhase } from '../state/phase.js';
 
 describe('Tracker Module', () => {
   const testDir = join(tmpdir(), 'midas-tracker-test-' + Date.now());
@@ -296,6 +300,162 @@ describe('Tracker Module', () => {
       
       const loaded = loadTracker(testDir);
       assert.strictEqual(loaded.recentFiles.some(f => f.path === 'src.ts'), true);
+    });
+  });
+
+  describe('maybeAutoAdvance', () => {
+    it('advances BUILD:RULES to BUILD:INDEX when .cursorrules exists', () => {
+      setPhase(testDir, { phase: 'BUILD', step: 'RULES' });
+      writeFileSync(join(testDir, '.cursorrules'), '# Rules');
+      
+      const result = maybeAutoAdvance(testDir);
+      
+      assert.strictEqual(result.advanced, true);
+      assert.strictEqual(result.from.phase, 'BUILD');
+      assert.strictEqual((result.from as { step: string }).step, 'RULES');
+      assert.strictEqual(result.to.phase, 'BUILD');
+      assert.strictEqual((result.to as { step: string }).step, 'INDEX');
+      assert.strictEqual(result.reason, '.cursorrules created');
+    });
+
+    it('advances PLAN:BRAINLIFT to PLAN:PRD when brainlift.md exists', () => {
+      setPhase(testDir, { phase: 'PLAN', step: 'BRAINLIFT' });
+      mkdirSync(join(testDir, 'docs'), { recursive: true });
+      writeFileSync(join(testDir, 'docs', 'brainlift.md'), '# Brainlift');
+      
+      const result = maybeAutoAdvance(testDir);
+      
+      assert.strictEqual(result.advanced, true);
+      assert.strictEqual(result.from.phase, 'PLAN');
+      assert.strictEqual((result.from as { step: string }).step, 'BRAINLIFT');
+      assert.strictEqual(result.to.phase, 'PLAN');
+      assert.strictEqual((result.to as { step: string }).step, 'PRD');
+      assert.strictEqual(result.reason, 'brainlift.md created');
+    });
+
+    it('advances PLAN:PRD to PLAN:GAMEPLAN when prd.md exists', () => {
+      setPhase(testDir, { phase: 'PLAN', step: 'PRD' });
+      mkdirSync(join(testDir, 'docs'), { recursive: true });
+      writeFileSync(join(testDir, 'docs', 'prd.md'), '# PRD');
+      
+      const result = maybeAutoAdvance(testDir);
+      
+      assert.strictEqual(result.advanced, true);
+      assert.strictEqual(result.from.phase, 'PLAN');
+      assert.strictEqual((result.from as { step: string }).step, 'PRD');
+      assert.strictEqual(result.to.phase, 'PLAN');
+      assert.strictEqual((result.to as { step: string }).step, 'GAMEPLAN');
+      assert.strictEqual(result.reason, 'prd.md created');
+    });
+
+    it('advances PLAN:GAMEPLAN to BUILD:RULES when gameplan.md exists', () => {
+      setPhase(testDir, { phase: 'PLAN', step: 'GAMEPLAN' });
+      mkdirSync(join(testDir, 'docs'), { recursive: true });
+      writeFileSync(join(testDir, 'docs', 'gameplan.md'), '# Gameplan');
+      
+      const result = maybeAutoAdvance(testDir);
+      
+      assert.strictEqual(result.advanced, true);
+      assert.strictEqual(result.from.phase, 'PLAN');
+      assert.strictEqual((result.from as { step: string }).step, 'GAMEPLAN');
+      assert.strictEqual(result.to.phase, 'BUILD');
+      assert.strictEqual((result.to as { step: string }).step, 'RULES');
+      assert.strictEqual(result.reason, 'gameplan.md created');
+    });
+
+    it('does not advance BUILD:RULES when .cursorrules missing', () => {
+      setPhase(testDir, { phase: 'BUILD', step: 'RULES' });
+      
+      const result = maybeAutoAdvance(testDir);
+      
+      assert.strictEqual(result.advanced, false);
+    });
+
+    it('does not advance PLAN:BRAINLIFT when brainlift.md missing', () => {
+      setPhase(testDir, { phase: 'PLAN', step: 'BRAINLIFT' });
+      
+      const result = maybeAutoAdvance(testDir);
+      
+      assert.strictEqual(result.advanced, false);
+    });
+
+    it('does not advance from arbitrary BUILD steps without gates', () => {
+      setPhase(testDir, { phase: 'BUILD', step: 'READ' });
+      
+      const result = maybeAutoAdvance(testDir);
+      
+      assert.strictEqual(result.advanced, false);
+    });
+  });
+
+  describe('checkKeyArtifactChanges', () => {
+    it('detects .cursorrules creation after analysis', () => {
+      markAnalysisComplete(testDir);
+      
+      // Wait a bit then create artifact
+      writeFileSync(join(testDir, '.cursorrules'), '# Rules');
+      
+      const result = checkKeyArtifactChanges(testDir);
+      
+      assert.strictEqual(result.changed, true);
+      assert.strictEqual(result.shouldAutoReanalyze, true);
+      assert.ok(result.artifacts.includes('.cursorrules'));
+    });
+
+    it('detects brainlift.md creation after analysis', () => {
+      markAnalysisComplete(testDir);
+      
+      mkdirSync(join(testDir, 'docs'), { recursive: true });
+      writeFileSync(join(testDir, 'docs', 'brainlift.md'), '# Brainlift');
+      
+      const result = checkKeyArtifactChanges(testDir);
+      
+      assert.strictEqual(result.changed, true);
+      assert.ok(result.artifacts.includes('docs/brainlift.md'));
+    });
+
+    it('returns false when no key artifacts changed', () => {
+      markAnalysisComplete(testDir);
+      
+      // Create a non-key file
+      writeFileSync(join(testDir, 'random.ts'), 'code');
+      
+      const result = checkKeyArtifactChanges(testDir);
+      
+      assert.strictEqual(result.changed, false);
+      assert.strictEqual(result.shouldAutoReanalyze, false);
+      assert.strictEqual(result.artifacts.length, 0);
+    });
+
+    it('detects multiple key artifacts changed', () => {
+      markAnalysisComplete(testDir);
+      
+      mkdirSync(join(testDir, 'docs'), { recursive: true });
+      writeFileSync(join(testDir, '.cursorrules'), '# Rules');
+      writeFileSync(join(testDir, 'docs', 'prd.md'), '# PRD');
+      
+      const result = checkKeyArtifactChanges(testDir);
+      
+      assert.strictEqual(result.changed, true);
+      assert.ok(result.artifacts.length >= 2);
+    });
+
+    it('does not trigger for artifacts created before analysis', () => {
+      // Create artifacts first
+      mkdirSync(join(testDir, 'docs'), { recursive: true });
+      writeFileSync(join(testDir, '.cursorrules'), '# Rules');
+      writeFileSync(join(testDir, 'docs', 'brainlift.md'), '# Brainlift');
+      
+      // Then mark analysis complete
+      // Need a small delay to ensure analysis timestamp is after file creation
+      const waitMs = 50;
+      const start = Date.now();
+      while (Date.now() - start < waitMs) { /* busy wait */ }
+      markAnalysisComplete(testDir);
+      
+      const result = checkKeyArtifactChanges(testDir);
+      
+      assert.strictEqual(result.changed, false);
     });
   });
 });
