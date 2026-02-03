@@ -3,33 +3,65 @@ import { redirect } from "next/navigation"
 import { getProjectsByUser } from "@/lib/db"
 import Image from "next/image"
 import Link from "next/link"
+import { ThemeToggle } from "@/components/ThemeToggle"
 
-function PhaseProgressBar({ progress }: { progress: number }) {
-  return (
-    <div className="progress-bar mt-2">
-      <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
-    </div>
-  )
+// Phase configuration
+const PHASE_STEPS: Record<string, string[]> = {
+  IDLE: [],
+  PLAN: ['IDEA', 'RESEARCH', 'BRAINLIFT', 'PRD', 'GAMEPLAN'],
+  BUILD: ['RULES', 'INDEX', 'READ', 'RESEARCH', 'IMPLEMENT', 'TEST', 'DEBUG'],
+  SHIP: ['REVIEW', 'DEPLOY', 'MONITOR'],
+  GROW: ['DONE'],
+}
+
+const PHASE_COLORS: Record<string, string> = {
+  IDLE: 'from-gray-600/20 to-gray-700/20 border-gray-600/50',
+  PLAN: 'from-amber-500/20 to-yellow-600/20 border-amber-500/50',
+  BUILD: 'from-blue-500/20 to-cyan-600/20 border-blue-500/50',
+  SHIP: 'from-green-500/20 to-emerald-600/20 border-green-500/50',
+  GROW: 'from-purple-500/20 to-violet-600/20 border-purple-500/50',
+}
+
+function getPhaseIcon(phase: string): string {
+  switch (phase) {
+    case 'PLAN': return '◈'
+    case 'BUILD': return '⬡'
+    case 'SHIP': return '▲'
+    case 'GROW': return '◉'
+    default: return '○'
+  }
 }
 
 function PhaseBadge({ phase }: { phase: string }) {
-  const className = `phase-badge phase-${phase.toLowerCase()}`
-  return <span className={className}>{phase}</span>
+  const badgeClass = `phase-${phase.toLowerCase()}`
+  return (
+    <span className={`phase-badge ${badgeClass}`}>
+      {phase}
+    </span>
+  )
 }
 
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMins / 60)
-  const diffDays = Math.floor(diffHours / 24)
-  
-  if (diffMins < 1) return 'just now'
-  if (diffMins < 60) return `${diffMins}m ago`
-  if (diffHours < 24) return `${diffHours}h ago`
-  if (diffDays < 7) return `${diffDays}d ago`
-  return date.toLocaleDateString()
+function PhaseProgressBar({ phase, step }: { phase: string; step: string }) {
+  const steps = PHASE_STEPS[phase] || []
+  const currentIndex = steps.indexOf(step)
+  const progress = steps.length > 0 
+    ? Math.round(((currentIndex + 1) / steps.length) * 100)
+    : 0
+
+  return (
+    <div className="w-full">
+      <div className="progress-bar">
+        <div 
+          className="progress-bar-fill"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <div className="flex justify-between mt-2 text-xs font-mono">
+        <span className="text-dim">{step || 'IDLE'}</span>
+        <span className="text-gold">{progress}%</span>
+      </div>
+    </div>
+  )
 }
 
 export default async function Dashboard() {
@@ -40,124 +72,147 @@ export default async function Dashboard() {
   }
   
   const user = session.user
-  const githubId = user.githubId
+  const githubId = user.githubId as unknown as number
+  const projects = await getProjectsByUser(githubId)
   
-  let projects: Awaited<ReturnType<typeof getProjectsByUser>> = []
-  let error: string | null = null
-  
-  try {
-    if (githubId) {
-      projects = await getProjectsByUser(githubId)
-    }
-  } catch (e) {
-    error = e instanceof Error ? e.message : 'Failed to load projects'
-  }
+  // Calculate stats
+  const totalProjects = projects.length
+  const activeProjects = projects.filter(p => p.current_phase !== 'IDLE').length
+  const buildPhaseProjects = projects.filter(p => p.current_phase === 'BUILD').length
   
   return (
-    <main className="min-h-screen p-8">
-      <div className="max-w-4xl mx-auto">
+    <main className="min-h-screen p-6 md:p-8">
+      <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <header className="flex items-center justify-between mb-10">
           <div className="flex items-center gap-4">
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--gold)' }}>
+            <h1 
+              className="text-2xl font-bold font-mono tracking-wider glitch neon-gold"
+              data-text="MIDAS"
+            >
               MIDAS
             </h1>
-            <span className="text-gray-500">Dashboard</span>
+            <span className="text-dim font-mono text-sm hidden sm:inline">// COMMAND CENTER</span>
           </div>
           
           <div className="flex items-center gap-4">
-            {user.image && (
-              <Image
-                src={user.image}
-                alt={user.name || 'User'}
-                width={32}
-                height={32}
-                className="rounded-full"
-              />
-            )}
-            <span className="text-sm text-gray-400">@{user.githubUsername || user.name || 'user'}</span>
+            <ThemeToggle />
+            <div className="flex items-center gap-3">
+              {user.image && (
+                <Image 
+                  src={user.image} 
+                  alt="" 
+                  width={36} 
+                  height={36} 
+                  className="rounded border border-gold/30"
+                />
+              )}
+              <div className="hidden sm:block text-right">
+                <p className="font-mono text-sm text-gold">@{user.githubUsername || user.name}</p>
+                <p className="text-xs text-dim">LEVEL 1 OPERATOR</p>
+              </div>
+            </div>
             <form
               action={async () => {
                 "use server"
                 await signOut()
               }}
             >
-              <button
-                type="submit"
-                className="text-sm text-gray-500 hover:text-white"
-              >
-                Sign out
+              <button type="submit" className="btn-secondary py-2 px-4 text-sm font-mono">
+                LOGOUT
               </button>
             </form>
           </div>
+        </header>
+        
+        {/* Stats Row */}
+        <div className="grid grid-cols-3 gap-4 mb-10">
+          <div className="card text-center py-6">
+            <div className="stat-value">{totalProjects}</div>
+            <div className="stat-label">PROJECTS</div>
+          </div>
+          <div className="card text-center py-6">
+            <div className="stat-value">{activeProjects}</div>
+            <div className="stat-label">ACTIVE</div>
+          </div>
+          <div className="card text-center py-6">
+            <div className="stat-value">{buildPhaseProjects}</div>
+            <div className="stat-label">BUILDING</div>
+          </div>
         </div>
         
-        {/* Error state */}
-        {error && (
-          <div className="card mb-8 border-red-500/50">
-            <p className="text-red-400">{error}</p>
-            <p className="text-sm text-gray-500 mt-2">
-              Make sure Turso is configured and the database schema is initialized.
-            </p>
-          </div>
-        )}
+        {/* Projects Section */}
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="font-mono text-dim text-sm">{'>'} SYNCED PROJECTS</h2>
+          <span className="text-xs text-dim font-mono">{projects.length} TOTAL</span>
+        </div>
         
-        {/* Empty state */}
-        {!error && projects.length === 0 && (
-          <div className="card text-center py-12">
-            <h2 className="text-xl font-semibold mb-2">No projects synced yet</h2>
-            <p className="text-gray-400 mb-6">
-              Sync your first project from the command line
-            </p>
-            <div className="bg-black/50 rounded-lg p-4 inline-block">
-              <code className="text-sm font-mono">
-                cd your-project<br />
-                npx midas-mcp sync
+        {projects.length === 0 ? (
+          <div className="card text-center py-16">
+            <div className="text-4xl mb-4">◇</div>
+            <p className="text-dim font-mono mb-6">NO PROJECTS SYNCED</p>
+            <div className="text-left max-w-xs mx-auto">
+              <p className="text-dim text-xs font-mono mb-3">// RUN IN YOUR PROJECT</p>
+              <code className="block p-3 text-sm">
+                <span className="text-gold">$</span> npx midas-mcp sync
               </code>
             </div>
           </div>
-        )}
-        
-        {/* Projects grid */}
-        {projects.length > 0 && (
-          <div className="grid gap-4">
-            {projects.map(project => (
-              <Link
-                key={project.id}
-                href={`/dashboard/${project.id}`}
-                className="card block hover:border-gold-dark transition"
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold">{project.name}</h2>
-                    <p className="text-sm text-gray-500 font-mono">{project.local_path}</p>
-                  </div>
-                  <div className="text-right">
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {projects.map((project) => {
+              const phaseColor = PHASE_COLORS[project.current_phase] || ''
+              return (
+                <Link 
+                  key={project.id} 
+                  href={`/dashboard/${project.id}`}
+                  className="card group"
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 flex items-center justify-center bg-gradient-to-br ${phaseColor} border text-xl font-mono`}>
+                        {getPhaseIcon(project.current_phase)}
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-lg group-hover:text-gold transition-colors">
+                          {project.name}
+                        </h3>
+                        <p className="text-xs text-dim font-mono truncate max-w-[200px]">
+                          {project.local_path}
+                        </p>
+                      </div>
+                    </div>
                     <PhaseBadge phase={project.current_phase} />
-                    {project.current_step && (
-                      <p className="text-xs text-gray-500 mt-1">{project.current_step}</p>
-                    )}
                   </div>
-                </div>
-                
-                <PhaseProgressBar progress={project.progress} />
-                
-                <div className="flex items-center justify-between mt-4 text-sm text-gray-500">
-                  <span>{project.progress}% complete</span>
-                  <span>Synced {formatRelativeTime(project.last_synced)}</span>
-                </div>
-              </Link>
-            ))}
+                  
+                  <PhaseProgressBar 
+                    phase={project.current_phase} 
+                    step={project.current_step} 
+                  />
+                  
+                  <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between text-xs font-mono">
+                    <span className="text-dim">
+                      SYNCED {new Date(project.last_synced).toLocaleDateString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      }).toUpperCase()}
+                    </span>
+                    <span className="text-gold group-hover:translate-x-1 transition-transform">→</span>
+                  </div>
+                </Link>
+              )
+            })}
           </div>
         )}
         
         {/* Footer */}
-        <div className="mt-12 text-center text-sm text-gray-500">
-          <p>Keep your dashboard in sync:</p>
-          <code className="block mt-2 bg-black/50 px-4 py-2 rounded font-mono text-xs inline-block">
-            npx midas-mcp sync
-          </code>
-        </div>
+        <footer className="mt-16 text-center">
+          <p className="text-dim text-xs font-mono">
+            MIDAS v1.0.0 // <a href="https://midasmcp.com" className="text-gold hover:underline">DOCUMENTATION</a>
+          </p>
+        </footer>
       </div>
     </main>
   )

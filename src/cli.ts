@@ -9,6 +9,7 @@ import { loadMetrics } from './metrics.js';
 import { getWeeklySummary } from './tracker.js';
 import { login, logout, isAuthenticated, loadAuth } from './auth.js';
 import { runSync, isCloudConfigured } from './cloud.js';
+import { runPilotCLI } from './pilot.js';
 
 // ANSI colors
 const reset = '\x1b[0m';
@@ -60,6 +61,10 @@ ${bold}Cloud Dashboard:${reset}
   npx midas-mcp logout       Logout from GitHub
   npx midas-mcp sync         Sync project state to cloud dashboard
   npx midas-mcp whoami       Show current authenticated user
+
+${bold}Automation (Midas Pilot):${reset}
+  npx midas-mcp pilot "prompt"  Execute a prompt via Claude Code CLI
+                                Example: midas pilot "Fix the auth bug"
 
 ${bold}The Four Phases:${reset}
   ${yellow}PLAN${reset}         Plan before building (Idea → Research → Brainlift → PRD → Gameplan)
@@ -548,6 +553,9 @@ export function runCLI(args: string[]): 'interactive' | 'server' | 'handled' | P
     case 'whoami':
       showWhoami();
       return 'handled';
+
+    case 'pilot':
+      return runPilotCLI(args.slice(1)).then(() => 'handled' as const);
 
     case 'server':
       return 'server'; // Start MCP server

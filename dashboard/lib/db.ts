@@ -126,4 +126,42 @@ export async function getRecentEvents(projectId: string, limit = 10): Promise<Ev
   }))
 }
 
+// Gameplan tasks
+export interface GameplanTask {
+  id: number
+  project_id: string
+  task_id: string
+  task_text: string
+  phase: string | null
+  completed: boolean
+  priority: string
+  task_order: number
+  created_at: string
+}
+
+export async function getGameplanTasks(projectId: string): Promise<GameplanTask[]> {
+  const client = getClient()
+  try {
+    const result = await client.execute({
+      sql: 'SELECT * FROM gameplan_tasks WHERE project_id = ? ORDER BY task_order ASC',
+      args: [projectId],
+    })
+    
+    return result.rows.map(row => ({
+      id: row.id as number,
+      project_id: row.project_id as string,
+      task_id: row.task_id as string,
+      task_text: row.task_text as string,
+      phase: row.phase as string | null,
+      completed: row.completed === 1,
+      priority: row.priority as string,
+      task_order: row.task_order as number,
+      created_at: row.created_at as string,
+    }))
+  } catch {
+    // Table might not exist yet
+    return []
+  }
+}
+
 export { getClient }

@@ -8,6 +8,8 @@
 import { loadAuth, isAuthenticated, getAuthenticatedUser } from './auth.js';
 import { loadState, type Phase } from './state/phase.js';
 import { loadTracker, type TrackerState } from './tracker.js';
+import { parseGameplanTasks, type GameplanTask } from './gameplan-tracker.js';
+import { discoverDocsSync } from './docs-discovery.js';
 import { sanitizePath } from './security.js';
 import { basename } from 'path';
 
@@ -185,6 +187,23 @@ export async function initSchema(): Promise<void> {
       FOREIGN KEY (project_id) REFERENCES projects(id)
     )
   `);
+  
+  // Gameplan tasks table (for dashboard prompting)
+  await executeSQL(`
+    CREATE TABLE IF NOT EXISTS gameplan_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id TEXT NOT NULL,
+      task_id TEXT NOT NULL,
+      task_text TEXT NOT NULL,
+      phase TEXT,
+      completed INTEGER DEFAULT 0,
+      priority TEXT,
+      task_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (project_id) REFERENCES projects(id),
+      UNIQUE(project_id, task_id)
+    )
+  `);
 }
 
 /**
@@ -321,6 +340,37 @@ export async function syncProject(projectPath: string): Promise<SyncResult> {
         suggestion.rejectionReason || null,
         new Date(suggestion.timestamp).toISOString(),
       ]);
+    }
+    
+    // Sync gameplan tasks
+    try {
+      const docs = discoverDocsSync(safePath);
+      if (docs.gameplan?.content) {
+        const tasks = parseGameplanTasks(docs.gameplan.content);
+        
+        // Clear existing tasks for this project first
+        await executeSQL(`DELETE FROM gameplan_tasks WHERE project_id = ?`, [projectId]);
+        
+        // Insert current tasks
+        for (let i = 0; i < tasks.length; i++) {
+          const task = tasks[i];
+          await executeSQL(`
+            INSERT INTO gameplan_tasks (project_id, task_id, task_text, phase, completed, priority, task_order)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+          `, [
+            projectId,
+            task.id,
+            task.text,
+            task.phase || null,
+            task.completed ? 1 : 0,
+            task.priority || 'medium',
+            i,
+          ]);
+        }
+      }
+    } catch (err) {
+      // Non-fatal: gameplan sync failure shouldn't break overall sync
+      console.error('  Warning: Could not sync gameplan tasks');
     }
     
     return {

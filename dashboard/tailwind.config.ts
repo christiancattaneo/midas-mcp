@@ -19,6 +19,10 @@ const config: Config = {
           dim: '#166534',
         },
       },
+      animation: {
+        'pulse': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'shimmer': 'shimmer 2s ease-in-out infinite',
+      },
     },
   },
   plugins: [],
