@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Midas - Everything you vibecode turns to gold</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --gold: #d4af37;
+      --gold-light: #f0d060;
+      --gold-dark: #8b7355;
+      --matrix: #22c55e;
+      --matrix-dim: #166534;
+      --bg: #0a0a0a;
+      --bg-card: #111111;
+      --text: #e5e5e5;
+      --text-dim: #666666;
+      --border: #222222;
+      --code-bg: #0d0d0d;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Matrix rain background */
+    .matrix-bg {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      opacity: 0.08;
+      z-index: 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: var(--matrix);
+      overflow: hidden;
+    }
+
+    .matrix-column {
+      position: absolute;
+      top: -100%;
+      animation: matrix-fall linear infinite;
+      white-space: nowrap;
+      writing-mode: vertical-rl;
+      text-orientation: upright;
+    }
+
+    @keyframes matrix-fall {
+      0% { transform: translateY(-100%); }
+      100% { transform: translateY(200vh); }
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 80px 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Logo */
+    .logo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .logo-icon {
+      width: 56px;
+      height: 56px;
+      position: relative;
+    }
+
+    .logo-icon svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .logo-text {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 42px;
+      font-weight: 600;
+      letter-spacing: -2px;
+      background: linear-gradient(135deg, var(--gold) 0%, var(--gold-light) 50%, var(--gold) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      margin-bottom: 100px;
+    }
+
+    .tagline {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 15px;
+      color: var(--text-dim);
+      margin-bottom: 48px;
+      letter-spacing: 1px;
+    }
+
+    .tagline .decrypt {
+      display: inline-block;
+      position: relative;
+    }
+
+    .hero-description {
+      font-size: 18px;
+      color: var(--text);
+      max-width: 540px;
+      margin: 0 auto;
+      opacity: 0.9;
+    }
+
+    /* Decrypt animation */
+    .decrypt-text {
+      font-family: 'JetBrains Mono', monospace;
+      position: relative;
+    }
+
+    .decrypt-text::after {
+      content: attr(data-text);
+      position: absolute;
+      left: 0;
+      top: 0;
+      color: var(--matrix);
+      animation: decrypt 2s steps(20) forwards;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    @keyframes decrypt {
+      0% { width: 100%; }
+      100% { width: 0%; }
+    }
+
+    /* Setup Section */
+    .setup {
+      margin-bottom: 80px;
+    }
+
+    .section-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      color: var(--gold);
+      margin-bottom: 32px;
+      text-align: center;
+      opacity: 0.8;
+    }
+
+    .setup-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+    }
+
+    @media (min-width: 700px) {
+      .setup-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    .setup-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 28px;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+
+    .setup-card:hover {
+      border-color: var(--gold);
+      box-shadow: 0 0 30px rgba(212, 175, 55, 0.15);
+    }
+
+    .setup-card h3 {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--text-dim);
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .setup-card h3::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background: #22c55e;
+      border-radius: 50%;
+      box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
+    }
+
+    .code-block {
+      background: var(--code-bg);
+      border: 1px solid #27272a;
+      border-radius: 6px;
+      padding: 20px;
+      overflow-x: auto;
+      position: relative;
+    }
+
+    .code-block code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: #e4e4e7;
+      line-height: 1.6;
+      white-space: pre;
+      display: block;
+    }
+
+    .code-block-json {
+      padding: 16px 20px;
+    }
+
+    .code-block-json code {
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .code-block .comment {
+      color: #71717a;
+    }
+
+    .code-block .string {
+      color: #fbbf24;
+    }
+
+    .code-block .key {
+      color: #e4e4e7;
+    }
+
+    .code-block .punctuation {
+      color: #a1a1aa;
+    }
+
+    .terminal-prompt {
+      color: #22c55e;
+      user-select: none;
+    }
+
+    .command {
+      color: #e4e4e7;
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: #27272a;
+      border: 1px solid #3f3f46;
+      color: #a1a1aa;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .copy-btn:hover {
+      border-color: #fbbf24;
+      color: #fbbf24;
+    }
+
+    .setup-note {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 16px;
+      opacity: 0.7;
+    }
+
+    /* Features */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 80px;
+    }
+
+    @media (max-width: 700px) {
+      .features {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .feature {
+      background: var(--bg-card);
+      padding: 32px 24px;
+      text-align: center;
+    }
+
+    .feature-number {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--gold);
+      margin-bottom: 12px;
+      letter-spacing: 2px;
+    }
+
+    .feature h4 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+
+    .feature p {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dim);
+      line-height: 1.7;
+    }
+
+    /* CTA */
+    .cta {
+      text-align: center;
+    }
+
+    .cta-buttons {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 28px;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      text-decoration: none;
+      transition: all 0.3s;
+      border: 1px solid transparent;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%);
+      color: #000;
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 0 30px rgba(212, 175, 55, 0.3);
+      transform: translateY(-2px);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--text);
+      border-color: var(--border);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--gold);
+      color: var(--gold);
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 60px 24px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dim);
+      letter-spacing: 1px;
+    }
+
+    footer a {
+      color: var(--text-dim);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    footer a:hover {
+      color: var(--gold);
+    }
+
+    /* Glow effect on scroll */
+    .glow-line {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+      opacity: 0.8;
+      z-index: 100;
+    }
+
+    /* What It Does Section */
+    .what-it-does {
+      margin-bottom: 80px;
+    }
+
+    .what-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+    }
+
+    @media (max-width: 700px) {
+      .what-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .what-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+    }
+
+    .what-icon {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--gold);
+      display: block;
+      margin-bottom: 12px;
+    }
+
+    .what-item p {
+      font-size: 14px;
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+
+    /* Lifecycle Section */
+    .lifecycle {
+      margin-bottom: 80px;
+    }
+
+    .lifecycle-phases {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .phase {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px 24px;
+      text-align: center;
+      min-width: 160px;
+    }
+
+    .phase-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--gold);
+      display: block;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .phase-steps {
+      font-size: 10px;
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+
+    .phase-arrow {
+      width: 24px;
+      height: 2px;
+      background: var(--border);
+      position: relative;
+    }
+
+    .phase-arrow::after {
+      content: '';
+      position: absolute;
+      right: 0;
+      top: -4px;
+      border: 5px solid transparent;
+      border-left-color: var(--border);
+    }
+
+    @media (max-width: 900px) {
+      .phase-arrow {
+        display: none;
+      }
+      .lifecycle-phases {
+        flex-direction: column;
+      }
+      .phase {
+        width: 100%;
+      }
+    }
+
+    /* Principles Section */
+    .principles {
+      margin-bottom: 80px;
+    }
+
+    .principles-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    @media (max-width: 700px) {
+      .principles-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .principle {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 28px;
+    }
+
+    .principle h4 {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--gold);
+    }
+
+    .principle-desc {
+      font-size: 14px;
+      color: var(--text-dim);
+      margin-bottom: 16px;
+      line-height: 1.6;
+    }
+
+    .principle-formula {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--matrix);
+      background: var(--code-bg);
+      padding: 8px 12px;
+      border-radius: 4px;
+      display: block;
+    }
+
+    /* Ingredients Section */
+    .ingredients {
+      margin-bottom: 80px;
+    }
+
+    .ingredients-subtitle {
+      text-align: center;
+      font-size: 14px;
+      color: var(--text-dim);
+      margin-bottom: 32px;
+    }
+
+    .ingredients-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 800px) {
+      .ingredients-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 500px) {
+      .ingredients-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .ingredient-level {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .level-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 18px;
+      font-weight: 600;
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .level-functional { color: #3b82f6; }
+    .level-integrated { color: #8b5cf6; }
+    .level-protected { color: #f59e0b; }
+    .level-production { color: #22c55e; }
+
+    .level-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .level-desc {
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    /* Tools List Section */
+    .tools-list {
+      margin-bottom: 80px;
+    }
+
+    .tools-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 800px) {
+      .tools-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 500px) {
+      .tools-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .tool-category {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .tool-category h4 {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--gold);
+      margin-bottom: 12px;
+    }
+
+    .tool-names {
+      font-size: 11px;
+      color: var(--text-dim);
+      line-height: 1.8;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* TUI Section */
+    .tui-section {
+      margin-bottom: 80px;
+    }
+
+    .tui-content {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 32px;
+    }
+
+    .tui-preview {
+      text-align: center;
+      margin-bottom: 24px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tui-command {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 18px;
+      color: var(--matrix);
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .tui-desc {
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    .tui-features {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 700px) {
+      .tui-features {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .tui-feature {
+      text-align: center;
+    }
+
+    .tui-key {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: var(--gold);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .tui-feature span:last-child {
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    /* How It Works Section */
+    .how-works {
+      margin-bottom: 80px;
+    }
+
+    .how-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .how-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 20px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+    }
+
+    .how-number {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--gold);
+      min-width: 40px;
+    }
+
+    .how-text h4 {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .how-text p {
+      font-size: 14px;
+      color: var(--text-dim);
+    }
+
+    /* CTA spacing adjustment */
+    .cta {
+      padding-top: 40px;
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+  <div class="glow-line"></div>
+  
+  <!-- Matrix background -->
+  <div class="matrix-bg" id="matrix"></div>
+
+  <div class="container">
+    <!-- Hero -->
+    <section class="hero">
+      <div class="logo">
+        <div class="logo-icon">
+          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M50 5L90 25V75L50 95L10 75V25L50 5Z" stroke="url(#gold-gradient)" stroke-width="2" fill="none"/>
+            <path d="M50 20L75 35V65L50 80L25 65V35L50 20Z" stroke="url(#gold-gradient)" stroke-width="1.5" fill="none" opacity="0.6"/>
+            <circle cx="50" cy="50" r="8" fill="url(#gold-gradient)"/>
+            <defs>
+              <linearGradient id="gold-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#c9a227"/>
+                <stop offset="50%" stop-color="#e8d48b"/>
+                <stop offset="100%" stop-color="#c9a227"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <span class="logo-text">midas</span>
+      </div>
+      
+      <p class="tagline">
+        <span class="decrypt-text" data-text="/////////////////">everything you vibecode turns to gold</span>
+      </p>
+      
+      <p class="hero-description">
+        An AI coach that guides you through planning, building, and shipping production-ready code.
+      </p>
+    </section>
+
+    <!-- Setup -->
+    <section class="setup">
+      <p class="section-label">Initialize</p>
+      
+      <div class="setup-grid">
+        <!-- Terminal Option -->
+        <div class="setup-card">
+          <h3>Run Instantly</h3>
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this, 'npx --yes midas-mcp@latest')">Copy</button>
+            <code><span class="terminal-prompt">$</span> <span class="command">npx --yes midas-mcp@latest</span></code>
+          </div>
+          <p class="setup-note">No install required</p>
+        </div>
+
+        <!-- Cursor Option -->
+        <div class="setup-card">
+          <h3>Add to Cursor</h3>
+          <div class="code-block code-block-json">
+            <button class="copy-btn" onclick="copyJson()">Copy</button>
+            <code><span class="comment">// ~/.cursor/mcp.json</span>
+<span class="punctuation">{</span>
+  <span class="key">"mcpServers"</span><span class="punctuation">:</span> <span class="punctuation">{</span>
+    <span class="key">"midas"</span><span class="punctuation">:</span> <span class="punctuation">{</span>
+      <span class="key">"command"</span><span class="punctuation">:</span> <span class="string">"npx"</span><span class="punctuation">,</span>
+      <span class="key">"args"</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="string">"midas-mcp@latest"</span><span class="punctuation">,</span> <span class="string">"server"</span><span class="punctuation">]</span>
+    <span class="punctuation">}</span>
+  <span class="punctuation">}</span>
+<span class="punctuation">}</span></code>
+          </div>
+          <p class="setup-note">Always uses latest version</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section class="features">
+      <div class="feature">
+        <p class="feature-number">01</p>
+        <h4>Plan First</h4>
+        <p>Brainlift / PRD / Gameplan</p>
+      </div>
+      <div class="feature">
+        <p class="feature-number">02</p>
+        <h4>7-Step Build</h4>
+        <p>Rules / Index / Read / Research / Implement / Test / Debug</p>
+      </div>
+      <div class="feature">
+        <p class="feature-number">03</p>
+        <h4>Ship Ready</h4>
+        <p>12 ingredients audit</p>
+      </div>
+    </section>
+
+    <!-- What Midas Does -->
+    <section class="what-it-does">
+      <p class="section-label">What Midas Does</p>
+      <div class="what-grid">
+        <div class="what-item">
+          <span class="what-icon">midas_analyze</span>
+          <p>AI reads your codebase, docs, git history, and determines exactly where you are in the development lifecycle</p>
+        </div>
+        <div class="what-item">
+          <span class="what-icon">midas_suggest_prompt</span>
+          <p>Generates the exact next prompt you should paste into Cursor based on your current phase and context</p>
+        </div>
+        <div class="what-item">
+          <span class="what-icon">midas_verify</span>
+          <p>Runs build, tests, and lint. Auto-advances phase when gates pass. Blocks advancement when they fail.</p>
+        </div>
+        <div class="what-item">
+          <span class="what-icon">midas_journal</span>
+          <p>Saves full conversations to a project journal. AI loads context from previous sessions automatically.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Full Lifecycle -->
+    <section class="lifecycle">
+      <p class="section-label">The Development Lifecycle</p>
+      <div class="lifecycle-phases">
+        <div class="phase">
+          <span class="phase-name">Plan</span>
+          <span class="phase-steps">IDEA / RESEARCH / BRAINLIFT / PRD / GAMEPLAN</span>
+        </div>
+        <div class="phase-arrow"></div>
+        <div class="phase">
+          <span class="phase-name">Build</span>
+          <span class="phase-steps">RULES / INDEX / READ / RESEARCH / IMPLEMENT / TEST / DEBUG</span>
+        </div>
+        <div class="phase-arrow"></div>
+        <div class="phase">
+          <span class="phase-name">Ship</span>
+          <span class="phase-steps">REVIEW / DEPLOY / MONITOR</span>
+        </div>
+        <div class="phase-arrow"></div>
+        <div class="phase">
+          <span class="phase-name">Grow</span>
+          <span class="phase-steps">Graduation checklist for getting users</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- When Stuck -->
+    <section class="principles">
+      <p class="section-label">When Things Go Wrong</p>
+      <div class="principles-grid">
+        <div class="principle">
+          <h4>midas_oneshot</h4>
+          <p class="principle-desc">Retry after an error. Constructs prompt with original, error, and "avoid this" context.</p>
+          <code class="principle-formula">Original + Error + Avoid = Works</code>
+        </div>
+        <div class="principle">
+          <h4>midas_tornado</h4>
+          <p class="principle-desc">Stuck on same error 3x? Triggers the debugging cycle that actually works.</p>
+          <code class="principle-formula">Research → Logs → Tests → Repeat</code>
+        </div>
+        <div class="principle">
+          <h4>midas_horizon</h4>
+          <p class="principle-desc">AI output doesn't fit? Expand horizontal context: integrations, patterns, constraints.</p>
+          <code class="principle-formula">Wrong output? Widen context.</code>
+        </div>
+      </div>
+    </section>
+
+    <!-- 12 Ingredients -->
+    <section class="ingredients">
+      <p class="section-label">midas_audit: 12 Ingredients</p>
+      <p class="ingredients-subtitle">Scores your project against 12 production readiness ingredients</p>
+      <div class="ingredients-grid">
+        <div class="ingredient-level">
+          <span class="level-badge level-functional">1-4</span>
+          <span class="level-name">Functional</span>
+          <span class="level-desc">Frontend / Backend / Database / Auth</span>
+        </div>
+        <div class="ingredient-level">
+          <span class="level-badge level-integrated">5-7</span>
+          <span class="level-name">Integrated</span>
+          <span class="level-desc">APIs / State / Design</span>
+        </div>
+        <div class="ingredient-level">
+          <span class="level-badge level-protected">8-10</span>
+          <span class="level-name">Protected</span>
+          <span class="level-desc">Testing / Security / Error Handling</span>
+        </div>
+        <div class="ingredient-level">
+          <span class="level-badge level-production">11-12</span>
+          <span class="level-name">Production</span>
+          <span class="level-desc">Version Control / Deployment</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tools Available -->
+    <section class="tools-list">
+      <p class="section-label">37+ MCP Tools</p>
+      <div class="tools-grid">
+        <div class="tool-category">
+          <h4>Phase Management</h4>
+          <p class="tool-names">midas_analyze, midas_suggest_prompt, midas_advance_phase, midas_set_phase, midas_get_phase</p>
+        </div>
+        <div class="tool-category">
+          <h4>Verification</h4>
+          <p class="tool-names">midas_verify, midas_validate_gates, midas_completeness, midas_preflight</p>
+        </div>
+        <div class="tool-category">
+          <h4>Debugging</h4>
+          <p class="tool-names">midas_oneshot, midas_tornado, midas_horizon, midas_record_error, midas_unstuck</p>
+        </div>
+        <div class="tool-category">
+          <h4>Code Quality</h4>
+          <p class="tool-names">midas_audit, midas_complexity, midas_simplify, midas_vuln_scan, midas_scan_debt</p>
+        </div>
+        <div class="tool-category">
+          <h4>Documentation</h4>
+          <p class="tool-names">midas_journal_save, midas_journal_list, midas_journal_search, midas_check_docs</p>
+        </div>
+        <div class="tool-category">
+          <h4>Project Tracking</h4>
+          <p class="tool-names">midas_gameplan_analyze, midas_gameplan_progress, midas_scope_creep</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- TUI Mode -->
+    <section class="tui-section">
+      <p class="section-label">Interactive TUI</p>
+      <div class="tui-content">
+        <div class="tui-preview">
+          <code class="tui-command">npx midas-mcp</code>
+          <p class="tui-desc">Launch the terminal UI for visual coaching</p>
+        </div>
+        <div class="tui-features">
+          <div class="tui-feature">
+            <span class="tui-key">[c]</span>
+            <span>Copy suggested prompt</span>
+          </div>
+          <div class="tui-feature">
+            <span class="tui-key">[r]</span>
+            <span>Re-analyze project</span>
+          </div>
+          <div class="tui-feature">
+            <span class="tui-key">[v]</span>
+            <span>Run verification gates</span>
+          </div>
+          <div class="tui-feature">
+            <span class="tui-key">[y]</span>
+            <span>Preflight ship checks</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="how-works">
+      <p class="section-label">How It Works</p>
+      <div class="how-steps">
+        <div class="how-step">
+          <span class="how-number">1</span>
+          <div class="how-text">
+            <h4>Cursor loads Midas as MCP server</h4>
+            <p>37 tools become available to the AI automatically</p>
+          </div>
+        </div>
+        <div class="how-step">
+          <span class="how-number">2</span>
+          <div class="how-text">
+            <h4>AI calls midas_analyze on your project</h4>
+            <p>Reads codebase, docs, git history, determines current phase</p>
+          </div>
+        </div>
+        <div class="how-step">
+          <span class="how-number">3</span>
+          <div class="how-text">
+            <h4>Midas returns phase-aware guidance</h4>
+            <p>What's done, what's next, exact prompt to paste</p>
+          </div>
+        </div>
+        <div class="how-step">
+          <span class="how-number">4</span>
+          <div class="how-text">
+            <h4>Auto-advances when gates pass</h4>
+            <p>Build/test/lint must pass before moving forward</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta">
+      <div class="cta-buttons">
+        <a href="https://www.npmjs.com/package/midas-mcp" class="btn btn-primary">
+          View on npm
+        </a>
+        <a href="https://github.com/christiancattaneo/midas-mcp" class="btn btn-secondary">
+          GitHub
+        </a>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <p>MIT License</p>
+  </footer>
+
+  <script>
+    // Matrix rain effect
+    function createMatrixRain() {
+      const matrix = document.getElementById('matrix');
+      const chars = 'MIDAS01アイウエオカキクケコ金黄';
+      const columns = Math.floor(window.innerWidth / 20);
+      
+      for (let i = 0; i < columns; i++) {
+        const column = document.createElement('div');
+        column.className = 'matrix-column';
+        column.style.left = (i * 20) + 'px';
+        column.style.animationDuration = (Math.random() * 4 + 4) + 's';
+        column.style.animationDelay = (Math.random() * 4) + 's';
+        
+        let text = '';
+        for (let j = 0; j < 50; j++) {
+          text += chars[Math.floor(Math.random() * chars.length)] + '\n';
+        }
+        column.textContent = text;
+        matrix.appendChild(column);
+      }
+    }
+    
+    createMatrixRain();
+
+    // Decrypt animation
+    function decryptText() {
+      const el = document.querySelector('.decrypt-text');
+      const finalText = el.textContent;
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&';
+      let iterations = 0;
+      
+      const interval = setInterval(() => {
+        el.textContent = finalText
+          .split('')
+          .map((char, i) => {
+            if (i < iterations) return finalText[i];
+            if (char === ' ') return ' ';
+            return chars[Math.floor(Math.random() * chars.length)];
+          })
+          .join('');
+        
+        iterations += 1/3;
+        if (iterations >= finalText.length) clearInterval(interval);
+      }, 30);
+    }
+    
+    setTimeout(decryptText, 500);
+
+    // Copy functions
+    function copyCode(btn, text) {
+      navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = 'Copied';
+        setTimeout(() => btn.textContent = 'Copy', 2000);
+      });
+    }
+
+    function copyJson() {
+      const json = `{
+  "mcpServers": {
+    "midas": {
+      "command": "npx",
+      "args": ["midas-mcp@latest", "server"]
+    }
+  }
+}`;
+      navigator.clipboard.writeText(json).then(() => {
+        const btn = document.querySelector('.setup-card:last-child .copy-btn');
+        btn.textContent = 'Copied';
+        setTimeout(() => btn.textContent = 'Copy', 2000);
+      });
+    }
+  </script>
+</body>
+</html>

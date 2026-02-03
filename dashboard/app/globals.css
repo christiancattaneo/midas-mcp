@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --gold: #d4af37;
+  --gold-light: #f0d060;
+  --gold-dark: #8b7355;
+  --matrix: #22c55e;
+  --matrix-dim: #166534;
+  --bg: #0a0a0a;
+  --bg-card: #111111;
+  --text: #e5e5e5;
+  --text-dim: #666666;
+  --border: #222222;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.card:hover {
+  border-color: var(--gold-dark);
+}
+
+.phase-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.phase-idle { background: #333; color: #888; }
+.phase-plan { background: #422006; color: #fbbf24; }
+.phase-build { background: #1e3a8a; color: #60a5fa; }
+.phase-ship { background: #14532d; color: #4ade80; }
+.phase-grow { background: #581c87; color: #c084fc; }
+
+.progress-bar {
+  height: 8px;
+  background: #222;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold-dark), var(--gold));
+  transition: width 0.3s ease;
+}
+
+.gate-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.gate-pass { background: #14532d; color: #4ade80; }
+.gate-fail { background: #7f1d1d; color: #f87171; }
+.gate-unknown { background: #333; color: #888; }

@@ -170,6 +170,35 @@ Midas audits against:
 
 **Completion levels:** 1-4 (functional), 1-8 (polished), 1-12 (production-ready)
 
+## Cloud Dashboard
+
+Track your progress across all projects at [dashboard.midasmcp.com](https://dashboard.midasmcp.com).
+
+### Login with GitHub
+
+```bash
+npx midas-mcp login
+```
+
+This opens GitHub for authentication. Once complete, your projects can sync to the cloud.
+
+### Sync Your Project
+
+```bash
+cd your-project
+npx midas-mcp sync
+```
+
+Syncs current phase, gate status, and recent activity to the dashboard.
+
+### Check Login Status
+
+```bash
+npx midas-mcp whoami
+```
+
+Shows your authenticated GitHub username and sync configuration status.
+
 ## Development
 
 ```bash

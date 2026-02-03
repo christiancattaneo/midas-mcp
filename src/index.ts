@@ -34,7 +34,7 @@ async function startMCPServer(): Promise<void> {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  const result = runCLI(args);
+  const result = await runCLI(args);
 
   switch (result) {
     case 'handled':

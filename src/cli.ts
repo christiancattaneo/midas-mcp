@@ -7,6 +7,8 @@ import { audit } from './tools/audit.js';
 import { checkDocs } from './tools/docs.js';
 import { loadMetrics } from './metrics.js';
 import { getWeeklySummary } from './tracker.js';
+import { login, logout, isAuthenticated, loadAuth } from './auth.js';
+import { runSync, isCloudConfigured } from './cloud.js';
 
 // ANSI colors
 const reset = '\x1b[0m';
@@ -53,6 +55,12 @@ ${bold}Usage:${reset}
   npx midas-mcp server       Start MCP server (for Cursor integration)
   npx midas-mcp help         Show this help
 
+${bold}Cloud Dashboard:${reset}
+  npx midas-mcp login        Login with GitHub (for cloud dashboard)
+  npx midas-mcp logout       Logout from GitHub
+  npx midas-mcp sync         Sync project state to cloud dashboard
+  npx midas-mcp whoami       Show current authenticated user
+
 ${bold}The Four Phases:${reset}
   ${yellow}PLAN${reset}         Plan before building (Idea → Research → Brainlift → PRD → Gameplan)
   ${blue}BUILD${reset}        Execute with the 7-step process
@@ -61,6 +69,7 @@ ${bold}The Four Phases:${reset}
 
 ${bold}Learn more:${reset}
   https://github.com/christiancattaneo/midas-mcp
+  https://midasmcp.com/dashboard (cloud dashboard)
 `);
 }
 
@@ -419,6 +428,26 @@ export function showMetrics(): void {
   console.log('');
 }
 
+export function showWhoami(): void {
+  if (!isAuthenticated()) {
+    console.log(`\n  ${dim}Not logged in${reset}`);
+    console.log(`  Run: ${cyan}npx midas-mcp login${reset}\n`);
+    return;
+  }
+  
+  const auth = loadAuth();
+  console.log(`\n  ${bold}Logged in as:${reset} @${green}${auth.githubUsername}${reset}`);
+  console.log(`  ${dim}User ID:${reset} ${auth.githubUserId}`);
+  console.log(`  ${dim}Authenticated:${reset} ${auth.authenticatedAt}`);
+  
+  if (isCloudConfigured()) {
+    console.log(`  ${dim}Cloud sync:${reset} ${green}configured${reset}`);
+  } else {
+    console.log(`  ${dim}Cloud sync:${reset} ${yellow}not configured${reset}`);
+  }
+  console.log('');
+}
+
 export function showWeeklySummary(): void {
   const projectPath = process.cwd();
   const summary = getWeeklySummary(projectPath);
@@ -459,7 +488,7 @@ export function showWeeklySummary(): void {
   console.log('');
 }
 
-export function runCLI(args: string[]): 'interactive' | 'server' | 'handled' {
+export function runCLI(args: string[]): 'interactive' | 'server' | 'handled' | Promise<'handled'> {
   const command = args[0];
 
   switch (command) {
@@ -497,6 +526,27 @@ export function runCLI(args: string[]): 'interactive' | 'server' | 'handled' {
 
     case 'weekly':
       showWeeklySummary();
+      return 'handled';
+
+    case 'login':
+      // Async command - return promise so main() waits
+      return login().then(() => 'handled' as const).catch(err => {
+        console.error('Login failed:', err.message);
+        return 'handled' as const;
+      });
+
+    case 'logout':
+      logout();
+      return 'handled';
+
+    case 'sync':
+      return runSync(process.cwd()).then(() => 'handled' as const).catch(err => {
+        console.error('Sync failed:', err.message);
+        return 'handled' as const;
+      });
+
+    case 'whoami':
+      showWhoami();
       return 'handled';
 
     case 'server':
