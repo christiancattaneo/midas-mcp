@@ -7,7 +7,7 @@
  * 3. Streams output back to cloud
  * 4. Updates task status on completion
  * 
- * Usage: midas pilot [--watch] [--remote] [--project <path>]
+ * Usage: midas pilot [--project <path>]
  */
 
 import { spawn } from 'child_process';
@@ -338,116 +338,6 @@ export function getPilotStatus(): PilotStatus {
 // CLI COMMAND
 // ============================================================================
 
-// ============================================================================
-// WATCH MODE (polls cloud for pending commands)
-// ============================================================================
-
-let watchRunning = false;
-
-/**
- * Run Pilot in watch mode - polls cloud for commands
- * Also displays QR code for mobile control
- */
-export async function runWatchMode(pollInterval = 5000): Promise<void> {
-  if (!isAuthenticated()) {
-    console.log('\n  ✗ Not authenticated. Run: midas login\n');
-    return;
-  }
-  
-  // Check for Claude Code
-  const checkClaude = spawn('which', ['claude']);
-  const hasClaudeCode = await new Promise<boolean>((resolve) => {
-    checkClaude.on('close', (code) => resolve(code === 0));
-  });
-  
-  if (!hasClaudeCode) {
-    console.log('\n  ✗ Claude Code CLI not found');
-    console.log('    Install from: https://claude.ai/code\n');
-    return;
-  }
-  
-  console.log('\n  ╔══════════════════════════════════════╗');
-  console.log('  ║       MIDAS PILOT - WATCH MODE       ║');
-  console.log('  ╚══════════════════════════════════════╝\n');
-  
-  // Auto-sync on startup so dashboard has latest state
-  console.log('  Syncing project state...');
-  const syncResult = await syncProject(process.cwd());
-  if (syncResult.success) {
-    console.log('  ✓ Synced to dashboard\n');
-  } else {
-    console.log(`  ⚠ Sync skipped: ${syncResult.error}\n`);
-  }
-  
-  // Create remote session and show QR code for mobile control
-  const session = generateRemoteSession();
-  const registered = await registerRemoteSession(session);
-  
-  if (registered) {
-    const remoteUrl = `${DASHBOARD_URL}/pilot/${session.sessionId}?token=${session.sessionToken}`;
-    console.log('  📱 Scan to control from phone:\n');
-    await displayQRCode(remoteUrl);
-    console.log(`\n  ${remoteUrl}\n`);
-    
-    // Update session status to idle
-    await updateRemoteSession(session.sessionId, { status: 'idle' });
-  } else {
-    console.log('  (Mobile control unavailable - could not register session)\n');
-  }
-  
-  console.log('  Watching for commands from dashboard...');
-  console.log('  Press Ctrl+C to stop\n');
-  
-  watchRunning = true;
-  
-  // Handle graceful shutdown
-  process.on('SIGINT', async () => {
-    console.log('\n\n  Pilot stopped.\n');
-    watchRunning = false;
-    if (registered) {
-      await updateRemoteSession(session.sessionId, { status: 'disconnected' });
-    }
-    process.exit(0);
-  });
-  
-  while (watchRunning) {
-    try {
-      const commands = await fetchPendingCommands();
-      
-      if (commands.length > 0) {
-        const command = commands[0]; // Process one at a time
-        console.log(`\n  ▸ Received command #${command.id}`);
-        console.log(`    Type: ${command.command_type}`);
-        console.log(`    Prompt: ${command.prompt.slice(0, 60)}...`);
-        
-        // Update remote session status
-        if (registered) {
-          await updateRemoteSession(session.sessionId, {
-            status: 'running',
-            current_task: command.prompt.slice(0, 100),
-          });
-        }
-        
-        await executeCommand(command);
-        
-        // Update remote session back to idle
-        if (registered) {
-          await updateRemoteSession(session.sessionId, {
-            status: 'idle',
-            current_task: undefined,
-          });
-        }
-      }
-    } catch (err) {
-      // Network error, wait and retry
-      console.log(`  ⚠ Poll error: ${err instanceof Error ? err.message : 'unknown'}`);
-    }
-    
-    // Wait before next poll
-    await new Promise(resolve => setTimeout(resolve, pollInterval));
-  }
-}
-
 /**
  * Execute a pending command from the cloud
  */
@@ -688,7 +578,7 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
   console.log('  Waiting for commands from your phone...');
   console.log('');
   
-  watchRunning = true;
+  let running = true;
   
   // Handle graceful shutdown
   process.on('SIGINT', async () => {
@@ -696,7 +586,7 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
     console.log('\n\n  Closing session...');
     await updateRemoteSession(session.sessionId, { status: 'disconnected' });
     console.log('  Pilot stopped.\n');
-    watchRunning = false;
+    running = false;
     process.exit(0);
   });
   
@@ -706,7 +596,7 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
   // Heartbeat loop
   let lastHeartbeat = Date.now();
   
-  while (watchRunning) {
+  while (running) {
     try {
       // Check if session expired
       if (new Date() > session.expiresAt) {
@@ -792,21 +682,31 @@ async function executeCommandWithUpdates(command: PendingCommand, sessionId: str
 }
 
 /**
- * CLI handler for: midas pilot "prompt"
+ * CLI handler for: midas pilot ["prompt"]
+ * 
+ * With no args or with --remote/-r/--watch/-w: starts remote mode with QR code
+ * With a prompt string: executes that prompt directly via Claude Code
  */
 export async function runPilotCLI(args: string[]): Promise<void> {
-  // Check for remote mode
-  if (args.includes('--remote') || args.includes('-r')) {
-    const pollInterval = 3000;
-    await runRemoteMode(pollInterval);
+  // Check for remote/watch mode flags or no prompt
+  const hasRemoteFlag = args.includes('--remote') || args.includes('-r') || args.includes('--watch') || args.includes('-w');
+  const promptArg = args.find(a => !a.startsWith('--') && a !== '-r' && a !== '-w');
+  
+  // Default: start remote mode (sync, show QR, poll for commands)
+  if (hasRemoteFlag || !promptArg) {
+    await runRemoteMode(3000);
     return;
   }
   
-  // Check for watch mode
-  if (args.includes('--watch') || args.includes('-w')) {
-    const pollInterval = 5000;
-    await runWatchMode(pollInterval);
-    return;
+  // Direct prompt mode: execute a single prompt via Claude Code
+  const prompt = promptArg;
+  let projectPath = process.cwd();
+  
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--project' && args[i + 1]) {
+      projectPath = sanitizePath(args[i + 1]);
+      i++;
+    }
   }
   
   // Check for Claude Code
@@ -818,35 +718,6 @@ export async function runPilotCLI(args: string[]): Promise<void> {
   if (!hasClaudeCode) {
     console.log('\n  ✗ Claude Code CLI not found');
     console.log('    Install from: https://claude.ai/code\n');
-    return;
-  }
-  
-  // Parse arguments
-  let prompt = '';
-  let projectPath = process.cwd();
-  
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--project' && args[i + 1]) {
-      projectPath = sanitizePath(args[i + 1]);
-      i++;
-    } else if (!args[i].startsWith('--')) {
-      prompt = args[i];
-    }
-  }
-  
-  if (!prompt) {
-    console.log('\n  Usage: midas pilot "your prompt here"');
-    console.log('         midas pilot --watch');
-    console.log('         midas pilot --remote');
-    console.log('');
-    console.log('  Options:');
-    console.log('    --project <path>  Project directory');
-    console.log('    --watch, -w       Watch mode - poll cloud for commands');
-    console.log('    --remote, -r      Remote mode - show QR code for phone control\n');
-    console.log('  Examples:');
-    console.log('    midas pilot "Fix the failing test in auth.ts"');
-    console.log('    midas pilot --watch');
-    console.log('    midas pilot --remote\n');
     return;
   }
   
