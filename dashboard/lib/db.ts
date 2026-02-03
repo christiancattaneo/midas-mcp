@@ -361,4 +361,163 @@ export async function getRecentCommands(projectId: string, limit = 10): Promise<
   }
 }
 
+// ============================================================================
+// PILOT SESSIONS (Master DB - for remote control)
+// ============================================================================
+
+export interface PilotSession {
+  id: string
+  github_user_id: number
+  session_token: string
+  status: 'waiting' | 'connected' | 'running' | 'idle' | 'disconnected'
+  current_project: string | null
+  current_task: string | null
+  last_output: string | null
+  output_lines: number
+  created_at: string
+  last_heartbeat: string | null
+  expires_at: string | null
+}
+
+export async function getPilotSession(sessionId: string): Promise<PilotSession | null> {
+  const client = getMasterClient()
+  const result = await client.execute({
+    sql: 'SELECT * FROM pilot_sessions WHERE id = ?',
+    args: [sessionId],
+  })
+  
+  if (result.rows.length === 0) return null
+  
+  const row = result.rows[0]
+  return {
+    id: row.id as string,
+    github_user_id: row.github_user_id as number,
+    session_token: row.session_token as string,
+    status: row.status as PilotSession['status'],
+    current_project: row.current_project as string | null,
+    current_task: row.current_task as string | null,
+    last_output: row.last_output as string | null,
+    output_lines: row.output_lines as number,
+    created_at: row.created_at as string,
+    last_heartbeat: row.last_heartbeat as string | null,
+    expires_at: row.expires_at as string | null,
+  }
+}
+
+export async function getPilotSessionByToken(sessionId: string, token: string): Promise<PilotSession | null> {
+  const session = await getPilotSession(sessionId)
+  if (!session || session.session_token !== token) return null
+  return session
+}
+
+export async function createPilotSession(
+  sessionId: string,
+  githubUserId: number,
+  sessionToken: string,
+  expiresAt: string
+): Promise<void> {
+  const client = getMasterClient()
+  await client.execute({
+    sql: `INSERT INTO pilot_sessions (id, github_user_id, session_token, expires_at) 
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET 
+            session_token = excluded.session_token,
+            status = 'waiting',
+            expires_at = excluded.expires_at,
+            last_heartbeat = CURRENT_TIMESTAMP`,
+    args: [sessionId, githubUserId, sessionToken, expiresAt],
+  })
+}
+
+export async function updatePilotSession(
+  sessionId: string,
+  updates: Partial<Pick<PilotSession, 'status' | 'current_project' | 'current_task' | 'last_output' | 'output_lines'>>
+): Promise<void> {
+  const client = getMasterClient()
+  const setClauses: string[] = ['last_heartbeat = CURRENT_TIMESTAMP']
+  const args: (string | number | null)[] = []
+  
+  if (updates.status !== undefined) {
+    setClauses.push('status = ?')
+    args.push(updates.status)
+  }
+  if (updates.current_project !== undefined) {
+    setClauses.push('current_project = ?')
+    args.push(updates.current_project)
+  }
+  if (updates.current_task !== undefined) {
+    setClauses.push('current_task = ?')
+    args.push(updates.current_task)
+  }
+  if (updates.last_output !== undefined) {
+    setClauses.push('last_output = ?')
+    args.push(updates.last_output)
+  }
+  if (updates.output_lines !== undefined) {
+    setClauses.push('output_lines = ?')
+    args.push(updates.output_lines)
+  }
+  
+  args.push(sessionId)
+  
+  await client.execute({
+    sql: `UPDATE pilot_sessions SET ${setClauses.join(', ')} WHERE id = ?`,
+    args,
+  })
+}
+
+export async function getActivePilotSession(githubUserId: number): Promise<PilotSession | null> {
+  const client = getMasterClient()
+  const result = await client.execute({
+    sql: `SELECT * FROM pilot_sessions 
+          WHERE github_user_id = ? 
+            AND status != 'disconnected'
+            AND (expires_at IS NULL OR expires_at > datetime('now'))
+          ORDER BY created_at DESC 
+          LIMIT 1`,
+    args: [githubUserId],
+  })
+  
+  if (result.rows.length === 0) return null
+  
+  const row = result.rows[0]
+  return {
+    id: row.id as string,
+    github_user_id: row.github_user_id as number,
+    session_token: row.session_token as string,
+    status: row.status as PilotSession['status'],
+    current_project: row.current_project as string | null,
+    current_task: row.current_task as string | null,
+    last_output: row.last_output as string | null,
+    output_lines: row.output_lines as number,
+    created_at: row.created_at as string,
+    last_heartbeat: row.last_heartbeat as string | null,
+    expires_at: row.expires_at as string | null,
+  }
+}
+
+export async function addCommandToQueue(
+  githubUserId: number,
+  projectId: string,
+  commandType: string,
+  prompt: string,
+  priority = 0,
+  maxTurns = 10
+): Promise<number> {
+  // Get user's personal DB to add command
+  const user = await getUserByGithubId(githubUserId)
+  if (!user?.db_url || !user?.db_token) {
+    throw new Error('User database not provisioned')
+  }
+  
+  const client = getUserClient(user.db_url, user.db_token)
+  const result = await client.execute({
+    sql: `INSERT INTO pending_commands (project_id, command_type, prompt, priority, max_turns)
+          VALUES (?, ?, ?, ?, ?)`,
+    args: [projectId, commandType, prompt, priority, maxTurns],
+  })
+  
+  return Number(result.lastInsertRowid)
+}
+
 export { getClient }

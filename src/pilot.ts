@@ -7,11 +7,12 @@
  * 3. Streams output back to cloud
  * 4. Updates task status on completion
  * 
- * Usage: midas pilot [--project <path>] [--auto]
+ * Usage: midas pilot [--watch] [--remote] [--project <path>]
  */
 
-import { spawn, type ChildProcess } from 'child_process';
-import { isAuthenticated, getAuthenticatedUser } from './auth.js';
+import { spawn } from 'child_process';
+import { randomBytes } from 'crypto';
+import { isAuthenticated, getAuthenticatedUser, loadAuth } from './auth.js';
 import { sanitizePath } from './security.js';
 import { 
   fetchPendingCommands, 
@@ -20,6 +21,9 @@ import {
   getProjectById,
   type PendingCommand 
 } from './cloud.js';
+
+// QR code library (dynamic import for ESM compatibility)
+let qrcode: { generate: (text: string, opts: { small: boolean }, cb: (qr: string) => void) => void } | null = null;
 
 // ============================================================================
 // TYPES
@@ -384,13 +388,289 @@ async function executeCommand(command: PendingCommand): Promise<void> {
   console.log('\n  Waiting for next command...');
 }
 
+// ============================================================================
+// REMOTE MODE (QR code for phone control)
+// ============================================================================
+
+const DASHBOARD_URL = process.env.MIDAS_DASHBOARD_URL || 'https://dashboard.midasmcp.com';
+
+interface RemoteSession {
+  sessionId: string;
+  sessionToken: string;
+  expiresAt: Date;
+}
+
+/**
+ * Generate a new remote session
+ */
+function generateRemoteSession(): RemoteSession {
+  const sessionId = randomBytes(8).toString('hex');
+  const sessionToken = randomBytes(16).toString('hex');
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+  
+  return { sessionId, sessionToken, expiresAt };
+}
+
+/**
+ * Register session with the cloud
+ */
+async function registerRemoteSession(session: RemoteSession): Promise<boolean> {
+  const auth = loadAuth();
+  if (!auth.githubUserId || !auth.githubAccessToken) {
+    return false;
+  }
+  
+  try {
+    const response = await fetch(`${DASHBOARD_URL}/api/pilot-session`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        session_id: session.sessionId,
+        session_token: session.sessionToken,
+        github_user_id: auth.githubUserId,
+        github_access_token: auth.githubAccessToken,
+        expires_at: session.expiresAt.toISOString(),
+      }),
+    });
+    
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Update session status in cloud
+ */
+async function updateRemoteSession(
+  sessionId: string,
+  updates: {
+    status?: string;
+    current_project?: string;
+    current_task?: string;
+    last_output?: string;
+    output_lines?: number;
+  }
+): Promise<void> {
+  const auth = loadAuth();
+  if (!auth.githubAccessToken) return;
+  
+  try {
+    await fetch(`${DASHBOARD_URL}/api/pilot-session/${sessionId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${auth.githubAccessToken}`,
+      },
+      body: JSON.stringify(updates),
+    });
+  } catch {
+    // Ignore update errors
+  }
+}
+
+/**
+ * Display QR code for remote connection
+ */
+async function displayQRCode(url: string): Promise<void> {
+  // Load qrcode-terminal dynamically
+  if (!qrcode) {
+    try {
+      qrcode = await import('qrcode-terminal');
+    } catch {
+      console.log(`\n  QR code library not available.`);
+      console.log(`  Open this URL on your phone:\n`);
+      console.log(`  ${url}\n`);
+      return;
+    }
+  }
+  
+  return new Promise((resolve) => {
+    qrcode!.generate(url, { small: true }, (qr: string) => {
+      const indented = qr.split('\n').map(line => '  ' + line).join('\n');
+      console.log(indented);
+      console.log(`\n  ${url}\n`);
+      resolve();
+    });
+  });
+}
+
+/**
+ * Run Pilot in remote mode - shows QR code for phone control
+ */
+export async function runRemoteMode(pollInterval = 3000): Promise<void> {
+  if (!isAuthenticated()) {
+    console.log('\n  ✗ Not authenticated. Run: midas login\n');
+    return;
+  }
+  
+  const user = getAuthenticatedUser();
+  if (!user) {
+    console.log('\n  ✗ User info not available\n');
+    return;
+  }
+  
+  // Check for Claude Code
+  const checkClaude = spawn('which', ['claude']);
+  const hasClaudeCode = await new Promise<boolean>((resolve) => {
+    checkClaude.on('close', (code) => resolve(code === 0));
+  });
+  
+  if (!hasClaudeCode) {
+    console.log('\n  ✗ Claude Code CLI not found');
+    console.log('    Install from: https://claude.ai/code\n');
+    return;
+  }
+  
+  // Generate session
+  const session = generateRemoteSession();
+  const connectionUrl = `${DASHBOARD_URL}/pilot/${session.sessionId}?token=${session.sessionToken}`;
+  
+  // Clear screen and show header
+  console.clear();
+  console.log('\n  ╔══════════════════════════════════════╗');
+  console.log('  ║       MIDAS PILOT - REMOTE MODE      ║');
+  console.log('  ╚══════════════════════════════════════╝\n');
+  
+  // Register session with cloud
+  console.log('  Registering session...');
+  const registered = await registerRemoteSession(session);
+  
+  if (!registered) {
+    console.log('\n  ✗ Failed to register session');
+    console.log('    Check your internet connection\n');
+    return;
+  }
+  
+  console.log('  ✓ Session registered\n');
+  console.log('  Scan this QR code with your phone:\n');
+  
+  await displayQRCode(connectionUrl);
+  
+  console.log('  Keep this terminal open. Commands will execute here.');
+  console.log('  Session expires in 60 minutes.');
+  console.log('  Press Ctrl+C to stop.\n');
+  console.log('  ─'.repeat(30) + '\n');
+  console.log('  Waiting for commands...\n');
+  
+  watchRunning = true;
+  
+  // Handle graceful shutdown
+  process.on('SIGINT', async () => {
+    console.log('\n\n  Closing session...');
+    await updateRemoteSession(session.sessionId, { status: 'disconnected' });
+    console.log('  Pilot stopped.\n');
+    watchRunning = false;
+    process.exit(0);
+  });
+  
+  // Update status to connected
+  await updateRemoteSession(session.sessionId, { status: 'connected' });
+  
+  // Heartbeat loop
+  let lastHeartbeat = Date.now();
+  
+  while (watchRunning) {
+    try {
+      // Check if session expired
+      if (new Date() > session.expiresAt) {
+        console.log('\n  Session expired. Start a new one with: midas pilot --remote\n');
+        break;
+      }
+      
+      // Send heartbeat every 30 seconds
+      if (Date.now() - lastHeartbeat > 30000) {
+        await updateRemoteSession(session.sessionId, { status: 'idle' });
+        lastHeartbeat = Date.now();
+      }
+      
+      // Poll for commands
+      const commands = await fetchPendingCommands();
+      
+      if (commands.length > 0) {
+        const command = commands[0];
+        console.log(`  ▸ Received command #${command.id}`);
+        console.log(`    ${command.prompt.slice(0, 60)}...`);
+        
+        // Update session status
+        await updateRemoteSession(session.sessionId, {
+          status: 'running',
+          current_task: command.prompt.slice(0, 100),
+        });
+        
+        // Execute command (reusing existing function)
+        await executeCommandWithUpdates(command, session.sessionId);
+        
+        // Back to idle
+        await updateRemoteSession(session.sessionId, {
+          status: 'idle',
+          current_task: undefined,
+        });
+      }
+    } catch (err) {
+      // Network error, continue
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
+}
+
+/**
+ * Execute command with real-time session updates
+ */
+async function executeCommandWithUpdates(command: PendingCommand, sessionId: string): Promise<void> {
+  const project = await getProjectById(command.project_id);
+  if (!project) {
+    console.log(`  ✗ Project not found: ${command.project_id}`);
+    return;
+  }
+  
+  console.log(`    Project: ${project.name}`);
+  
+  await markCommandRunning(command.id);
+  
+  const result = await executeClaudeCode(command.prompt, {
+    projectPath: project.local_path,
+    maxTurns: command.max_turns,
+  });
+  
+  // Update session with output
+  await updateRemoteSession(sessionId, {
+    last_output: result.output.slice(-5000), // Last 5KB
+    output_lines: result.output.split('\n').length,
+  });
+  
+  await markCommandCompleted(command.id, {
+    success: result.success,
+    output: result.output,
+    exitCode: result.exitCode,
+    durationMs: result.duration,
+    sessionId: result.sessionId,
+  });
+  
+  if (result.success) {
+    console.log(`  ✓ Complete (${(result.duration / 1000).toFixed(1)}s)\n`);
+  } else {
+    console.log(`  ✗ Failed (exit ${result.exitCode})\n`);
+  }
+}
+
 /**
  * CLI handler for: midas pilot "prompt"
  */
 export async function runPilotCLI(args: string[]): Promise<void> {
+  // Check for remote mode
+  if (args.includes('--remote') || args.includes('-r')) {
+    const pollInterval = 3000;
+    await runRemoteMode(pollInterval);
+    return;
+  }
+  
   // Check for watch mode
   if (args.includes('--watch') || args.includes('-w')) {
-    const pollInterval = 5000; // Could be made configurable
+    const pollInterval = 5000;
     await runWatchMode(pollInterval);
     return;
   }
@@ -423,13 +703,16 @@ export async function runPilotCLI(args: string[]): Promise<void> {
   if (!prompt) {
     console.log('\n  Usage: midas pilot "your prompt here"');
     console.log('         midas pilot --watch');
+    console.log('         midas pilot --remote');
     console.log('');
     console.log('  Options:');
     console.log('    --project <path>  Project directory');
-    console.log('    --watch, -w       Watch mode - poll cloud for commands\n');
+    console.log('    --watch, -w       Watch mode - poll cloud for commands');
+    console.log('    --remote, -r      Remote mode - show QR code for phone control\n');
     console.log('  Examples:');
     console.log('    midas pilot "Fix the failing test in auth.ts"');
-    console.log('    midas pilot --watch\n');
+    console.log('    midas pilot --watch');
+    console.log('    midas pilot --remote\n');
     return;
   }
   
