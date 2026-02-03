@@ -19,11 +19,19 @@ This launches the interactive TUI coach. Press `?` for help, `p` to copy the rec
 
 ## Installation (Optional)
 
-For global installation:
+For global installation (enables `midas` command):
 
 ```bash
 npm install -g midas-mcp
 ```
+
+Or add a shell alias to `~/.zshrc` or `~/.bashrc`:
+
+```bash
+alias midas="npx midas-mcp@latest"
+```
+
+Then reload your shell: `source ~/.zshrc`
 
 ## Cursor Configuration
 
@@ -198,6 +206,48 @@ npx midas-mcp whoami
 ```
 
 Shows your authenticated GitHub username and sync configuration status.
+
+## Remote Pilot (Control from Phone)
+
+Run AI coding tasks from your phone while your laptop works in the background.
+
+### Start Remote Pilot
+
+```bash
+npx midas-mcp pilot --remote
+```
+
+This displays a QR code in your terminal. Scan it with your phone to open the mobile dashboard.
+
+### How It Works
+
+1. **Laptop**: Run `npx midas-mcp pilot --remote` - displays QR code, waits for commands
+2. **Phone**: Scan QR → opens mobile dashboard at `dashboard.midasmcp.com/pilot/...`
+3. **Execute**: Tap quick actions or type custom prompts
+4. **Claude Code runs locally** on your laptop, output streams to your phone
+
+### Quick Actions Available
+
+- **Run Tests**: Execute test suite and fix failures
+- **Fix Lints**: Run linter and auto-fix issues  
+- **Build**: Compile project and resolve errors
+- **Analyze**: Get AI analysis and next step suggestions
+- **Custom prompts**: Send any instruction to Claude Code
+
+### Requirements
+
+- [Claude Code CLI](https://claude.ai/code) installed on your laptop
+- GitHub account (for authentication)
+
+### Other Pilot Modes
+
+```bash
+# Watch mode - poll dashboard for queued commands
+npx midas-mcp pilot --watch
+
+# Single command execution
+npx midas-mcp pilot "Fix the bug in auth.ts"
+```
 
 ## Development
 
