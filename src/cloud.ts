@@ -5,7 +5,7 @@
  * Uses libsql HTTP API for serverless-friendly connections.
  */
 
-import { loadAuth, isAuthenticated, getAuthenticatedUser } from './auth.js';
+import { loadAuth, isAuthenticated, getAuthenticatedUser, getDatabaseCredentials } from './auth.js';
 import { loadState, type Phase } from './state/phase.js';
 import { loadTracker, type TrackerState } from './tracker.js';
 import { parseGameplanTasks, type GameplanTask } from './gameplan-tracker.js';
@@ -13,19 +13,29 @@ import { discoverDocsSync } from './docs-discovery.js';
 import { sanitizePath } from './security.js';
 import { basename } from 'path';
 
-// Turso configuration - shared database for all Midas users
-// Users can override with env vars for self-hosted setups
-const DEFAULT_TURSO_URL = 'libsql://midas-christiancattaneo.aws-us-east-1.turso.io';
-const DEFAULT_TURSO_TOKEN = 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NzAwNzY5OTAsImlkIjoiMzdiMTQ4NjEtNzFhZi00ZDgyLTg1ZDItYmY5OThhM2VmZjUxIiwicmlkIjoiNDQyMDJmMzItNWQ5YS00MTgyLTllM2ItNjE3MWUyNDk4ODY2In0.pm1VW_o8ARe25fwx8HrXyOAKAUnMxZrWrD_kIc0zk2wfC2qLjf6nxUSptSpV6jbDkIMQXK2TsV1o5HgAjpdBAw';
-
-const TURSO_URL_RAW = process.env.TURSO_DATABASE_URL || DEFAULT_TURSO_URL;
-const TURSO_AUTH_TOKEN = process.env.TURSO_AUTH_TOKEN || DEFAULT_TURSO_TOKEN;
+// Get user's personal database credentials
+// Falls back to env vars for self-hosted setups
+function getUserDatabaseConfig(): { url: string; token: string } | null {
+  // First try personal credentials from auth
+  const creds = getDatabaseCredentials();
+  if (creds) {
+    return { url: creds.dbUrl, token: creds.dbToken };
+  }
+  
+  // Fallback to env vars (for self-hosted)
+  const envUrl = process.env.TURSO_DATABASE_URL;
+  const envToken = process.env.TURSO_AUTH_TOKEN;
+  if (envUrl && envToken) {
+    return { url: envUrl, token: envToken };
+  }
+  
+  return null;
+}
 
 // Convert libsql:// URL to https:// for HTTP API
-function getTursoHttpUrl(): string {
-  if (!TURSO_URL_RAW) return '';
-  // libsql://db-name.turso.io -> https://db-name.turso.io
-  return TURSO_URL_RAW.replace('libsql://', 'https://');
+function getTursoHttpUrl(libsqlUrl: string): string {
+  if (!libsqlUrl) return '';
+  return libsqlUrl.replace('libsql://', 'https://');
 }
 
 export interface SyncResult {
@@ -55,10 +65,13 @@ async function executeSQL(
   sql: string,
   args: (string | number | boolean | null)[] = []
 ): Promise<{ columns: string[]; rows: (string | number | boolean | null)[][] }> {
-  const tursoUrl = getTursoHttpUrl();
-  if (!tursoUrl || !TURSO_AUTH_TOKEN) {
-    throw new Error('Turso not configured. Set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN.');
+  const dbConfig = getUserDatabaseConfig();
+  if (!dbConfig) {
+    throw new Error('Database not configured. Run: midas login');
   }
+  
+  const tursoUrl = getTursoHttpUrl(dbConfig.url);
+  const authToken = dbConfig.token;
   
   // Convert args to Turso format
   const tursoArgs = args.map(arg => {
@@ -71,7 +84,7 @@ async function executeSQL(
   const response = await fetch(`${tursoUrl}/v2/pipeline`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${TURSO_AUTH_TOKEN}`,
+      'Authorization': `Bearer ${authToken}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -302,19 +315,17 @@ export async function syncProject(projectPath: string): Promise<SyncResult> {
     const progress = calculateProgress(state.current);
     const now = new Date().toISOString();
     
-    // Upsert project
+    // Upsert project (user's personal database, no need for user ID)
     await executeSQL(`
-      INSERT INTO projects (id, github_user_id, github_username, name, local_path, current_phase, current_step, progress, last_synced)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(github_user_id, local_path) DO UPDATE SET
+      INSERT INTO projects (id, name, local_path, current_phase, current_step, progress, last_synced)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
         current_phase = excluded.current_phase,
         current_step = excluded.current_step,
         progress = excluded.progress,
         last_synced = excluded.last_synced
     `, [
       projectId,
-      user.userId,
-      user.username,
       projectName,
       safePath,
       state.current.phase,
@@ -413,24 +424,24 @@ export async function syncProject(projectPath: string): Promise<SyncResult> {
  * Get all projects for authenticated user
  */
 export async function getProjects(): Promise<CloudProject[]> {
-  const user = getAuthenticatedUser();
-  if (!user) return [];
+  if (!isAuthenticated()) return [];
   
   const result = await executeSQL(`
-    SELECT * FROM projects WHERE github_user_id = ? ORDER BY last_synced DESC
-  `, [user.userId]);
+    SELECT * FROM projects ORDER BY last_synced DESC
+  `);
   
+  // User's personal DB - columns: id, name, local_path, current_phase, current_step, progress, last_synced, created_at
   return result.rows.map(row => ({
     id: row[0] as string,
-    github_user_id: row[1] as number,
-    github_username: row[2] as string,
-    name: row[3] as string,
-    local_path: row[4] as string,
-    current_phase: row[5] as string,
-    current_step: row[6] as string,
-    progress: row[7] as number,
-    last_synced: row[8] as string,
-    created_at: row[9] as string,
+    github_user_id: 0, // Not stored in personal DB
+    github_username: '', // Not stored in personal DB
+    name: row[1] as string,
+    local_path: row[2] as string,
+    current_phase: row[3] as string,
+    current_step: row[4] as string,
+    progress: row[5] as number,
+    last_synced: row[6] as string,
+    created_at: row[7] as string,
   }));
 }
 
@@ -438,7 +449,7 @@ export async function getProjects(): Promise<CloudProject[]> {
  * Check if cloud sync is configured
  */
 export function isCloudConfigured(): boolean {
-  return !!TURSO_URL_RAW && !!TURSO_AUTH_TOKEN;
+  return getUserDatabaseConfig() !== null;
 }
 
 // ============================================================================
@@ -468,33 +479,34 @@ export interface PendingCommand {
  * Fetch pending commands for the authenticated user
  */
 export async function fetchPendingCommands(): Promise<PendingCommand[]> {
-  const user = getAuthenticatedUser();
-  if (!user) return [];
+  if (!isAuthenticated()) return [];
   
+  // User's personal DB - no github_user_id column
   const result = await executeSQL(`
     SELECT * FROM pending_commands 
-    WHERE github_user_id = ? AND status = 'pending'
+    WHERE status = 'pending'
     ORDER BY priority DESC, created_at ASC
     LIMIT 10
-  `, [user.userId]);
+  `);
   
+  // Columns: id, project_id, command_type, prompt, status, priority, max_turns, created_at, started_at, completed_at, output, error, exit_code, duration_ms, session_id
   return result.rows.map(row => ({
     id: row[0] as number,
     project_id: row[1] as string,
-    github_user_id: row[2] as number,
-    command_type: row[3] as 'prompt' | 'task' | 'gameplan',
-    prompt: row[4] as string,
-    status: row[5] as 'pending' | 'running' | 'completed' | 'failed' | 'cancelled',
-    priority: row[6] as number,
-    max_turns: row[7] as number,
-    created_at: row[8] as string,
-    started_at: row[9] as string | undefined,
-    completed_at: row[10] as string | undefined,
-    output: row[11] as string | undefined,
-    error: row[12] as string | undefined,
-    exit_code: row[13] as number | undefined,
-    duration_ms: row[14] as number | undefined,
-    session_id: row[15] as string | undefined,
+    github_user_id: 0, // Not in personal DB
+    command_type: row[2] as 'prompt' | 'task' | 'gameplan',
+    prompt: row[3] as string,
+    status: row[4] as 'pending' | 'running' | 'completed' | 'failed' | 'cancelled',
+    priority: row[5] as number,
+    max_turns: row[6] as number,
+    created_at: row[7] as string,
+    started_at: row[8] as string | undefined,
+    completed_at: row[9] as string | undefined,
+    output: row[10] as string | undefined,
+    error: row[11] as string | undefined,
+    exit_code: row[12] as number | undefined,
+    duration_ms: row[13] as number | undefined,
+    session_id: row[14] as string | undefined,
   }));
 }
 
@@ -548,18 +560,19 @@ export async function getProjectById(projectId: string): Promise<CloudProject | 
   
   if (result.rows.length === 0) return null;
   
+  // User's personal DB columns: id, name, local_path, current_phase, current_step, progress, last_synced, created_at
   const row = result.rows[0];
   return {
     id: row[0] as string,
-    github_user_id: row[1] as number,
-    github_username: row[2] as string,
-    name: row[3] as string,
-    local_path: row[4] as string,
-    current_phase: row[5] as string,
-    current_step: row[6] as string,
-    progress: row[7] as number,
-    last_synced: row[8] as string,
-    created_at: row[9] as string,
+    github_user_id: 0,
+    github_username: '',
+    name: row[1] as string,
+    local_path: row[2] as string,
+    current_phase: row[3] as string,
+    current_step: row[4] as string,
+    progress: row[5] as number,
+    last_synced: row[6] as string,
+    created_at: row[7] as string,
   };
 }
 

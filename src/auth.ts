@@ -23,6 +23,11 @@ export interface AuthState {
   githubAvatarUrl?: string;
   authenticatedAt?: string;
   expiresAt?: string;
+  // Personal database credentials
+  dbUrl?: string;
+  dbToken?: string;
+  dbName?: string;
+  dbProvisionedAt?: string;
 }
 
 function ensureConfigDir(): void {
@@ -198,6 +203,48 @@ export async function getGitHubUser(accessToken: string): Promise<{
 }
 
 /**
+ * Fetch personal database credentials from dashboard
+ */
+async function fetchDatabaseCredentials(
+  githubUserId: number,
+  accessToken: string
+): Promise<{ dbUrl: string; dbToken: string; dbName: string } | null> {
+  const DASHBOARD_URL = process.env.MIDAS_DASHBOARD_URL || 'https://dashboard.midasmcp.com';
+  
+  try {
+    const response = await fetch(
+      `${DASHBOARD_URL}/api/credentials?github_user_id=${githubUserId}&github_access_token=${accessToken}`
+    );
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({})) as { error?: string };
+      console.error(`  Warning: Failed to fetch DB credentials: ${errorData.error || response.status}`);
+      return null;
+    }
+    
+    const data = await response.json() as {
+      success: boolean;
+      db_url?: string;
+      db_token?: string;
+      db_name?: string;
+    };
+    
+    if (data.success && data.db_url && data.db_token) {
+      return {
+        dbUrl: data.db_url,
+        dbToken: data.db_token,
+        dbName: data.db_name || '',
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`  Warning: Could not connect to dashboard: ${error instanceof Error ? error.message : 'unknown'}`);
+    return null;
+  }
+}
+
+/**
  * Complete authentication flow
  * Saves token and user info to ~/.midas/auth.json
  */
@@ -212,8 +259,31 @@ export async function completeAuth(accessToken: string): Promise<AuthState> {
     authenticatedAt: new Date().toISOString(),
   };
   
+  // Fetch personal database credentials
+  console.log('  Provisioning personal database...');
+  const dbCreds = await fetchDatabaseCredentials(user.id, accessToken);
+  
+  if (dbCreds) {
+    auth.dbUrl = dbCreds.dbUrl;
+    auth.dbToken = dbCreds.dbToken;
+    auth.dbName = dbCreds.dbName;
+    auth.dbProvisionedAt = new Date().toISOString();
+    console.log(`  ✓ Database ready: ${dbCreds.dbName}`);
+  } else {
+    console.log('  ⚠ Database provisioning failed - sync will use fallback');
+  }
+  
   saveAuth(auth);
   return auth;
+}
+
+/**
+ * Get database credentials for the authenticated user
+ */
+export function getDatabaseCredentials(): { dbUrl: string; dbToken: string } | null {
+  const auth = loadAuth();
+  if (!auth.dbUrl || !auth.dbToken) return null;
+  return { dbUrl: auth.dbUrl, dbToken: auth.dbToken };
 }
 
 /**

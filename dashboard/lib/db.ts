@@ -1,9 +1,10 @@
 import { createClient, Client } from '@libsql/client'
 
-let _client: Client | null = null
+// Master database client (for user management)
+let _masterClient: Client | null = null
 
-function getClient(): Client {
-  if (!_client) {
+function getMasterClient(): Client {
+  if (!_masterClient) {
     const url = process.env.TURSO_DATABASE_URL
     const authToken = process.env.TURSO_AUTH_TOKEN
     
@@ -11,18 +12,103 @@ function getClient(): Client {
       throw new Error('TURSO_DATABASE_URL is not configured')
     }
     
-    _client = createClient({
+    _masterClient = createClient({
       url,
       authToken,
     })
   }
-  return _client
+  return _masterClient
+}
+
+// User-specific database client cache
+const userClients: Map<string, Client> = new Map()
+
+function getUserClient(dbUrl: string, dbToken: string): Client {
+  const key = dbUrl
+  if (!userClients.has(key)) {
+    userClients.set(key, createClient({
+      url: dbUrl,
+      authToken: dbToken,
+    }))
+  }
+  return userClients.get(key)!
+}
+
+// For backward compatibility
+function getClient(): Client {
+  return getMasterClient()
+}
+
+// ============================================================================
+// USER MANAGEMENT (Master DB)
+// ============================================================================
+
+export interface UserRecord {
+  id: number
+  github_user_id: number
+  github_username: string
+  db_name: string | null
+  db_url: string | null
+  db_token: string | null
+  created_at: string
+  provisioned_at: string | null
+}
+
+export async function getUserByGithubId(githubUserId: number): Promise<UserRecord | null> {
+  const client = getMasterClient()
+  const result = await client.execute({
+    sql: 'SELECT * FROM users WHERE github_user_id = ?',
+    args: [githubUserId],
+  })
+  
+  if (result.rows.length === 0) return null
+  
+  const row = result.rows[0]
+  return {
+    id: row.id as number,
+    github_user_id: row.github_user_id as number,
+    github_username: row.github_username as string,
+    db_name: row.db_name as string | null,
+    db_url: row.db_url as string | null,
+    db_token: row.db_token as string | null,
+    created_at: row.created_at as string,
+    provisioned_at: row.provisioned_at as string | null,
+  }
+}
+
+export async function createUser(githubUserId: number, githubUsername: string): Promise<UserRecord> {
+  const client = getMasterClient()
+  await client.execute({
+    sql: 'INSERT INTO users (github_user_id, github_username) VALUES (?, ?)',
+    args: [githubUserId, githubUsername],
+  })
+  
+  return (await getUserByGithubId(githubUserId))!
+}
+
+export async function updateUserDatabase(
+  githubUserId: number,
+  dbName: string,
+  dbUrl: string,
+  dbToken: string
+): Promise<void> {
+  const client = getMasterClient()
+  await client.execute({
+    sql: 'UPDATE users SET db_name = ?, db_url = ?, db_token = ?, provisioned_at = ? WHERE github_user_id = ?',
+    args: [dbName, dbUrl, dbToken, new Date().toISOString(), githubUserId],
+  })
+}
+
+export async function getOrCreateUser(githubUserId: number, githubUsername: string): Promise<UserRecord> {
+  let user = await getUserByGithubId(githubUserId)
+  if (!user) {
+    user = await createUser(githubUserId, githubUsername)
+  }
+  return user
 }
 
 export interface Project {
   id: string
-  github_user_id: number
-  github_username: string
   name: string
   local_path: string
   current_phase: string
@@ -47,17 +133,15 @@ export interface Event {
   created_at: string
 }
 
-export async function getProjectsByUser(githubUserId: number): Promise<Project[]> {
-  const client = getClient()
+export async function getProjectsByUserDb(dbUrl: string, dbToken: string): Promise<Project[]> {
+  const client = getUserClient(dbUrl, dbToken)
   const result = await client.execute({
-    sql: 'SELECT * FROM projects WHERE github_user_id = ? ORDER BY last_synced DESC',
-    args: [githubUserId],
+    sql: 'SELECT * FROM projects ORDER BY last_synced DESC',
+    args: [],
   })
   
   return result.rows.map(row => ({
     id: row.id as string,
-    github_user_id: row.github_user_id as number,
-    github_username: row.github_username as string,
     name: row.name as string,
     local_path: row.local_path as string,
     current_phase: row.current_phase as string,
@@ -68,27 +152,65 @@ export async function getProjectsByUser(githubUserId: number): Promise<Project[]
   }))
 }
 
-export async function getProjectById(projectId: string): Promise<Project | null> {
-  const client = getClient()
-  const result = await client.execute({
-    sql: 'SELECT * FROM projects WHERE id = ?',
-    args: [projectId],
-  })
+// Legacy function for backward compatibility
+export async function getProjectsByUser(githubUserId: number): Promise<Project[]> {
+  // Try to get user's personal database
+  const user = await getUserByGithubId(githubUserId)
+  if (user?.db_url && user?.db_token) {
+    return getProjectsByUserDb(user.db_url, user.db_token)
+  }
+  // Fallback to empty if no personal DB yet
+  return []
+}
+
+export async function getProjectById(projectId: string, dbUrl?: string, dbToken?: string): Promise<(Project & { github_user_id?: number }) | null> {
+  // If db credentials provided, use user's DB
+  if (dbUrl && dbToken) {
+    const client = getUserClient(dbUrl, dbToken)
+    const result = await client.execute({
+      sql: 'SELECT * FROM projects WHERE id = ?',
+      args: [projectId],
+    })
+    
+    if (result.rows.length === 0) return null
+    
+    const row = result.rows[0]
+    return {
+      id: row.id as string,
+      name: row.name as string,
+      local_path: row.local_path as string,
+      current_phase: row.current_phase as string,
+      current_step: row.current_step as string,
+      progress: row.progress as number,
+      last_synced: row.last_synced as string,
+      created_at: row.created_at as string,
+    }
+  }
   
-  if (result.rows.length === 0) return null
-  
-  const row = result.rows[0]
-  return {
-    id: row.id as string,
-    github_user_id: row.github_user_id as number,
-    github_username: row.github_username as string,
-    name: row.name as string,
-    local_path: row.local_path as string,
-    current_phase: row.current_phase as string,
-    current_step: row.current_step as string,
-    progress: row.progress as number,
-    last_synced: row.last_synced as string,
-    created_at: row.created_at as string,
+  // Legacy: try master DB
+  const client = getMasterClient()
+  try {
+    const result = await client.execute({
+      sql: 'SELECT * FROM projects WHERE id = ?',
+      args: [projectId],
+    })
+    
+    if (result.rows.length === 0) return null
+    
+    const row = result.rows[0]
+    return {
+      id: row.id as string,
+      github_user_id: row.github_user_id as number,
+      name: row.name as string,
+      local_path: row.local_path as string,
+      current_phase: row.current_phase as string,
+      current_step: row.current_step as string,
+      progress: row.progress as number,
+      last_synced: row.last_synced as string,
+      created_at: row.created_at as string,
+    }
+  } catch {
+    return null
   }
 }
 
