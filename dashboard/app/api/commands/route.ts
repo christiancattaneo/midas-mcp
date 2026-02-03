@@ -1,5 +1,5 @@
 import { auth } from "@/auth"
-import { getClient } from "@/lib/db"
+import { getUserByGithubId, getUserClientForUser } from "@/lib/db"
 import { NextResponse } from "next/server"
 
 // POST /api/commands - Create a new pending command
@@ -18,11 +18,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing projectId or prompt" }, { status: 400 })
     }
     
-    const client = getClient()
+    // Get user's personal database client
+    const user = await getUserByGithubId(session.user.githubId as number)
+    if (!user?.db_url || !user?.db_token) {
+      return NextResponse.json({ error: "User database not provisioned. Run 'midas login' first." }, { status: 400 })
+    }
     
-    // Verify user owns the project
+    const client = getUserClientForUser(user.db_url, user.db_token)
+    
+    // Verify user owns the project (in their personal DB)
     const projectResult = await client.execute({
-      sql: 'SELECT github_user_id FROM projects WHERE id = ?',
+      sql: 'SELECT id FROM projects WHERE id = ?',
       args: [projectId],
     })
     
@@ -30,19 +36,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 })
     }
     
-    const projectUserId = projectResult.rows[0].github_user_id
-    if (projectUserId !== session.user.githubId) {
-      return NextResponse.json({ error: "Not authorized for this project" }, { status: 403 })
-    }
-    
-    // Create the pending command
+    // Create the pending command in user's personal DB
     const result = await client.execute({
       sql: `INSERT INTO pending_commands 
-            (project_id, github_user_id, command_type, prompt, max_turns, priority, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            (project_id, command_type, prompt, max_turns, priority, status, created_at)
+            VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
       args: [
         projectId,
-        session.user.githubId,
         commandType || 'task',
         prompt,
         maxTurns || 10,
@@ -81,24 +81,15 @@ export async function GET(request: Request) {
   }
   
   try {
-    const client = getClient()
-    
-    // Verify user owns the project
-    const projectResult = await client.execute({
-      sql: 'SELECT github_user_id FROM projects WHERE id = ?',
-      args: [projectId],
-    })
-    
-    if (projectResult.rows.length === 0) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 })
+    // Get user's personal database client
+    const user = await getUserByGithubId(session.user.githubId as number)
+    if (!user?.db_url || !user?.db_token) {
+      return NextResponse.json({ error: "User database not provisioned" }, { status: 400 })
     }
     
-    const projectUserId = projectResult.rows[0].github_user_id
-    if (projectUserId !== session.user.githubId) {
-      return NextResponse.json({ error: "Not authorized for this project" }, { status: 403 })
-    }
+    const client = getUserClientForUser(user.db_url, user.db_token)
     
-    // Fetch recent commands
+    // Fetch recent commands from user's personal DB
     const result = await client.execute({
       sql: `SELECT * FROM pending_commands 
             WHERE project_id = ? 

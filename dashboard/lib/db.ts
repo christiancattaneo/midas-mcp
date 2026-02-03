@@ -34,6 +34,11 @@ function getUserClient(dbUrl: string, dbToken: string): Client {
   return userClients.get(key)!
 }
 
+// Exported version for API routes to use
+export function getUserClientForUser(dbUrl: string, dbToken: string): Client {
+  return getUserClient(dbUrl, dbToken)
+}
+
 // For backward compatibility
 function getClient(): Client {
   return getMasterClient()
@@ -214,8 +219,12 @@ export async function getProjectById(projectId: string, dbUrl?: string, dbToken?
   }
 }
 
-export async function getLatestGates(projectId: string): Promise<GatesStatus | null> {
-  const client = getClient()
+export async function getLatestGates(
+  projectId: string,
+  dbUrl?: string,
+  dbToken?: string
+): Promise<GatesStatus | null> {
+  const client = dbUrl && dbToken ? getUserClient(dbUrl, dbToken) : getClient()
   const result = await client.execute({
     sql: 'SELECT * FROM gates WHERE project_id = ? ORDER BY checked_at DESC LIMIT 1',
     args: [projectId],
@@ -232,8 +241,13 @@ export async function getLatestGates(projectId: string): Promise<GatesStatus | n
   }
 }
 
-export async function getRecentEvents(projectId: string, limit = 10): Promise<Event[]> {
-  const client = getClient()
+export async function getRecentEvents(
+  projectId: string,
+  limit = 10,
+  dbUrl?: string,
+  dbToken?: string
+): Promise<Event[]> {
+  const client = dbUrl && dbToken ? getUserClient(dbUrl, dbToken) : getClient()
   const result = await client.execute({
     sql: 'SELECT * FROM events WHERE project_id = ? ORDER BY created_at DESC LIMIT ?',
     args: [projectId, limit],
@@ -261,8 +275,12 @@ export interface GameplanTask {
   created_at: string
 }
 
-export async function getGameplanTasks(projectId: string): Promise<GameplanTask[]> {
-  const client = getClient()
+export async function getGameplanTasks(
+  projectId: string,
+  dbUrl?: string,
+  dbToken?: string
+): Promise<GameplanTask[]> {
+  const client = dbUrl && dbToken ? getUserClient(dbUrl, dbToken) : getClient()
   try {
     const result = await client.execute({
       sql: 'SELECT * FROM gameplan_tasks WHERE project_id = ? ORDER BY task_order ASC',
@@ -302,8 +320,12 @@ export interface PendingCommand {
   duration_ms: number | null
 }
 
-export async function getPendingCommands(projectId: string): Promise<PendingCommand[]> {
-  const client = getClient()
+export async function getPendingCommands(
+  projectId: string,
+  dbUrl?: string,
+  dbToken?: string
+): Promise<PendingCommand[]> {
+  const client = dbUrl && dbToken ? getUserClient(dbUrl, dbToken) : getClient()
   try {
     const result = await client.execute({
       sql: `SELECT * FROM pending_commands 
@@ -331,8 +353,13 @@ export async function getPendingCommands(projectId: string): Promise<PendingComm
   }
 }
 
-export async function getRecentCommands(projectId: string, limit = 10): Promise<PendingCommand[]> {
-  const client = getClient()
+export async function getRecentCommands(
+  projectId: string,
+  limit = 10,
+  dbUrl?: string,
+  dbToken?: string
+): Promise<PendingCommand[]> {
+  const client = dbUrl && dbToken ? getUserClient(dbUrl, dbToken) : getClient()
   try {
     const result = await client.execute({
       sql: `SELECT * FROM pending_commands 

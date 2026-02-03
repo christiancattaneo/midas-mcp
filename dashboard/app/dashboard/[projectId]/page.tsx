@@ -1,6 +1,6 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
-import { getProjectById, getLatestGates, getRecentEvents, getGameplanTasks, getRecentCommands } from "@/lib/db"
+import { getProjectById, getLatestGates, getRecentEvents, getGameplanTasks, getRecentCommands, getUserByGithubId } from "@/lib/db"
 import Link from "next/link"
 import { ThemeToggle } from "@/components/ThemeToggle"
 import { CopyPromptButton } from "@/components/CopyButton"
@@ -94,22 +94,24 @@ export default async function ProjectDetail({
   }
   
   const { projectId } = await params
-  const project = await getProjectById(projectId)
+  const user = session.user
+  
+  // Get user's DB credentials first
+  const userRecord = await getUserByGithubId(user.githubId as number)
+  const dbUrl = userRecord?.db_url ?? undefined
+  const dbToken = userRecord?.db_token ?? undefined
+  
+  // Fetch project from user's personal DB
+  const project = await getProjectById(projectId, dbUrl, dbToken)
   
   if (!project) {
     redirect("/dashboard")
   }
   
-  // Check ownership
-  const user = session.user
-  if (project.github_user_id !== user.githubId) {
-    redirect("/dashboard")
-  }
-  
-  const gates = await getLatestGates(projectId)
-  const events = await getRecentEvents(projectId)
-  const gameplanTasks = await getGameplanTasks(projectId)
-  const recentCommands = await getRecentCommands(projectId, 5)
+  const gates = await getLatestGates(projectId, dbUrl, dbToken)
+  const events = await getRecentEvents(projectId, 10, dbUrl, dbToken)
+  const gameplanTasks = await getGameplanTasks(projectId, dbUrl, dbToken)
+  const recentCommands = await getRecentCommands(projectId, 5, dbUrl, dbToken)
   
   // Find the next incomplete task
   const nextTask = gameplanTasks.find(t => !t.completed)
