@@ -2,9 +2,32 @@ import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from 
 import { join } from 'path';
 import { z } from 'zod';
 import { sanitizePath, limitLength, LIMITS } from '../security.js';
+import { logger } from '../logger.js';
 
 const MIDAS_DIR = '.midas';
 const JOURNAL_DIR = 'journal';
+
+/**
+ * DEPRECATION NOTICE
+ * 
+ * The Midas journal system is being deprecated in favor of Claude Code's native
+ * session persistence features. Claude Code now offers:
+ * 
+ * - `--continue` / `--resume` flags for session continuity
+ * - Session naming and picker for managing multiple sessions
+ * - Built-in conversation history that persists automatically
+ * 
+ * Migration Path:
+ * - Instead of `midas_journal_save`, end sessions naturally (Claude Code auto-saves)
+ * - Instead of `midas_journal_list`, use Claude Code's session picker
+ * - Instead of `midas_journal_search`, use `--resume` with session name
+ * 
+ * The journal tools remain functional for backward compatibility but will be
+ * removed in a future major version. Consider migrating to Claude Code sessions.
+ * 
+ * See: https://docs.anthropic.com/claude-code/sessions
+ */
+const DEPRECATION_WARNING = '[DEPRECATED] midas_journal tools are deprecated. Use Claude Code --continue/--resume for session persistence.';
 
 // Schemas for MCP tools
 export const saveJournalSchema = z.object({
@@ -47,14 +70,17 @@ function ensureJournalDir(projectPath: string): void {
 
 /**
  * Save a conversation to the journal
- * Users should call this after important exchanges
+ * 
+ * @deprecated Use Claude Code's native session persistence (`--continue`, `--resume`) instead.
+ * This function remains for backward compatibility but will be removed in a future version.
  */
 export function saveToJournal(input: {
   projectPath?: string;
   title: string;
   conversation: string;
   tags?: string[];
-}): { success: boolean; path: string; entry: JournalEntry } {
+}): { success: boolean; path: string; entry: JournalEntry; deprecated?: string } {
+  logger.debug(DEPRECATION_WARNING);
   const projectPath = sanitizePath(input.projectPath);
   ensureJournalDir(projectPath);
   
@@ -89,11 +115,19 @@ ${conversation}
   const filepath = join(getJournalDir(projectPath), filename);
   writeFileSync(filepath, content);
   
-  return { success: true, path: filepath, entry };
+  return { 
+    success: true, 
+    path: filepath, 
+    entry,
+    deprecated: 'Consider using Claude Code --continue/--resume for session persistence instead of journal.'
+  };
 }
 
 /**
  * Get recent journal entries
+ * 
+ * @deprecated Use Claude Code's native session picker instead.
+ * This function remains for backward compatibility but will be removed in a future version.
  */
 export function getJournalEntries(input: {
   projectPath?: string;
@@ -131,6 +165,9 @@ export function getJournalEntries(input: {
 
 /**
  * Search journal entries by content or tags
+ * 
+ * @deprecated Use Claude Code's --resume with session name instead.
+ * This function remains for backward compatibility but will be removed in a future version.
  */
 export function searchJournal(input: {
   projectPath?: string;

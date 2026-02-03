@@ -1,0 +1,41 @@
+{
+  "$schema": "https://claude.ai/schemas/settings.json",
+  "description": "Midas Golden Code methodology settings",
+  
+  "permissions": {
+    "allow": [
+      "Read",
+      "Glob", 
+      "Grep",
+      "LS"
+    ],
+    "deny": []
+  },
+  
+  "context": {
+    "include": [
+      ".cursorrules",
+      "docs/brainlift.md",
+      "docs/prd.md", 
+      "docs/gameplan.md"
+    ],
+    "exclude": [
+      "node_modules/**",
+      "dist/**",
+      ".git/**"
+    ]
+  },
+  
+  "skills": {
+    "directories": [".claude/skills"],
+    "autoTrigger": true
+  },
+  
+  "agents": {
+    "directories": [".claude/agents"]
+  },
+  
+  "hooks": {
+    "configFile": ".claude/hooks/hooks.json"
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://claude.ai/schemas/hooks.json",
+  "description": "Midas Golden Code methodology hooks - enforces gates and phase tracking",
+  "hooks": {
+    "SessionStart": [
+      {
+        "description": "Load Midas context on session start",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"Midas: Loading project context...\" && cat .midas/state.json 2>/dev/null || echo '{\"phase\":\"IDLE\"}'",
+            "async": false
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "description": "Check gates before major work",
+        "matcher": "(implement|build|create|add|write).*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npm run build 2>&1 | tail -5 || echo 'Build script not found'",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "description": "Remind about tests before editing",
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Before making this edit, consider: Is there a test for this code? Should I write/update a test first?"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "description": "Verify gates after file changes",
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Files changed - remember to run tests'",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "description": "End-of-task verification",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Before finishing, verify:\n1. Did we complete the task from gameplan.md?\n2. Are all tests passing? (npm test)\n3. Does the build succeed? (npm run build)\n4. Should we commit these changes?\n\nIf any are incomplete, continue working."
+          }
+        ]
+      }
+    ]
+  }
+}

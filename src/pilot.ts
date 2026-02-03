@@ -50,6 +50,53 @@ export interface PilotConfig {
   allowedTools: string[];
   pollInterval: number; // ms
   outputFormat: 'text' | 'json' | 'stream-json';
+  useStructuredOutput: boolean; // Use --json-schema for deterministic parsing
+}
+
+/**
+ * JSON Schema for structured pilot execution results
+ * Using Claude Code's --json-schema flag for guaranteed valid output
+ */
+export const PILOT_RESULT_SCHEMA = {
+  type: 'object',
+  properties: {
+    success: { 
+      type: 'boolean', 
+      description: 'Whether the task was completed successfully' 
+    },
+    summary: { 
+      type: 'string', 
+      description: 'Brief summary of what was accomplished' 
+    },
+    filesChanged: { 
+      type: 'array', 
+      items: { type: 'string' },
+      description: 'List of files that were modified' 
+    },
+    testsPass: { 
+      type: 'boolean', 
+      description: 'Whether tests pass after the changes' 
+    },
+    nextSuggestion: { 
+      type: 'string', 
+      description: 'Suggested next action from gameplan' 
+    },
+    errors: { 
+      type: 'array', 
+      items: { type: 'string' },
+      description: 'Any errors encountered' 
+    }
+  },
+  required: ['success', 'summary']
+} as const;
+
+export interface StructuredPilotResult {
+  success: boolean;
+  summary: string;
+  filesChanged?: string[];
+  testsPass?: boolean;
+  nextSuggestion?: string;
+  errors?: string[];
 }
 
 export interface ExecutionResult {
@@ -68,6 +115,7 @@ const DEFAULT_CONFIG: PilotConfig = {
   allowedTools: ['Read', 'Edit', 'Bash', 'Grep', 'Glob'],
   pollInterval: 5000,
   outputFormat: 'json',
+  useStructuredOutput: true, // Enable structured output by default
 };
 
 // ============================================================================
@@ -76,6 +124,8 @@ const DEFAULT_CONFIG: PilotConfig = {
 
 /**
  * Execute a prompt via Claude Code CLI
+ * 
+ * Supports structured output via --json-schema for deterministic parsing
  */
 export async function executeClaudeCode(
   prompt: string,
@@ -96,13 +146,18 @@ export async function executeClaudeCode(
       args.push('--allowedTools', cfg.allowedTools.join(','));
     }
     
+    // Use structured output schema for deterministic parsing
+    if (cfg.useStructuredOutput) {
+      args.push('--json-schema', JSON.stringify(PILOT_RESULT_SCHEMA));
+    }
+    
     // Add Midas context to system prompt
     args.push(
       '--append-system-prompt',
-      `You are being executed by Midas Pilot automation. 
-Complete the task efficiently and report results clearly.
-If you encounter errors, provide actionable diagnostics.
-When done, summarize what was accomplished.`
+      `You are being executed by Midas Pilot automation.
+Complete the task efficiently and report results in the structured format.
+If you encounter errors, include them in the errors array.
+When done, provide a clear summary and suggest the next action.`
     );
     
     let output = '';
@@ -290,6 +345,7 @@ let watchRunning = false;
 
 /**
  * Run Pilot in watch mode - polls cloud for commands
+ * Also displays QR code for mobile control
  */
 export async function runWatchMode(pollInterval = 5000): Promise<void> {
   if (!isAuthenticated()) {
@@ -312,15 +368,35 @@ export async function runWatchMode(pollInterval = 5000): Promise<void> {
   console.log('\n  ╔══════════════════════════════════════╗');
   console.log('  ║       MIDAS PILOT - WATCH MODE       ║');
   console.log('  ╚══════════════════════════════════════╝\n');
+  
+  // Create remote session and show QR code for mobile control
+  const session = generateRemoteSession();
+  const registered = await registerRemoteSession(session);
+  
+  if (registered) {
+    const remoteUrl = `${DASHBOARD_URL}/pilot/${session.sessionId}`;
+    console.log('  📱 Scan to control from phone:\n');
+    await displayQRCode(remoteUrl);
+    console.log(`\n  ${remoteUrl}\n`);
+    
+    // Update session status to idle
+    await updateRemoteSession(session.sessionId, { status: 'idle' });
+  } else {
+    console.log('  (Mobile control unavailable - could not register session)\n');
+  }
+  
   console.log('  Watching for commands from dashboard...');
   console.log('  Press Ctrl+C to stop\n');
   
   watchRunning = true;
   
   // Handle graceful shutdown
-  process.on('SIGINT', () => {
+  process.on('SIGINT', async () => {
     console.log('\n\n  Pilot stopped.\n');
     watchRunning = false;
+    if (registered) {
+      await updateRemoteSession(session.sessionId, { status: 'disconnected' });
+    }
     process.exit(0);
   });
   
@@ -334,7 +410,23 @@ export async function runWatchMode(pollInterval = 5000): Promise<void> {
         console.log(`    Type: ${command.command_type}`);
         console.log(`    Prompt: ${command.prompt.slice(0, 60)}...`);
         
+        // Update remote session status
+        if (registered) {
+          await updateRemoteSession(session.sessionId, {
+            status: 'running',
+            current_task: command.prompt.slice(0, 100),
+          });
+        }
+        
         await executeCommand(command);
+        
+        // Update remote session back to idle
+        if (registered) {
+          await updateRemoteSession(session.sessionId, {
+            status: 'idle',
+            current_task: undefined,
+          });
+        }
       }
     } catch (err) {
       // Network error, wait and retry

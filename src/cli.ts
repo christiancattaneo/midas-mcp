@@ -10,6 +10,8 @@ import { getWeeklySummary } from './tracker.js';
 import { login, logout, isAuthenticated, loadAuth } from './auth.js';
 import { runSync, isCloudConfigured } from './cloud.js';
 import { runPilotCLI } from './pilot.js';
+import { runStatusDisplay, printStatus } from './tui-lite.js';
+import { runPRReview } from './github-integration.js';
 
 // ANSI colors
 const reset = '\x1b[0m';
@@ -44,6 +46,7 @@ export function showHelp(): void {
 ${bold}${cyan}MIDAS${reset} - Everything you vibecode turns to gold
 
 ${bold}Usage:${reset}
+  npx midas-mcp start        One command to rule them all (login + sync + pilot)
   npx midas-mcp              Interactive coach (recommended)
   npx midas-mcp status       Show current phase and progress
   npx midas-mcp metrics      Show session metrics and statistics
@@ -56,6 +59,10 @@ ${bold}Usage:${reset}
   npx midas-mcp server       Start MCP server (for Cursor integration)
   npx midas-mcp help         Show this help
 
+${bold}Claude Code Integration:${reset}
+  npx midas-mcp plugin       Install Skills+Hooks for Claude Code
+                             (copies .claude/ folder to your project)
+
 ${bold}Cloud Dashboard:${reset}
   npx midas-mcp login        Login with GitHub (for cloud dashboard)
   npx midas-mcp logout       Logout from GitHub
@@ -65,7 +72,8 @@ ${bold}Cloud Dashboard:${reset}
 ${bold}Automation (Midas Pilot):${reset}
   npx midas-mcp pilot "prompt"  Execute a prompt via Claude Code CLI
   npx midas-mcp pilot --watch   Watch mode - poll dashboard for commands
-                                Example: midas pilot "Fix the auth bug"
+  npx midas-mcp pr <url>        Review a GitHub PR with Midas methodology
+                                Example: midas pr https://github.com/owner/repo/pull/123
 
 ${bold}The Four Phases:${reset}
   ${yellow}PLAN${reset}         Plan before building (Idea → Research → Brainlift → PRD → Gameplan)
@@ -494,10 +502,127 @@ export function showWeeklySummary(): void {
   console.log('');
 }
 
+/**
+ * Install Claude Code plugin (Skills + Hooks + Agents)
+ * Copies .claude/ directory from the midas-mcp package to user's project
+ */
+async function installClaudePlugin(): Promise<void> {
+  const targetDir = join(process.cwd(), '.claude');
+  
+  // Check if .claude already exists
+  if (existsSync(targetDir)) {
+    console.log(`\n  ${yellow}!${reset} .claude/ already exists in this project.`);
+    console.log(`    To reinstall, remove .claude/ first.\n`);
+    return;
+  }
+  
+  // Find source .claude directory (in midas-mcp package)
+  const packageRoot = join(import.meta.url.replace('file://', ''), '..', '..');
+  const sourceDir = join(packageRoot, '.claude');
+  
+  // Copy recursively
+  const { cpSync } = await import('fs');
+  
+  try {
+    cpSync(sourceDir, targetDir, { recursive: true });
+    
+    console.log(`\n  ${green}[x]${reset} Installed Claude Code plugin to .claude/`);
+    console.log('');
+    console.log(`  ${bold}What's installed:${reset}`);
+    console.log(`    ${dim}skills/${reset}    12 phase-specific prompts (auto-trigger)`);
+    console.log(`    ${dim}agents/${reset}    3 specialized subagents`);
+    console.log(`    ${dim}hooks/${reset}     Gate enforcement and verification`);
+    console.log('');
+    console.log(`  ${bold}Usage:${reset}`);
+    console.log(`    ${cyan}/midas-coach${reset}     Get methodology guidance`);
+    console.log(`    ${cyan}/tornado-debug${reset}   Systematic debugging`);
+    console.log(`    ${cyan}/midas-verifier${reset}  Check build/test/lint gates`);
+    console.log('');
+    console.log(`  See ${cyan}.claude/PLUGIN.md${reset} for full documentation.\n`);
+  } catch (err) {
+    console.log(`\n  \x1b[31m!\x1b[0m Failed to install plugin.`);
+    console.log(`    Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    console.log(`    Try: ${cyan}npx midas-mcp init${reset} instead.\n`);
+  }
+}
+
+/**
+ * Unified start command - does everything in one go:
+ * 1. Checks/prompts for login
+ * 2. Installs Claude plugin if missing
+ * 3. Syncs to cloud
+ * 4. Starts pilot in watch mode
+ */
+async function runStart(): Promise<void> {
+  const projectPath = process.cwd();
+  
+  console.log(`\n${bold}${cyan}MIDAS${reset} - Starting up...\n`);
+  
+  // Step 1: Check authentication
+  if (!isAuthenticated()) {
+    console.log(`  ${yellow}→${reset} Not logged in. Starting GitHub authentication...`);
+    try {
+      await login();
+      console.log(`  ${green}✓${reset} Logged in successfully\n`);
+    } catch (err) {
+      console.log(`  ${yellow}!${reset} Login skipped (optional for local use)\n`);
+    }
+  } else {
+    const auth = loadAuth();
+    console.log(`  ${green}✓${reset} Logged in as @${auth.githubUsername}`);
+  }
+  
+  // Step 2: Install Claude plugin if missing
+  const claudeDir = join(projectPath, '.claude');
+  if (!existsSync(claudeDir)) {
+    console.log(`  ${yellow}→${reset} Installing Claude Code plugin...`);
+    try {
+      await installClaudePlugin();
+    } catch {
+      console.log(`  ${dim}  (plugin install skipped)${reset}`);
+    }
+  } else {
+    console.log(`  ${green}✓${reset} Claude plugin installed`);
+  }
+  
+  // Step 3: Initialize project if needed
+  const midasDir = join(projectPath, '.midas');
+  if (!existsSync(midasDir)) {
+    const projectName = projectPath.split('/').pop() || 'project';
+    console.log(`  ${yellow}→${reset} Initializing Midas for ${projectName}...`);
+    startProject({ projectName, projectPath });
+    console.log(`  ${green}✓${reset} Project initialized`);
+  } else {
+    console.log(`  ${green}✓${reset} Project already initialized`);
+  }
+  
+  // Step 4: Sync to cloud (if authenticated)
+  if (isAuthenticated() && isCloudConfigured()) {
+    console.log(`  ${yellow}→${reset} Syncing to cloud...`);
+    try {
+      await runSync(projectPath);
+      console.log(`  ${green}✓${reset} Synced to dashboard`);
+    } catch {
+      console.log(`  ${dim}  (sync skipped - cloud not configured)${reset}`);
+    }
+  }
+  
+  console.log('');
+  console.log(`${bold}Ready!${reset} Starting pilot in watch mode...\n`);
+  console.log(`  ${dim}Dashboard: https://dashboard.midasmcp.com${reset}`);
+  console.log(`  ${dim}Press Ctrl+C to stop${reset}\n`);
+  
+  // Step 5: Start pilot in watch mode
+  await runPilotCLI(['--watch']);
+}
+
 export function runCLI(args: string[]): 'interactive' | 'server' | 'handled' | Promise<'handled'> {
   const command = args[0];
 
   switch (command) {
+    case 'start':
+      return runStart().then(() => 'handled' as const);
+
     case 'help':
     case '--help':
     case '-h':
@@ -505,7 +630,11 @@ export function runCLI(args: string[]): 'interactive' | 'server' | 'handled' | P
       return 'handled';
 
     case 'status':
-      showStatus();
+      // New lightweight status display
+      if (args.includes('--watch') || args.includes('-w')) {
+        return runStatusDisplay(process.cwd(), true).then(() => 'handled' as const);
+      }
+      printStatus(process.cwd());
       return 'handled';
 
     case 'init':
@@ -557,6 +686,12 @@ export function runCLI(args: string[]): 'interactive' | 'server' | 'handled' | P
 
     case 'pilot':
       return runPilotCLI(args.slice(1)).then(() => 'handled' as const);
+
+    case 'plugin':
+      return installClaudePlugin().then(() => 'handled' as const);
+
+    case 'pr':
+      return runPRReview(args.slice(1)).then(() => 'handled' as const);
 
     case 'server':
       return 'server'; // Start MCP server
