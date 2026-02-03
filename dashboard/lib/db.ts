@@ -547,4 +547,50 @@ export async function addCommandToQueue(
   return Number(result.lastInsertRowid)
 }
 
+// ============================================================================
+// SMART SUGGESTIONS
+// ============================================================================
+
+export interface SmartSuggestion {
+  project_id: string
+  prompt: string
+  reason: string
+  priority: 'critical' | 'high' | 'normal' | 'low'
+  context: string | null
+  phase: string
+  step: string
+  synced_at: string
+}
+
+export async function getSmartSuggestion(
+  projectId: string,
+  dbUrl?: string,
+  dbToken?: string
+): Promise<SmartSuggestion | null> {
+  const client = dbUrl && dbToken 
+    ? getUserClient(dbUrl, dbToken)
+    : getMasterClient()
+  
+  const result = await client.execute({
+    sql: `SELECT * FROM smart_suggestions WHERE project_id = ?`,
+    args: [projectId],
+  })
+  
+  if (result.rows.length === 0) {
+    return null
+  }
+  
+  const row = result.rows[0]
+  return {
+    project_id: row.project_id as string,
+    prompt: row.prompt as string,
+    reason: row.reason as string,
+    priority: row.priority as 'critical' | 'high' | 'normal' | 'low',
+    context: row.context as string | null,
+    phase: row.phase as string,
+    step: row.step as string,
+    synced_at: row.synced_at as string,
+  }
+}
+
 export { getClient }

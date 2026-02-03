@@ -161,6 +161,17 @@ export async function initializeUserSchema(dbUrl: string, dbToken: string): Prom
       lints_pass INTEGER,
       checked_at TEXT
     )`,
+    `CREATE TABLE IF NOT EXISTS smart_suggestions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id TEXT NOT NULL UNIQUE,
+      prompt TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      priority TEXT NOT NULL,
+      context TEXT,
+      phase TEXT,
+      step TEXT,
+      synced_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`,
   ]
   
   try {

@@ -7,7 +7,7 @@
 
 import { loadAuth, isAuthenticated, getAuthenticatedUser, getDatabaseCredentials } from './auth.js';
 import { loadState, type Phase } from './state/phase.js';
-import { loadTracker, type TrackerState } from './tracker.js';
+import { loadTracker, getSmartPromptSuggestion, type TrackerState } from './tracker.js';
 import { parseGameplanTasks, type GameplanTask } from './gameplan-tracker.js';
 import { discoverDocsSync } from './docs-discovery.js';
 import { sanitizePath } from './security.js';
@@ -218,6 +218,22 @@ export async function initSchema(): Promise<void> {
     )
   `);
   
+  // Smart suggestion table (for mobile pilot)
+  await executeSQL(`
+    CREATE TABLE IF NOT EXISTS smart_suggestions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id TEXT NOT NULL UNIQUE,
+      prompt TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      priority TEXT NOT NULL,
+      context TEXT,
+      phase TEXT,
+      step TEXT,
+      synced_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (project_id) REFERENCES projects(id)
+    )
+  `);
+  
   // Pending commands table (for Pilot automation)
   await executeSQL(`
     CREATE TABLE IF NOT EXISTS pending_commands (
@@ -405,6 +421,35 @@ export async function syncProject(projectPath: string): Promise<SyncResult> {
     } catch (err) {
       // Non-fatal: gameplan sync failure shouldn't break overall sync
       console.error('  Warning: Could not sync gameplan tasks');
+    }
+    
+    // Sync smart suggestion (for mobile pilot)
+    try {
+      const suggestion = getSmartPromptSuggestion(safePath);
+      await executeSQL(`
+        INSERT INTO smart_suggestions (project_id, prompt, reason, priority, context, phase, step, synced_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(project_id) DO UPDATE SET
+          prompt = excluded.prompt,
+          reason = excluded.reason,
+          priority = excluded.priority,
+          context = excluded.context,
+          phase = excluded.phase,
+          step = excluded.step,
+          synced_at = excluded.synced_at
+      `, [
+        projectId,
+        suggestion.prompt,
+        suggestion.reason,
+        suggestion.priority,
+        suggestion.context || null,
+        state.current.phase,
+        'step' in state.current ? state.current.step : '',
+        now,
+      ]);
+    } catch (err) {
+      // Non-fatal: suggestion sync failure shouldn't break overall sync
+      console.error('  Warning: Could not sync smart suggestion');
     }
     
     return {

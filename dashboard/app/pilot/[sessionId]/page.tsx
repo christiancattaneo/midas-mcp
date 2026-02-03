@@ -15,20 +15,24 @@ interface PilotSession {
   expires_at: string | null
 }
 
-interface Project {
-  id: string
-  name: string
-  current_phase: string
-  current_step: string
-  progress: number
+interface SmartSuggestion {
+  prompt: string
+  reason: string
+  priority: 'critical' | 'high' | 'normal' | 'low'
+  context: string | null
+  phase: string
+  step: string
+  synced_at: string
 }
 
-interface GameplanTask {
-  id: number
-  task_id: string
-  task_text: string
-  phase: string | null
-  completed: boolean
+interface PilotContext {
+  projects: { id: string; name: string; phase: string; step: string; progress: number }[]
+  activeProject: { id: string; name: string; phase: string; step: string; progress: number } | null
+  smartSuggestion: SmartSuggestion | null
+  gameplanTasks: { id: number; task: string; completed: boolean; phase: string | null }[]
+  gates: { compiles: boolean | null; tests: boolean | null; lints: boolean | null } | null
+  nextTask: { id: number; task: string; completed: boolean; phase: string | null } | null
+  quickActions: { id: string; icon: string; label: string; prompt: string }[]
 }
 
 export default function PilotPage() {
@@ -38,9 +42,7 @@ export default function PilotPage() {
   const token = searchParams.get('token')
   
   const [session, setSession] = useState<PilotSession | null>(null)
-  const [projects, setProjects] = useState<Project[]>([])
-  const [tasks, setTasks] = useState<GameplanTask[]>([])
-  const [selectedProject, setSelectedProject] = useState<string | null>(null)
+  const [context, setContext] = useState<PilotContext | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [executing, setExecuting] = useState<string | null>(null)
   const [customPrompt, setCustomPrompt] = useState('')
@@ -73,25 +75,35 @@ export default function PilotPage() {
     return () => clearInterval(interval)
   }, [sessionId, token])
   
-  // Load projects when session is available
+  // Fetch context (projects, suggestions, tasks) when session is available
   useEffect(() => {
-    if (!session || session.status === 'disconnected') return
+    if (!session || !token || session.status === 'disconnected') return
     
-    const loadProjects = async () => {
-      // TODO: Load projects from user's DB
-      // For now, we'll use a simple list
+    const fetchContext = async () => {
+      try {
+        const res = await fetch(`/api/pilot-context?sessionId=${sessionId}&token=${token}`)
+        if (res.ok) {
+          const data = await res.json()
+          setContext(data)
+        }
+      } catch {
+        // Non-fatal, context is optional
+      }
     }
     
-    loadProjects()
-  }, [session])
+    fetchContext()
+    // Refresh context every 30 seconds
+    const interval = setInterval(fetchContext, 30000)
+    return () => clearInterval(interval)
+  }, [session, sessionId, token])
   
-  const executeTask = async (taskText: string, projectId?: string) => {
+  const executeTask = async (taskText: string) => {
     if (!session || !token) return
     
     setExecuting(taskText.slice(0, 50))
+    setError(null)
     
     try {
-      // Use pilot-command endpoint (no login required, uses session token)
       const res = await fetch('/api/pilot-command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -112,7 +124,6 @@ export default function PilotPage() {
       }
       
       setCustomPrompt('')
-      // Show success feedback
       setSuccessMessage('Command sent!')
       setTimeout(() => setSuccessMessage(null), 2000)
     } catch (err) {
@@ -122,7 +133,7 @@ export default function PilotPage() {
     }
   }
   
-  if (error) {
+  if (error && !session) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center p-4">
         <div className="text-center">
@@ -165,6 +176,13 @@ export default function PilotPage() {
     disconnected: '✗',
   }
   
+  const priorityColors: Record<string, string> = {
+    critical: 'bg-red-900/50 border-red-500/50',
+    high: 'bg-orange-900/50 border-orange-500/50',
+    normal: 'bg-blue-900/50 border-blue-500/50',
+    low: 'bg-gray-800 border-gray-600',
+  }
+  
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Header */}
@@ -172,7 +190,11 @@ export default function PilotPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-[#d4af37]">MIDAS PILOT</h1>
-            <p className="text-sm text-gray-400">Remote Control</p>
+            {context?.activeProject && (
+              <p className="text-sm text-gray-400">
+                {context.activeProject.name} • {context.activeProject.phase}/{context.activeProject.step}
+              </p>
+            )}
           </div>
           <div className={`flex items-center gap-2 ${statusColors[session.status]}`}>
             <span className="text-lg">{statusIcons[session.status]}</span>
@@ -182,14 +204,20 @@ export default function PilotPage() {
       </header>
       
       <main className="p-4 pb-32">
-        {/* Success Message */}
+        {/* Error/Success Messages */}
+        {error && (
+          <div className="mb-4 p-3 rounded-lg bg-red-900/50 border border-red-500/50 text-red-400">
+            {error}
+            <button onClick={() => setError(null)} className="float-right">✕</button>
+          </div>
+        )}
         {successMessage && (
           <div className="mb-4 p-3 rounded-lg bg-green-900/50 border border-green-500/50 text-green-400 text-center">
             ✓ {successMessage}
           </div>
         )}
         
-        {/* Current Task */}
+        {/* Currently Running */}
         {session.current_task && (
           <section className="mb-6 p-4 rounded-lg bg-blue-900/30 border border-blue-500/50">
             <h2 className="text-sm font-semibold text-blue-400 mb-2">Currently Running</h2>
@@ -201,14 +229,68 @@ export default function PilotPage() {
           </section>
         )}
         
-        {/* Last Output */}
-        {session.last_output && (
+        {/* Smart Suggestion (Primary Action) */}
+        {context?.smartSuggestion && (
           <section className="mb-6">
-            <h2 className="text-sm font-semibold text-gray-400 mb-2">Last Output</h2>
-            <pre className="p-3 rounded-lg bg-gray-900 text-xs text-green-400 overflow-x-auto max-h-48 overflow-y-auto font-mono">
-              {session.last_output.slice(-2000)}
-            </pre>
-            <p className="text-xs text-gray-500 mt-1">{session.output_lines} lines</p>
+            <h2 className="text-sm font-semibold text-gray-400 mb-3">Suggested Next Step</h2>
+            <div className={`p-4 rounded-lg border ${priorityColors[context.smartSuggestion.priority]}`}>
+              <div className="flex items-start justify-between mb-2">
+                <span className={`text-xs font-bold uppercase ${
+                  context.smartSuggestion.priority === 'critical' ? 'text-red-400' :
+                  context.smartSuggestion.priority === 'high' ? 'text-orange-400' :
+                  'text-blue-400'
+                }`}>
+                  {context.smartSuggestion.priority} priority
+                </span>
+                <span className="text-xs text-gray-500">
+                  {context.smartSuggestion.phase}/{context.smartSuggestion.step}
+                </span>
+              </div>
+              <p className="text-sm text-gray-300 mb-2">{context.smartSuggestion.reason}</p>
+              <p className="text-white mb-3">{context.smartSuggestion.prompt.slice(0, 200)}</p>
+              <button
+                onClick={() => executeTask(context.smartSuggestion!.prompt)}
+                disabled={session.status === 'running' || !!executing}
+                className="w-full py-3 rounded-lg bg-[#d4af37] text-black font-semibold hover:bg-[#e5c048] disabled:opacity-50"
+              >
+                {executing ? 'Sending...' : 'Execute This'}
+              </button>
+            </div>
+          </section>
+        )}
+        
+        {/* Next Gameplan Task */}
+        {context?.nextTask && !context.smartSuggestion && (
+          <section className="mb-6">
+            <h2 className="text-sm font-semibold text-gray-400 mb-3">Next Task</h2>
+            <div className="p-4 rounded-lg bg-gray-800 border border-gray-600">
+              <p className="text-white mb-3">{context.nextTask.task}</p>
+              <button
+                onClick={() => executeTask(context.nextTask!.task)}
+                disabled={session.status === 'running' || !!executing}
+                className="w-full py-3 rounded-lg bg-[#d4af37] text-black font-semibold hover:bg-[#e5c048] disabled:opacity-50"
+              >
+                {executing ? 'Sending...' : 'Execute This'}
+              </button>
+            </div>
+          </section>
+        )}
+        
+        {/* Gates Status */}
+        {context?.gates && (
+          <section className="mb-6">
+            <h2 className="text-sm font-semibold text-gray-400 mb-3">Gates</h2>
+            <div className="flex gap-4">
+              <div className={`flex items-center gap-2 ${context.gates.compiles === false ? 'text-red-400' : context.gates.compiles === true ? 'text-green-400' : 'text-gray-500'}`}>
+                {context.gates.compiles === false ? '✕' : context.gates.compiles === true ? '✓' : '○'} Build
+              </div>
+              <div className={`flex items-center gap-2 ${context.gates.tests === false ? 'text-red-400' : context.gates.tests === true ? 'text-green-400' : 'text-gray-500'}`}>
+                {context.gates.tests === false ? '✕' : context.gates.tests === true ? '✓' : '○'} Tests
+              </div>
+              <div className={`flex items-center gap-2 ${context.gates.lints === false ? 'text-red-400' : context.gates.lints === true ? 'text-green-400' : 'text-gray-500'}`}>
+                {context.gates.lints === false ? '✕' : context.gates.lints === true ? '✓' : '○'} Lint
+              </div>
+            </div>
           </section>
         )}
         
@@ -216,38 +298,22 @@ export default function PilotPage() {
         <section className="mb-6">
           <h2 className="text-sm font-semibold text-gray-400 mb-3">Quick Actions</h2>
           <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={() => executeTask('Run npm test and fix any failing tests')}
-              disabled={session.status === 'running' || !!executing}
-              className="p-4 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-left"
-            >
-              <span className="text-2xl mb-2 block">🧪</span>
-              <span className="text-sm font-medium">Run Tests</span>
-            </button>
-            <button
-              onClick={() => executeTask('Run linter and fix any issues')}
-              disabled={session.status === 'running' || !!executing}
-              className="p-4 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-left"
-            >
-              <span className="text-2xl mb-2 block">🔍</span>
-              <span className="text-sm font-medium">Fix Lints</span>
-            </button>
-            <button
-              onClick={() => executeTask('Build the project and fix any errors')}
-              disabled={session.status === 'running' || !!executing}
-              className="p-4 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-left"
-            >
-              <span className="text-2xl mb-2 block">🔨</span>
-              <span className="text-sm font-medium">Build</span>
-            </button>
-            <button
-              onClick={() => executeTask('Analyze the current state and suggest next steps')}
-              disabled={session.status === 'running' || !!executing}
-              className="p-4 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-left"
-            >
-              <span className="text-2xl mb-2 block">💡</span>
-              <span className="text-sm font-medium">Analyze</span>
-            </button>
+            {(context?.quickActions || [
+              { id: 'test', icon: '🧪', label: 'Run Tests', prompt: 'Run tests and fix failures' },
+              { id: 'lint', icon: '🔍', label: 'Fix Lints', prompt: 'Fix linter errors' },
+              { id: 'build', icon: '🔨', label: 'Build', prompt: 'Build and fix errors' },
+              { id: 'analyze', icon: '💡', label: 'Analyze', prompt: 'Analyze state and suggest next step' },
+            ]).slice(0, 4).map((action) => (
+              <button
+                key={action.id}
+                onClick={() => executeTask(action.prompt)}
+                disabled={session.status === 'running' || !!executing}
+                className="p-4 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-left"
+              >
+                <span className="text-2xl mb-2 block">{action.icon}</span>
+                <span className="text-sm font-medium">{action.label}</span>
+              </button>
+            ))}
           </div>
         </section>
         
@@ -270,19 +336,24 @@ export default function PilotPage() {
           </button>
         </section>
         
+        {/* Sync Reminder */}
+        {!context?.smartSuggestion && !context?.nextTask && (
+          <section className="mb-6 p-4 rounded-lg bg-gray-900 border border-gray-700">
+            <p className="text-sm text-gray-400 mb-2">No synced data. Run this in your project:</p>
+            <code className="text-[#d4af37]">midas sync</code>
+          </section>
+        )}
+        
         {/* Session Info */}
         <section className="text-xs text-gray-500">
-          <p>Session: {session.id}</p>
+          <p>Session: {session.id.slice(0, 8)}...</p>
           {session.expires_at && (
             <p>Expires: {new Date(session.expires_at).toLocaleTimeString()}</p>
-          )}
-          {session.last_heartbeat && (
-            <p>Last active: {new Date(session.last_heartbeat).toLocaleTimeString()}</p>
           )}
         </section>
       </main>
       
-      {/* Status Bar (Fixed at bottom) */}
+      {/* Status Bar */}
       <footer className="fixed bottom-0 left-0 right-0 bg-black/95 border-t border-gray-800 p-4">
         <div className="flex items-center justify-between text-sm">
           <div className="flex items-center gap-2">
