@@ -19,6 +19,7 @@ import {
   markCommandRunning, 
   markCommandCompleted,
   getProjectById,
+  syncProject,
   type PendingCommand 
 } from './cloud.js';
 
@@ -369,6 +370,15 @@ export async function runWatchMode(pollInterval = 5000): Promise<void> {
   console.log('  ║       MIDAS PILOT - WATCH MODE       ║');
   console.log('  ╚══════════════════════════════════════╝\n');
   
+  // Auto-sync on startup so dashboard has latest state
+  console.log('  Syncing project state...');
+  const syncResult = await syncProject(process.cwd());
+  if (syncResult.success) {
+    console.log('  ✓ Synced to dashboard\n');
+  } else {
+    console.log(`  ⚠ Sync skipped: ${syncResult.error}\n`);
+  }
+  
   // Create remote session and show QR code for mobile control
   const session = generateRemoteSession();
   const registered = await registerRemoteSession(session);
@@ -636,6 +646,15 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
   console.log('\n  ╔══════════════════════════════════════════════════════════╗');
   console.log('  ║              MIDAS PILOT - REMOTE MODE                   ║');
   console.log('  ╚══════════════════════════════════════════════════════════╝\n');
+  
+  // Auto-sync on startup so dashboard has latest state
+  console.log('  Syncing project state...');
+  const syncResult = await syncProject(process.cwd());
+  if (syncResult.success) {
+    console.log('  ✓ Synced to dashboard');
+  } else {
+    console.log(`  ⚠ Sync skipped: ${syncResult.error}`);
+  }
   
   // Register session with cloud
   console.log('  Registering session...');
