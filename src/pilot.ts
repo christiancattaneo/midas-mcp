@@ -23,7 +23,8 @@ import {
 } from './cloud.js';
 
 // QR code library (dynamic import for ESM compatibility)
-let qrcode: { generate: (text: string, opts: { small: boolean }, cb: (qr: string) => void) => void } | null = null;
+type QRCodeModule = { generate: (text: string, opts: { small: boolean }, cb: (qr: string) => void) => void };
+let qrcode: QRCodeModule | null = null;
 
 // ============================================================================
 // TYPES
@@ -478,7 +479,9 @@ async function displayQRCode(url: string): Promise<void> {
   // Load qrcode-terminal dynamically
   if (!qrcode) {
     try {
-      qrcode = await import('qrcode-terminal');
+      const mod = await import('qrcode-terminal');
+      // Handle both ESM default export and CommonJS module.exports
+      qrcode = (mod.default || mod) as QRCodeModule;
     } catch {
       console.log(`\n  QR code library not available.`);
       console.log(`  Open this URL on your phone:\n`);
