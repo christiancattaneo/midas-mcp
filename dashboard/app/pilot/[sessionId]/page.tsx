@@ -44,6 +44,7 @@ export default function PilotPage() {
   const [error, setError] = useState<string | null>(null)
   const [executing, setExecuting] = useState<string | null>(null)
   const [customPrompt, setCustomPrompt] = useState('')
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   
   // Poll for session status
   useEffect(() => {
@@ -90,22 +91,32 @@ export default function PilotPage() {
     setExecuting(taskText.slice(0, 50))
     
     try {
-      const res = await fetch('/api/commands', {
+      // Use pilot-command endpoint (no login required, uses session token)
+      const res = await fetch('/api/pilot-command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          project_id: projectId || selectedProject || 'default',
-          command_type: 'task',
+          sessionId,
+          sessionToken: token,
           prompt: taskText,
+          commandType: 'task',
           priority: 1,
         }),
       })
       
-      if (res.ok) {
-        setCustomPrompt('')
+      const data = await res.json()
+      if (!res.ok) {
+        console.error('Command error:', data.error)
+        setError(data.error || 'Failed to send command')
+        return
       }
-    } catch {
-      // Error handling
+      
+      setCustomPrompt('')
+      // Show success feedback
+      setSuccessMessage('Command sent!')
+      setTimeout(() => setSuccessMessage(null), 2000)
+    } catch (err) {
+      setError('Connection error')
     } finally {
       setExecuting(null)
     }
@@ -171,6 +182,13 @@ export default function PilotPage() {
       </header>
       
       <main className="p-4 pb-32">
+        {/* Success Message */}
+        {successMessage && (
+          <div className="mb-4 p-3 rounded-lg bg-green-900/50 border border-green-500/50 text-green-400 text-center">
+            ✓ {successMessage}
+          </div>
+        )}
+        
         {/* Current Task */}
         {session.current_task && (
           <section className="mb-6 p-4 rounded-lg bg-blue-900/30 border border-blue-500/50">

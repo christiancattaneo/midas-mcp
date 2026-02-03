@@ -510,6 +510,7 @@ function generateRemoteSession(): RemoteSession {
 async function registerRemoteSession(session: RemoteSession): Promise<boolean> {
   const auth = loadAuth();
   if (!auth.githubUserId || !auth.githubAccessToken) {
+    console.log('  ⚠ Missing auth credentials');
     return false;
   }
   
@@ -527,6 +528,12 @@ async function registerRemoteSession(session: RemoteSession): Promise<boolean> {
         expires_at: session.expiresAt.toISOString(),
       }),
     });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.log(`  ⚠ Session registration failed: ${response.status}`);
+      console.log(`    ${(errorData as { error?: string }).error || 'Unknown error'}`);
+    }
     
     return response.ok;
   } catch {
@@ -623,11 +630,12 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
   const session = generateRemoteSession();
   const connectionUrl = `${DASHBOARD_URL}/pilot/${session.sessionId}?token=${session.sessionToken}`;
   
-  // Clear screen and show header
-  console.clear();
-  console.log('\n  ╔══════════════════════════════════════╗');
-  console.log('  ║       MIDAS PILOT - REMOTE MODE      ║');
-  console.log('  ╚══════════════════════════════════════╝\n');
+  // Clear screen and hide cursor to prevent TUI interference
+  process.stdout.write('\x1b[2J\x1b[H\x1b[?25l'); // Clear + home + hide cursor
+  
+  console.log('\n  ╔══════════════════════════════════════════════════════════╗');
+  console.log('  ║              MIDAS PILOT - REMOTE MODE                   ║');
+  console.log('  ╚══════════════════════════════════════════════════════════╝\n');
   
   // Register session with cloud
   console.log('  Registering session...');
@@ -636,24 +644,36 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
   if (!registered) {
     console.log('\n  ✗ Failed to register session');
     console.log('    Check your internet connection\n');
+    process.stdout.write('\x1b[?25h'); // Show cursor
     return;
   }
   
   console.log('  ✓ Session registered\n');
-  console.log('  Scan this QR code with your phone:\n');
+  console.log('  ╭─────────────────────────────────────────────────────────╮');
+  console.log('  │  📱 SCAN WITH YOUR PHONE                                │');
+  console.log('  ╰─────────────────────────────────────────────────────────╯\n');
   
   await displayQRCode(connectionUrl);
   
-  console.log('  Keep this terminal open. Commands will execute here.');
-  console.log('  Session expires in 60 minutes.');
-  console.log('  Press Ctrl+C to stop.\n');
-  console.log('  ─'.repeat(30) + '\n');
-  console.log('  Waiting for commands...\n');
+  console.log('');
+  console.log(`  URL: ${connectionUrl}`);
+  console.log('');
+  console.log('  ─────────────────────────────────────────────────────────');
+  console.log('');
+  console.log('  ⚡ Keep this terminal open - commands execute here');
+  console.log('  ⏰ Session expires in 60 minutes');
+  console.log('  🛑 Press Ctrl+C to stop');
+  console.log('');
+  console.log('  ─────────────────────────────────────────────────────────');
+  console.log('');
+  console.log('  Waiting for commands from your phone...');
+  console.log('');
   
   watchRunning = true;
   
   // Handle graceful shutdown
   process.on('SIGINT', async () => {
+    process.stdout.write('\x1b[?25h'); // Restore cursor
     console.log('\n\n  Closing session...');
     await updateRemoteSession(session.sessionId, { status: 'disconnected' });
     console.log('  Pilot stopped.\n');

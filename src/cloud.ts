@@ -479,7 +479,10 @@ export interface PendingCommand {
  * Fetch pending commands for the authenticated user
  */
 export async function fetchPendingCommands(): Promise<PendingCommand[]> {
-  if (!isAuthenticated()) return [];
+  if (!isAuthenticated()) {
+    console.log('  [debug] Not authenticated, skipping command fetch');
+    return [];
+  }
   
   // User's personal DB - no github_user_id column
   const result = await executeSQL(`
@@ -488,6 +491,10 @@ export async function fetchPendingCommands(): Promise<PendingCommand[]> {
     ORDER BY priority DESC, created_at ASC
     LIMIT 10
   `);
+  
+  if (result.rows.length > 0) {
+    console.log(`  [debug] Found ${result.rows.length} pending command(s)`);
+  }
   
   // Columns: id, project_id, command_type, prompt, status, priority, max_turns, created_at, started_at, completed_at, output, error, exit_code, duration_ms, session_id
   return result.rows.map(row => ({
