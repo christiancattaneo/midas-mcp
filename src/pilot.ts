@@ -384,7 +384,7 @@ export async function runWatchMode(pollInterval = 5000): Promise<void> {
   const registered = await registerRemoteSession(session);
   
   if (registered) {
-    const remoteUrl = `${DASHBOARD_URL}/pilot/${session.sessionId}`;
+    const remoteUrl = `${DASHBOARD_URL}/pilot/${session.sessionId}?token=${session.sessionToken}`;
     console.log('  📱 Scan to control from phone:\n');
     await displayQRCode(remoteUrl);
     console.log(`\n  ${remoteUrl}\n`);
