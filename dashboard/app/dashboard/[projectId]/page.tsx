@@ -1,9 +1,10 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
-import { getProjectById, getLatestGates, getRecentEvents, getGameplanTasks } from "@/lib/db"
+import { getProjectById, getLatestGates, getRecentEvents, getGameplanTasks, getRecentCommands } from "@/lib/db"
 import Link from "next/link"
 import { ThemeToggle } from "@/components/ThemeToggle"
 import { CopyPromptButton } from "@/components/CopyButton"
+import { ExecuteButton } from "@/components/ExecuteButton"
 
 // Phase configuration
 const PHASE_STEPS: Record<string, string[]> = {
@@ -108,9 +109,13 @@ export default async function ProjectDetail({
   const gates = await getLatestGates(projectId)
   const events = await getRecentEvents(projectId)
   const gameplanTasks = await getGameplanTasks(projectId)
+  const recentCommands = await getRecentCommands(projectId, 5)
   
   // Find the next incomplete task
   const nextTask = gameplanTasks.find(t => !t.completed)
+  
+  // Check if there are pending/running commands
+  const activeCommands = recentCommands.filter(c => c.status === 'pending' || c.status === 'running')
   
   const currentSteps = PHASE_STEPS[project.current_phase] || []
   const currentStepIndex = currentSteps.indexOf(project.current_step)
@@ -265,6 +270,67 @@ export default async function ProjectDetail({
           </div>
         </div>
         
+        {/* Active Commands Section */}
+        {activeCommands.length > 0 && (
+          <div className="card mt-6 border-matrix/30">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-3 h-3 bg-matrix rounded-full animate-pulse" />
+              <h2 className="text-matrix text-xs font-mono">{'>'} ACTIVE COMMANDS</h2>
+            </div>
+            <div className="space-y-3">
+              {activeCommands.map((cmd) => (
+                <div key={cmd.id} className="flex items-center gap-4 p-3 bg-matrix/5 border border-matrix/20">
+                  <div className="flex-shrink-0">
+                    {cmd.status === 'running' ? (
+                      <svg className="w-5 h-5 text-matrix animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    ) : (
+                      <div className="w-5 h-5 border-2 border-gold/50 flex items-center justify-center text-xs text-gold">⏳</div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate">{cmd.prompt.slice(0, 80)}...</p>
+                    <p className="text-xs text-dim font-mono">
+                      {cmd.status === 'running' ? 'EXECUTING...' : 'QUEUED'}
+                      {' • '}
+                      {new Date(cmd.created_at).toLocaleTimeString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-4 text-xs text-dim font-mono">
+              Run <code>midas pilot --watch</code> locally to execute queued commands
+            </p>
+          </div>
+        )}
+        
+        {/* Command History Section */}
+        {recentCommands.length > 0 && (
+          <div className="card mt-6">
+            <h2 className="text-dim text-xs font-mono mb-4">{'>'} RECENT EXECUTIONS</h2>
+            <div className="space-y-2">
+              {recentCommands.filter(c => c.status === 'completed' || c.status === 'failed').slice(0, 5).map((cmd) => (
+                <div key={cmd.id} className="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
+                  <div className={`gate-icon ${cmd.status === 'completed' ? 'gate-pass' : 'gate-fail'}`}>
+                    {cmd.status === 'completed' ? '✓' : '✕'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate">{cmd.prompt.slice(0, 60)}...</p>
+                    <p className="text-xs text-dim font-mono">
+                      {cmd.duration_ms ? `${(cmd.duration_ms / 1000).toFixed(1)}s` : '--'}
+                      {' • '}
+                      {new Date(cmd.completed_at || cmd.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
         {/* Gameplan Section */}
         <div className="card mt-6">
           <div className="flex items-center justify-between mb-4">
@@ -293,12 +359,21 @@ export default async function ProjectDetail({
                       )}
                     </div>
                     {!task.completed && (
-                      <CopyPromptButton
-                        task={task.task_text}
-                        projectName={project.name}
-                        phase={project.current_phase}
-                        step={project.current_step}
-                      />
+                      <div className="flex gap-2">
+                        <CopyPromptButton
+                          task={task.task_text}
+                          projectName={project.name}
+                          phase={project.current_phase}
+                          step={project.current_step}
+                        />
+                        <ExecuteButton
+                          projectId={project.id}
+                          task={task.task_text}
+                          projectName={project.name}
+                          phase={project.current_phase}
+                          step={project.current_step}
+                        />
+                      </div>
                     )}
                   </div>
                 )
@@ -345,9 +420,13 @@ export default async function ProjectDetail({
                 phase={project.current_phase}
                 step={project.current_step}
               />
-              <button className="btn-secondary text-sm font-mono flex-1 text-center opacity-50 cursor-not-allowed">
-                AUTO-EXECUTE (COMING SOON)
-              </button>
+              <ExecuteButton
+                projectId={project.id}
+                task={nextTask.task_text}
+                projectName={project.name}
+                phase={project.current_phase}
+                step={project.current_step}
+              />
             </div>
           </div>
         )}

@@ -204,6 +204,29 @@ export async function initSchema(): Promise<void> {
       UNIQUE(project_id, task_id)
     )
   `);
+  
+  // Pending commands table (for Pilot automation)
+  await executeSQL(`
+    CREATE TABLE IF NOT EXISTS pending_commands (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id TEXT NOT NULL,
+      github_user_id INTEGER NOT NULL,
+      command_type TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      priority INTEGER DEFAULT 0,
+      max_turns INTEGER DEFAULT 10,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      started_at TEXT,
+      completed_at TEXT,
+      output TEXT,
+      error TEXT,
+      exit_code INTEGER,
+      duration_ms INTEGER,
+      session_id TEXT,
+      FOREIGN KEY (project_id) REFERENCES projects(id)
+    )
+  `);
 }
 
 /**
@@ -416,6 +439,128 @@ export async function getProjects(): Promise<CloudProject[]> {
  */
 export function isCloudConfigured(): boolean {
   return !!TURSO_URL_RAW && !!TURSO_AUTH_TOKEN;
+}
+
+// ============================================================================
+// PENDING COMMANDS (for Pilot automation)
+// ============================================================================
+
+export interface PendingCommand {
+  id: number;
+  project_id: string;
+  github_user_id: number;
+  command_type: 'prompt' | 'task' | 'gameplan';
+  prompt: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  priority: number;
+  max_turns: number;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  output?: string;
+  error?: string;
+  exit_code?: number;
+  duration_ms?: number;
+  session_id?: string;
+}
+
+/**
+ * Fetch pending commands for the authenticated user
+ */
+export async function fetchPendingCommands(): Promise<PendingCommand[]> {
+  const user = getAuthenticatedUser();
+  if (!user) return [];
+  
+  const result = await executeSQL(`
+    SELECT * FROM pending_commands 
+    WHERE github_user_id = ? AND status = 'pending'
+    ORDER BY priority DESC, created_at ASC
+    LIMIT 10
+  `, [user.userId]);
+  
+  return result.rows.map(row => ({
+    id: row[0] as number,
+    project_id: row[1] as string,
+    github_user_id: row[2] as number,
+    command_type: row[3] as 'prompt' | 'task' | 'gameplan',
+    prompt: row[4] as string,
+    status: row[5] as 'pending' | 'running' | 'completed' | 'failed' | 'cancelled',
+    priority: row[6] as number,
+    max_turns: row[7] as number,
+    created_at: row[8] as string,
+    started_at: row[9] as string | undefined,
+    completed_at: row[10] as string | undefined,
+    output: row[11] as string | undefined,
+    error: row[12] as string | undefined,
+    exit_code: row[13] as number | undefined,
+    duration_ms: row[14] as number | undefined,
+    session_id: row[15] as string | undefined,
+  }));
+}
+
+/**
+ * Mark a command as running
+ */
+export async function markCommandRunning(commandId: number): Promise<void> {
+  await executeSQL(`
+    UPDATE pending_commands 
+    SET status = 'running', started_at = ?
+    WHERE id = ?
+  `, [new Date().toISOString(), commandId]);
+}
+
+/**
+ * Mark a command as completed
+ */
+export async function markCommandCompleted(
+  commandId: number,
+  result: {
+    success: boolean;
+    output: string;
+    exitCode: number;
+    durationMs: number;
+    sessionId?: string;
+  }
+): Promise<void> {
+  await executeSQL(`
+    UPDATE pending_commands 
+    SET status = ?, completed_at = ?, output = ?, error = ?, exit_code = ?, duration_ms = ?, session_id = ?
+    WHERE id = ?
+  `, [
+    result.success ? 'completed' : 'failed',
+    new Date().toISOString(),
+    result.success ? result.output : null,
+    result.success ? null : result.output,
+    result.exitCode,
+    result.durationMs,
+    result.sessionId || null,
+    commandId,
+  ]);
+}
+
+/**
+ * Get project details by ID (for Pilot to know the path)
+ */
+export async function getProjectById(projectId: string): Promise<CloudProject | null> {
+  const result = await executeSQL(`
+    SELECT * FROM projects WHERE id = ?
+  `, [projectId]);
+  
+  if (result.rows.length === 0) return null;
+  
+  const row = result.rows[0];
+  return {
+    id: row[0] as string,
+    github_user_id: row[1] as number,
+    github_username: row[2] as string,
+    name: row[3] as string,
+    local_path: row[4] as string,
+    current_phase: row[5] as string,
+    current_step: row[6] as string,
+    progress: row[7] as number,
+    last_synced: row[8] as string,
+    created_at: row[9] as string,
+  };
 }
 
 /**

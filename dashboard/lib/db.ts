@@ -164,4 +164,79 @@ export async function getGameplanTasks(projectId: string): Promise<GameplanTask[
   }
 }
 
+// Pending commands
+export interface PendingCommand {
+  id: number
+  project_id: string
+  command_type: string
+  prompt: string
+  status: string
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
+  output: string | null
+  error: string | null
+  exit_code: number | null
+  duration_ms: number | null
+}
+
+export async function getPendingCommands(projectId: string): Promise<PendingCommand[]> {
+  const client = getClient()
+  try {
+    const result = await client.execute({
+      sql: `SELECT * FROM pending_commands 
+            WHERE project_id = ? AND status IN ('pending', 'running')
+            ORDER BY created_at ASC`,
+      args: [projectId],
+    })
+    
+    return result.rows.map(row => ({
+      id: row.id as number,
+      project_id: row.project_id as string,
+      command_type: row.command_type as string,
+      prompt: row.prompt as string,
+      status: row.status as string,
+      created_at: row.created_at as string,
+      started_at: row.started_at as string | null,
+      completed_at: row.completed_at as string | null,
+      output: row.output as string | null,
+      error: row.error as string | null,
+      exit_code: row.exit_code as number | null,
+      duration_ms: row.duration_ms as number | null,
+    }))
+  } catch {
+    return []
+  }
+}
+
+export async function getRecentCommands(projectId: string, limit = 10): Promise<PendingCommand[]> {
+  const client = getClient()
+  try {
+    const result = await client.execute({
+      sql: `SELECT * FROM pending_commands 
+            WHERE project_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT ?`,
+      args: [projectId, limit],
+    })
+    
+    return result.rows.map(row => ({
+      id: row.id as number,
+      project_id: row.project_id as string,
+      command_type: row.command_type as string,
+      prompt: row.prompt as string,
+      status: row.status as string,
+      created_at: row.created_at as string,
+      started_at: row.started_at as string | null,
+      completed_at: row.completed_at as string | null,
+      output: row.output as string | null,
+      error: row.error as string | null,
+      exit_code: row.exit_code as number | null,
+      duration_ms: row.duration_ms as number | null,
+    }))
+  } catch {
+    return []
+  }
+}
+
 export { getClient }

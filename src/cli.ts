@@ -64,6 +64,7 @@ ${bold}Cloud Dashboard:${reset}
 
 ${bold}Automation (Midas Pilot):${reset}
   npx midas-mcp pilot "prompt"  Execute a prompt via Claude Code CLI
+  npx midas-mcp pilot --watch   Watch mode - poll dashboard for commands
                                 Example: midas pilot "Fix the auth bug"
 
 ${bold}The Four Phases:${reset}

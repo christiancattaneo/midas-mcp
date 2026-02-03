@@ -13,6 +13,13 @@
 import { spawn, type ChildProcess } from 'child_process';
 import { isAuthenticated, getAuthenticatedUser } from './auth.js';
 import { sanitizePath } from './security.js';
+import { 
+  fetchPendingCommands, 
+  markCommandRunning, 
+  markCommandCompleted,
+  getProjectById,
+  type PendingCommand 
+} from './cloud.js';
 
 // ============================================================================
 // TYPES
@@ -270,10 +277,124 @@ export function getPilotStatus(): PilotStatus {
 // CLI COMMAND
 // ============================================================================
 
+// ============================================================================
+// WATCH MODE (polls cloud for pending commands)
+// ============================================================================
+
+let watchRunning = false;
+
+/**
+ * Run Pilot in watch mode - polls cloud for commands
+ */
+export async function runWatchMode(pollInterval = 5000): Promise<void> {
+  if (!isAuthenticated()) {
+    console.log('\n  ✗ Not authenticated. Run: midas login\n');
+    return;
+  }
+  
+  // Check for Claude Code
+  const checkClaude = spawn('which', ['claude']);
+  const hasClaudeCode = await new Promise<boolean>((resolve) => {
+    checkClaude.on('close', (code) => resolve(code === 0));
+  });
+  
+  if (!hasClaudeCode) {
+    console.log('\n  ✗ Claude Code CLI not found');
+    console.log('    Install from: https://claude.ai/code\n');
+    return;
+  }
+  
+  console.log('\n  ╔══════════════════════════════════════╗');
+  console.log('  ║       MIDAS PILOT - WATCH MODE       ║');
+  console.log('  ╚══════════════════════════════════════╝\n');
+  console.log('  Watching for commands from dashboard...');
+  console.log('  Press Ctrl+C to stop\n');
+  
+  watchRunning = true;
+  
+  // Handle graceful shutdown
+  process.on('SIGINT', () => {
+    console.log('\n\n  Pilot stopped.\n');
+    watchRunning = false;
+    process.exit(0);
+  });
+  
+  while (watchRunning) {
+    try {
+      const commands = await fetchPendingCommands();
+      
+      if (commands.length > 0) {
+        const command = commands[0]; // Process one at a time
+        console.log(`\n  ▸ Received command #${command.id}`);
+        console.log(`    Type: ${command.command_type}`);
+        console.log(`    Prompt: ${command.prompt.slice(0, 60)}...`);
+        
+        await executeCommand(command);
+      }
+    } catch (err) {
+      // Network error, wait and retry
+      console.log(`  ⚠ Poll error: ${err instanceof Error ? err.message : 'unknown'}`);
+    }
+    
+    // Wait before next poll
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
+}
+
+/**
+ * Execute a pending command from the cloud
+ */
+async function executeCommand(command: PendingCommand): Promise<void> {
+  // Get project details
+  const project = await getProjectById(command.project_id);
+  if (!project) {
+    console.log(`  ✗ Project not found: ${command.project_id}`);
+    return;
+  }
+  
+  console.log(`    Project: ${project.name}`);
+  console.log(`    Path: ${project.local_path}\n`);
+  
+  // Mark as running
+  await markCommandRunning(command.id);
+  
+  // Execute
+  const result = await executeClaudeCode(command.prompt, {
+    projectPath: project.local_path,
+    maxTurns: command.max_turns,
+  });
+  
+  // Update status
+  await markCommandCompleted(command.id, {
+    success: result.success,
+    output: result.output,
+    exitCode: result.exitCode,
+    durationMs: result.duration,
+    sessionId: result.sessionId,
+  });
+  
+  if (result.success) {
+    console.log(`  ✓ Command #${command.id} completed`);
+    console.log(`    Duration: ${(result.duration / 1000).toFixed(1)}s`);
+  } else {
+    console.log(`  ✗ Command #${command.id} failed`);
+    console.log(`    Exit code: ${result.exitCode}`);
+  }
+  
+  console.log('\n  Waiting for next command...');
+}
+
 /**
  * CLI handler for: midas pilot "prompt"
  */
 export async function runPilotCLI(args: string[]): Promise<void> {
+  // Check for watch mode
+  if (args.includes('--watch') || args.includes('-w')) {
+    const pollInterval = 5000; // Could be made configurable
+    await runWatchMode(pollInterval);
+    return;
+  }
+  
   // Check for Claude Code
   const checkClaude = spawn('which', ['claude']);
   const hasClaudeCode = await new Promise<boolean>((resolve) => {
@@ -301,10 +422,14 @@ export async function runPilotCLI(args: string[]): Promise<void> {
   
   if (!prompt) {
     console.log('\n  Usage: midas pilot "your prompt here"');
+    console.log('         midas pilot --watch');
+    console.log('');
     console.log('  Options:');
-    console.log('    --project <path>  Project directory\n');
-    console.log('  Example:');
-    console.log('    midas pilot "Fix the failing test in auth.ts"\n');
+    console.log('    --project <path>  Project directory');
+    console.log('    --watch, -w       Watch mode - poll cloud for commands\n');
+    console.log('  Examples:');
+    console.log('    midas pilot "Fix the failing test in auth.ts"');
+    console.log('    midas pilot --watch\n');
     return;
   }
   

@@ -912,3 +912,55 @@ code {
 [data-theme="light"] .task-checkbox {
   border-radius: 4px;
 }
+
+/* ============================================
+   EXECUTE BUTTON
+   ============================================ */
+.execute-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: 'SF Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: var(--matrix);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.execute-btn:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: var(--matrix);
+  box-shadow: 0 0 15px rgba(34, 197, 94, 0.2);
+}
+
+.execute-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.execute-btn.queued {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: var(--matrix);
+  cursor: default;
+}
+
+.execute-btn.error {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+.execute-btn.error:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: #ef4444;
+}
+
+[data-theme="light"] .execute-btn {
+  border-radius: 6px;
+}
