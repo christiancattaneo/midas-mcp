@@ -749,10 +749,10 @@ describe('Reality Checks with Empty Data', () => {
     assert.ok(checks !== null);
   });
 
-  it('should handle reality checks with empty brainlift', async () => {
-    const dir = createTestDir('reality-empty-brainlift');
+  it('should handle reality checks with empty prd', async () => {
+    const dir = createTestDir('reality-empty-prd');
     mkdirSync(join(dir, 'docs'));
-    writeFileSync(join(dir, 'docs', 'brainlift.md'), '');
+    writeFileSync(join(dir, 'docs', 'prd.md'), '');
     
     const checks = await getPreflightChecks(dir);
     

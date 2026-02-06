@@ -270,7 +270,6 @@ describe('Tracker Module', () => {
 
     it('detects docs completeness', () => {
       mkdirSync(join(testDir, 'docs'), { recursive: true });
-      writeFileSync(join(testDir, 'docs', 'brainlift.md'), '# Brainlift');
       writeFileSync(join(testDir, 'docs', 'prd.md'), '# PRD');
       writeFileSync(join(testDir, 'docs', 'gameplan.md'), '# Gameplan');
       
@@ -438,7 +437,7 @@ describe('Tracker Module', () => {
       // Create artifacts first
       mkdirSync(join(testDir, 'docs'), { recursive: true });
       writeFileSync(join(testDir, '.cursorrules'), '# Rules');
-      writeFileSync(join(testDir, 'docs', 'brainlift.md'), '# Brainlift');
+      writeFileSync(join(testDir, 'docs', 'prd.md'), '# PRD');
       
       // Then mark analysis complete
       // Need a small delay to ensure analysis timestamp is after file creation

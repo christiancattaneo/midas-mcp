@@ -59,9 +59,9 @@ describe('inferProjectProfile', () => {
     assert.ok(['free', 'unknown'].includes(profile.businessModel));
   });
 
-  it('detects user data collection from brainlift', () => {
+  it('detects user data collection from prd', () => {
     writeFileSync(
-      join(testDir, 'docs', 'brainlift.md'),
+      join(testDir, 'docs', 'prd.md'),
       '# My App\nWe store user accounts and email addresses for authentication.'
     );
     
@@ -81,7 +81,7 @@ describe('inferProjectProfile', () => {
 
   it('detects AI usage', () => {
     writeFileSync(
-      join(testDir, 'docs', 'brainlift.md'),
+      join(testDir, 'docs', 'prd.md'),
       '# AI App\nThis app uses GPT to generate content.'
     );
     
@@ -101,7 +101,7 @@ describe('inferProjectProfile', () => {
 
   it('detects healthcare industry', () => {
     writeFileSync(
-      join(testDir, 'docs', 'brainlift.md'),
+      join(testDir, 'docs', 'prd.md'),
       '# Health App\nPatient health records management system.'
     );
     
@@ -111,7 +111,7 @@ describe('inferProjectProfile', () => {
 
   it('detects education industry', () => {
     writeFileSync(
-      join(testDir, 'docs', 'brainlift.md'),
+      join(testDir, 'docs', 'prd.md'),
       '# EdTech\nSchool management and course platform.'
     );
     
@@ -155,7 +155,7 @@ describe('getPreflightChecks', () => {
 
   it('returns privacy policy check when collecting user data', () => {
     writeFileSync(
-      join(testDir, 'docs', 'brainlift.md'),
+      join(testDir, 'docs', 'prd.md'),
       '# App\nUser accounts with email and password.'
     );
     
@@ -169,7 +169,7 @@ describe('getPreflightChecks', () => {
 
   it('returns HIPAA check for healthcare + user data', () => {
     writeFileSync(
-      join(testDir, 'docs', 'brainlift.md'),
+      join(testDir, 'docs', 'prd.md'),
       '# Health App\nPatient records and medical history. User accounts.'
     );
     
@@ -184,7 +184,7 @@ describe('getPreflightChecks', () => {
 
   it('returns FERPA check for education + user data', () => {
     writeFileSync(
-      join(testDir, 'docs', 'brainlift.md'),
+      join(testDir, 'docs', 'prd.md'),
       '# School App\nStudent records and course grades. User accounts.'
     );
     
@@ -199,7 +199,7 @@ describe('getPreflightChecks', () => {
 
   it('calculates summary correctly', () => {
     writeFileSync(
-      join(testDir, 'docs', 'brainlift.md'),
+      join(testDir, 'docs', 'prd.md'),
       '# App\nUser accounts, payments via Stripe, AI-powered features.'
     );
     
@@ -218,7 +218,7 @@ describe('getPreflightChecks', () => {
 
   it('implements progressive disclosure on first session', () => {
     writeFileSync(
-      join(testDir, 'docs', 'brainlift.md'),
+      join(testDir, 'docs', 'prd.md'),
       '# Complex App\nUser accounts, email, payments, AI, subscriptions, EU users, enterprise B2B.'
     );
     
@@ -238,7 +238,7 @@ describe('getPreflightChecks', () => {
 
   it('shows all checks after multiple views', () => {
     writeFileSync(
-      join(testDir, 'docs', 'brainlift.md'),
+      join(testDir, 'docs', 'prd.md'),
       '# Complex App\nUser accounts, email, payments, AI, subscriptions, EU users.'
     );
     
@@ -290,7 +290,7 @@ describe('updateCheckStatus', () => {
   beforeEach(() => {
     testDir = createTestProject();
     writeFileSync(
-      join(testDir, 'docs', 'brainlift.md'),
+      join(testDir, 'docs', 'prd.md'),
       '# App\nUser accounts with email.'
     );
   });
@@ -356,7 +356,7 @@ describe('detectGeneratedDocs', () => {
   beforeEach(() => {
     testDir = createTestProject();
     writeFileSync(
-      join(testDir, 'docs', 'brainlift.md'),
+      join(testDir, 'docs', 'prd.md'),
       '# App\nUser accounts with email.'
     );
   });
@@ -422,7 +422,7 @@ describe('resetCheckStatuses', () => {
   beforeEach(() => {
     testDir = createTestProject();
     writeFileSync(
-      join(testDir, 'docs', 'brainlift.md'),
+      join(testDir, 'docs', 'prd.md'),
       '# App\nUser accounts with email.'
     );
   });
@@ -474,7 +474,7 @@ describe('PreflightCheck structure', () => {
   beforeEach(() => {
     testDir = createTestProject();
     writeFileSync(
-      join(testDir, 'docs', 'brainlift.md'),
+      join(testDir, 'docs', 'prd.md'),
       '# App\nUser accounts with email, payments via Stripe.'
     );
   });
@@ -541,7 +541,7 @@ describe('PreflightCheck structure', () => {
     for (const check of aiChecks) {
       assert.ok(
         check.cursorPrompt.toLowerCase().includes('doc') ||
-        check.cursorPrompt.toLowerCase().includes('brainlift') ||
+        check.cursorPrompt.toLowerCase().includes('requirements') ||
         check.cursorPrompt.toLowerCase().includes('prd'),
         `Prompt should reference docs: ${check.key}`
       );

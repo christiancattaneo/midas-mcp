@@ -51,7 +51,6 @@ midas-mcp/
 type PlanStep = 
   | 'IDEA'
   | 'RESEARCH'
-  | 'BRAINLIFT'
   | 'PRD'
   | 'GAMEPLAN';
 
@@ -75,7 +74,6 @@ interface PhaseState {
   history: Phase[];
   startedAt: string;
   docs: {
-    brainlift: boolean;
     prd: boolean;
     gameplan: boolean;
   };
@@ -100,9 +98,8 @@ Initializes a new project with Plan.
 
 **Behavior:**
 1. Creates `docs/` folder
-2. Creates `docs/brainlift.md` with template
-3. Creates `docs/prd.md` with template
-4. Creates `docs/gameplan.md` with template
+2. Creates `docs/prd.md` with template
+3. Creates `docs/gameplan.md` with template
 5. Sets phase to `PLAN.IDEA`
 6. Returns guidance for next step
 
@@ -182,7 +179,6 @@ Verify Plan docs exist and are complete.
 **Output:**
 ```typescript
 {
-  brainlift: { exists: boolean; complete: boolean; issues: string[] };
   prd: { exists: boolean; complete: boolean; issues: string[] };
   gameplan: { exists: boolean; complete: boolean; issues: string[] };
   ready: boolean;

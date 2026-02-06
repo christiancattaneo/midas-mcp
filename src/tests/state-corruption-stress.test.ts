@@ -303,7 +303,7 @@ describe('Null Values in State', () => {
       { name: 'history null', json: '{"current": {"phase": "IDLE"}, "history": null}' },
       { name: 'history array with null', json: '{"current": {"phase": "IDLE"}, "history": [null]}' },
       { name: 'docs null', json: '{"current": {"phase": "IDLE"}, "docs": null}' },
-      { name: 'docs.brainlift null', json: '{"current": {"phase": "IDLE"}, "docs": {"brainlift": null}}' },
+      { name: 'docs.prd null', json: '{"current": {"phase": "IDLE"}, "docs": {"prd": null}}' },
       { name: 'startedAt null', json: '{"current": {"phase": "IDLE"}, "startedAt": null}' },
       { name: '_version null', json: '{"current": {"phase": "IDLE"}, "_version": null}' },
       { name: 'all fields null', json: '{"current": null, "history": null, "docs": null, "startedAt": null}' },
@@ -363,9 +363,8 @@ describe('Missing Fields (Schema Evolution)', () => {
       // Missing nested fields
       { name: 'missing current.phase', json: '{"current": {}}' },
       { name: 'missing current.step', json: '{"current": {"phase": "BUILD"}}' },  // BUILD needs step
-      { name: 'missing docs.brainlift', json: '{"current": {"phase": "IDLE"}, "docs": {"prd": false}}' },
-      { name: 'missing docs.prd', json: '{"current": {"phase": "IDLE"}, "docs": {"brainlift": false}}' },
-      { name: 'missing docs.gameplan', json: '{"current": {"phase": "IDLE"}, "docs": {"brainlift": false, "prd": false}}' },
+      { name: 'missing docs.prd', json: '{"current": {"phase": "IDLE"}, "docs": {"gameplan": false}}' },
+      { name: 'missing docs.gameplan', json: '{"current": {"phase": "IDLE"}, "docs": {"prd": false}}' },
       
       // Partial history entries
       { name: 'history entry missing id', json: '{"current": {"phase": "IDLE"}, "history": [{"phase": {"phase": "PLAN"}, "timestamp": "2024-01-01"}]}' },
@@ -422,7 +421,7 @@ describe('Missing Fields (Schema Evolution)', () => {
       writeState(testDir, JSON.stringify({
         current: { phase: 'IDLE' },
         history: [],
-        docs: { brainlift: false, prd: false, gameplan: false },
+        docs: { prd: false, gameplan: false },
         startedAt: '2024-01-01',
         _version: 1,
         unknownField: 'should-be-preserved',
@@ -470,8 +469,8 @@ describe('Wrong Data Types', () => {
       // docs type mismatches
       { name: 'docs is array', json: '{"current": {"phase": "IDLE"}, "docs": []}' },
       { name: 'docs is string', json: '{"current": {"phase": "IDLE"}, "docs": "{}"}' },
-      { name: 'docs.brainlift is string', json: '{"current": {"phase": "IDLE"}, "docs": {"brainlift": "true"}}' },
-      { name: 'docs.brainlift is number', json: '{"current": {"phase": "IDLE"}, "docs": {"brainlift": 1}}' },
+      { name: 'docs.prd is string', json: '{"current": {"phase": "IDLE"}, "docs": {"prd": "true"}}' },
+      { name: 'docs.prd is number', json: '{"current": {"phase": "IDLE"}, "docs": {"prd": 1}}' },
       
       // _version type mismatches
       { name: '_version is string', json: '{"current": {"phase": "IDLE"}, "_version": "1"}' },
@@ -533,7 +532,7 @@ describe('Huge Files', () => {
       const state = {
         current: { phase: 'IDLE' },
         history: largeHistory,
-        docs: { brainlift: false, prd: false, gameplan: false },
+        docs: { prd: false, gameplan: false },
         startedAt: new Date().toISOString(),
         _version: 1,
       };
@@ -565,7 +564,7 @@ describe('Huge Files', () => {
       const state = {
         current: { phase: 'IDLE' },
         history: hugeHistory,
-        docs: { brainlift: false, prd: false, gameplan: false },
+        docs: { prd: false, gameplan: false },
         startedAt: new Date().toISOString(),
         _version: 1,
       };
@@ -586,7 +585,7 @@ describe('Huge Files', () => {
       const state = {
         current: { phase: 'IDLE' },
         history: [],
-        docs: { brainlift: false, prd: false, gameplan: false },
+        docs: { prd: false, gameplan: false },
         startedAt: new Date().toISOString(),
         _version: 1,
         extraData: 'x'.repeat(5000000),  // 5MB string
@@ -607,7 +606,7 @@ describe('Huge Files', () => {
       const state = {
         current: { phase: 'IDLE' },
         history: [],
-        docs: { brainlift: false, prd: false, gameplan: false },
+        docs: { prd: false, gameplan: false },
         nested,
         _version: 1,
       };
@@ -627,7 +626,7 @@ describe('Huge Files', () => {
       const state = {
         current: { phase: 'IDLE' },
         history: [],
-        docs: { brainlift: false, prd: false, gameplan: false },
+        docs: { prd: false, gameplan: false },
         wide,
         _version: 1,
       };
@@ -753,19 +752,19 @@ describe('Special Values', () => {
 
   describe('Boolean edge cases', () => {
     it('should handle 0 as false', () => {
-      writeState(testDir, '{"current": {"phase": "IDLE"}, "docs": {"brainlift": 0}}');
+      writeState(testDir, '{"current": {"phase": "IDLE"}, "docs": {"prd": 0}}');
       const state = loadState(testDir);
       assert.ok(state.docs);
     });
 
     it('should handle 1 as true', () => {
-      writeState(testDir, '{"current": {"phase": "IDLE"}, "docs": {"brainlift": 1}}');
+      writeState(testDir, '{"current": {"phase": "IDLE"}, "docs": {"prd": 1}}');
       const state = loadState(testDir);
       assert.ok(state.docs);
     });
 
     it('should handle "true" string', () => {
-      writeState(testDir, '{"current": {"phase": "IDLE"}, "docs": {"brainlift": "true"}}');
+      writeState(testDir, '{"current": {"phase": "IDLE"}, "docs": {"prd": "true"}}');
       const state = loadState(testDir);
       assert.ok(state.docs);
     });
@@ -848,7 +847,7 @@ describe('Property-Based State Testing', () => {
           const json = JSON.stringify({
             current: { phase: 'IDLE' },
             history: [],
-            docs: { brainlift: false, prd: false, gameplan: false },
+            docs: { prd: false, gameplan: false },
             metadata: safeUnicode,
           });
           
@@ -979,7 +978,7 @@ describe('Recovery Scenarios', () => {
     writeState(testDir, JSON.stringify({
       current: { phase: 'GROW', step: 'DONE' },
       history: [],
-      docs: { brainlift: true, prd: true, gameplan: true },
+      docs: { prd: true, gameplan: true },
     }));
     
     // Modify and save the old state

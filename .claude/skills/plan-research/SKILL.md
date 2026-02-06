@@ -60,4 +60,4 @@ gh repo list --topic=[your-topic] --sort=stars
 
 ## Next Step
 
-Once you understand the landscape, move to PLAN:BRAINLIFT to document your unique insights.
+Once you understand the landscape, move to PLAN:PRD to define requirements.

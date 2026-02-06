@@ -34,7 +34,6 @@ Always complete earlier steps before jumping to implementation.
 ### PLAN (Planning)
 - IDEA: Define core idea, problem, audience
 - RESEARCH: Landscape scan, competitors
-- BRAINLIFT: Document unique insights
 - PRD: Write requirements
 - GAMEPLAN: Plan the build
 

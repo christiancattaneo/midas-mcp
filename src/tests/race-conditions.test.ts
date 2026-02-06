@@ -259,7 +259,7 @@ describe('Interleaved Read-Modify-Write', () => {
     const final = loadState(testDir);
     // Should be one of the valid phases
     assert.strictEqual(final.current.phase, 'PLAN');
-    assert.ok(['IDEA', 'RESEARCH', 'BRAINLIFT', 'PRD', 'GAMEPLAN'].includes(
+    assert.ok(['IDEA', 'RESEARCH', 'PRD', 'GAMEPLAN'].includes(
       (final.current as { step: string }).step
     ));
     

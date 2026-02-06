@@ -1030,7 +1030,7 @@ describe('Performance Benchmarks', () => {
     writeRawState(dir, JSON.stringify({
       current: { phase: 'BUILD', step: 'IMPLEMENT' },
       history,
-      docs: { brainlift: true, prd: true, gameplan: true },
+      docs: { prd: true, gameplan: true },
     }));
     
     const start = Date.now();

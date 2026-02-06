@@ -29,13 +29,12 @@ import { saveState, type Phase } from '../state/phase.js';
  */
 function buildOptimizedPrompts(projectPath: string, context: {
   files: string[];
-  hasbrainlift: boolean;
   hasPrd: boolean;
   hasGameplan: boolean;
   hasTests: boolean;
   hasDockerfile: boolean;
   hasCI: boolean;
-  brainliftContent: string;
+  prdContent: string;
   codeSamples: string;
   errorContext: string;
   activityContext: string;
@@ -54,11 +53,10 @@ function buildOptimizedPrompts(projectPath: string, context: {
 ## The 4 Development Phases:
 
 ### PLAN (Planning Phase)
-Steps: IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN
+Steps: IDEA → RESEARCH → PRD → GAMEPLAN
 Purpose: Understand the problem before writing code.
 - IDEA: Capture the core concept and motivation
 - RESEARCH: Study existing solutions, dependencies, constraints
-- BRAINLIFT: Extract key decisions and mental models
 - PRD: Define requirements, scope, success criteria
 - GAMEPLAN: Break into ordered implementation tasks
 
@@ -134,11 +132,10 @@ ${context.activityContext}
 ${context.files.join('\n')}
 
 ## Planning Docs:
-- brainlift.md: ${context.hasbrainlift ? 'exists' : 'missing'}
 - prd.md: ${context.hasPrd ? 'exists' : 'missing'}
 - gameplan.md: ${context.hasGameplan ? 'exists' : 'missing'}
 
-${context.brainliftContent ? `brainlift.md preview:\n${context.brainliftContent.slice(0, 200)}` : ''}
+${context.prdContent ? `prd.md preview:\n${context.prdContent.slice(0, 200)}` : ''}
 
 ## Infrastructure:
 - Tests: ${context.hasTests ? 'yes' : 'no'}
@@ -164,13 +161,12 @@ Analyze this project and provide the JSON response.`;
  */
 function buildUnoptimizedPrompts(projectPath: string, context: {
   files: string[];
-  hasbrainlift: boolean;
   hasPrd: boolean;
   hasGameplan: boolean;
   hasTests: boolean;
   hasDockerfile: boolean;
   hasCI: boolean;
-  brainliftContent: string;
+  prdContent: string;
   codeSamples: string;
   errorContext: string;
   activityContext: string;
@@ -188,7 +184,7 @@ function buildUnoptimizedPrompts(projectPath: string, context: {
   const userPrompt = `# GOLDEN CODE METHODOLOGY (Stable Context - Beginning)
 
 ## The 4 Phases with Steps:
-PLAN (Planning): IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN
+PLAN (Planning): IDEA → RESEARCH → PRD → GAMEPLAN
 BUILD (7-step cycle): RULES → INDEX → READ → RESEARCH → IMPLEMENT → TEST → DEBUG
 SHIP: REVIEW → DEPLOY → MONITOR
 GROW: FEEDBACK → ANALYZE → ITERATE
@@ -206,11 +202,10 @@ GROW: FEEDBACK → ANALYZE → ITERATE
 ${context.files.join('\n')}
 
 ## Planning Docs:
-- brainlift.md: ${context.hasbrainlift ? 'exists' : 'missing'}
 - prd.md: ${context.hasPrd ? 'exists' : 'missing'}  
 - gameplan.md: ${context.hasGameplan ? 'exists' : 'missing'}
 
-${context.brainliftContent ? `brainlift.md preview:\n${context.brainliftContent.slice(0, 300)}` : ''}
+${context.prdContent ? `prd.md preview:\n${context.prdContent.slice(0, 300)}` : ''}
 
 ## Infrastructure:
 - Tests: ${context.hasTests ? 'yes' : 'no'}
@@ -289,17 +284,15 @@ describe('Cache Optimization Tests', () => {
         'package.json',
         'tsconfig.json',
         'README.md',
-        'docs/brainlift.md',
         'docs/prd.md',
         'docs/gameplan.md',
       ],
-      hasbrainlift: true,
       hasPrd: true,
       hasGameplan: true,
       hasTests: true,
       hasDockerfile: false,
       hasCI: true,
-      brainliftContent: 'Midas is an MCP server that coaches developers through the Golden Code methodology.',
+      prdContent: 'Midas is an MCP server that coaches developers through the Golden Code methodology.',
       codeSamples: `--- src/index.ts ---
 import { startServer } from './server.js';
 import { runCLI } from './cli.js';
@@ -528,11 +521,10 @@ We added JWT authentication with refresh tokens. The access token expires in 15 
     it('handles empty project', () => {
       const context = createTestContext();
       context.files = [];
-      context.hasbrainlift = false;
       context.hasPrd = false;
       context.hasGameplan = false;
       context.hasTests = false;
-      context.brainliftContent = '';
+      context.prdContent = '';
       context.codeSamples = '';
       context.activityContext = 'No recent activity';
       context.journalContext = 'No journal entries';

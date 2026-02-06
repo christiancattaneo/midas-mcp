@@ -122,7 +122,6 @@ describe('Empty Content Scenarios', () => {
     const dir = createTestDir('all-empty');
     mkdirSync(join(dir, 'docs'));
     writeFileSync(join(dir, 'README.md'), '');
-    writeFileSync(join(dir, 'docs', 'brainlift.md'), '');
     writeFileSync(join(dir, 'docs', 'prd.md'), '');
     writeFileSync(join(dir, 'docs', 'gameplan.md'), '');
     
@@ -337,7 +336,6 @@ describe('Directory Priority', () => {
 
   it('should prefer root-level planning docs', () => {
     const dir = createTestDir('root-planning');
-    writeFileSync(join(dir, 'brainlift.md'), '# Brain Lift\n\n## Core Concept');
     writeFileSync(join(dir, 'prd.md'), '# PRD\n\n## Requirements');
     writeFileSync(join(dir, 'gameplan.md'), '# Gameplan\n\n## Phase 1');
     
@@ -364,18 +362,6 @@ describe('Directory Priority', () => {
 // ============================================================================
 
 describe('File Naming and Classification', () => {
-  it('should classify brainlift.md correctly', () => {
-    const dir = createTestDir('classify-brainlift');
-    mkdirSync(join(dir, 'docs'));
-    writeFileSync(join(dir, 'docs', 'brainlift.md'), 
-      '# Brain Lift\n\n## Core Concept\n\nThe main idea...\n\n## Target Audience\n\nDevelopers');
-    
-    const result = discoverDocsSync(dir);
-    
-    assert.ok(result !== null);
-    assert.ok(result !== null, 'Should return a valid result');
-  });
-
   it('should classify prd.md correctly', () => {
     const dir = createTestDir('classify-prd');
     mkdirSync(join(dir, 'docs'));
@@ -398,17 +384,6 @@ describe('File Naming and Classification', () => {
     
     assert.ok(result !== null);
     assert.ok(result.gameplan !== null, 'Should classify as gameplan');
-  });
-
-  it('should handle alternative naming: vision.md as brainlift', () => {
-    const dir = createTestDir('alt-vision');
-    writeFileSync(join(dir, 'vision.md'), 
-      '# Vision\n\n## Core Concept\n\nOur vision is...');
-    
-    const result = discoverDocsSync(dir);
-    
-    assert.ok(result !== null);
-    // May or may not classify as brainlift depending on heuristics
   });
 
   it('should handle alternative naming: spec.md as PRD', () => {
@@ -434,7 +409,6 @@ describe('File Naming and Classification', () => {
   it('should handle case-insensitive naming', () => {
     const dir = createTestDir('case-insensitive');
     mkdirSync(join(dir, 'docs'));
-    writeFileSync(join(dir, 'docs', 'BRAINLIFT.md'), '# Brain Lift');
     writeFileSync(join(dir, 'docs', 'PRD.MD'), '# PRD');
     writeFileSync(join(dir, 'docs', 'GamePlan.md'), '# Gameplan');
     
@@ -457,7 +431,6 @@ describe('File Naming and Classification', () => {
   it('should handle hyphenated doc names', () => {
     const dir = createTestDir('hyphenated');
     mkdirSync(join(dir, 'docs'));
-    writeFileSync(join(dir, 'docs', 'brain-lift.md'), '# Brain Lift');
     writeFileSync(join(dir, 'docs', 'product-requirements.md'), '# PRD');
     writeFileSync(join(dir, 'docs', 'game-plan.md'), '# Gameplan');
     
@@ -531,17 +504,6 @@ describe('File Type Handling', () => {
 // ============================================================================
 
 describe('Content-Based Classification', () => {
-  it('should classify by content keywords (brainlift)', () => {
-    const dir = createTestDir('content-brainlift');
-    writeFileSync(join(dir, 'ideas.md'), 
-      '# Ideas\n\n## Core Concept\n\nThe fundamental idea is...\n\n## Target Audience\n\nFor developers who want...\n\n## Problem Statement\n\nUsers struggle with...');
-    
-    const result = discoverDocsSync(dir);
-    
-    assert.ok(result !== null);
-    // Content-based classification may identify this as brainlift-like
-  });
-
   it('should classify by content keywords (PRD)', () => {
     const dir = createTestDir('content-prd');
     writeFileSync(join(dir, 'requirements.md'), 
@@ -738,19 +700,6 @@ describe('Multiple Similar Docs', () => {
     assert.ok(result !== null);
   });
 
-  it('should handle competing brainlift-like docs', () => {
-    const dir = createTestDir('multi-brainlift');
-    mkdirSync(join(dir, 'docs'));
-    writeFileSync(join(dir, 'docs', 'brainlift.md'), '# Brain Lift 1');
-    writeFileSync(join(dir, 'docs', 'vision.md'), '# Vision');
-    writeFileSync(join(dir, 'docs', 'concept.md'), '# Core Concept');
-    
-    const result = discoverDocsSync(dir);
-    
-    assert.ok(result !== null);
-    // Should pick one as primary brainlift
-  });
-
   it('should handle competing PRD-like docs', () => {
     const dir = createTestDir('multi-prd');
     mkdirSync(join(dir, 'docs'));
@@ -784,7 +733,6 @@ describe('Planning Context Generation', () => {
   it('should generate context from complete docs', () => {
     const dir = createTestDir('context-complete');
     mkdirSync(join(dir, 'docs'));
-    writeFileSync(join(dir, 'docs', 'brainlift.md'), '# Brain Lift\n\n## Core Concept\n\nMain idea here.');
     writeFileSync(join(dir, 'docs', 'prd.md'), '# PRD\n\n## Requirements\n\n- Req 1\n- Req 2');
     writeFileSync(join(dir, 'docs', 'gameplan.md'), '# Gameplan\n\n## Phase 1\n\n- [ ] Task 1');
     
@@ -799,7 +747,7 @@ describe('Planning Context Generation', () => {
     const dir = createTestDir('context-partial');
     mkdirSync(join(dir, 'docs'));
     writeFileSync(join(dir, 'docs', 'prd.md'), '# PRD\n\n## Requirements');
-    // Missing brainlift and gameplan
+    // Missing gameplan
     
     const result = discoverDocsSync(dir);
     const context = getPlanningContext(result);
@@ -821,7 +769,7 @@ describe('Planning Context Generation', () => {
     const dir = createTestDir('context-large');
     const largeContent = generateMarkdown(100, 20);  // Large doc
     mkdirSync(join(dir, 'docs'));
-    writeFileSync(join(dir, 'docs', 'brainlift.md'), largeContent);
+    writeFileSync(join(dir, 'docs', 'prd.md'), largeContent);
     
     const result = discoverDocsSync(dir);
     const context = getPlanningContext(result);
@@ -934,7 +882,6 @@ describe('Performance Benchmarks', () => {
     const dir = createTestDir('perf-classify');
     mkdirSync(join(dir, 'docs'));
     
-    writeFileSync(join(dir, 'docs', 'brainlift.md'), '# Brain Lift\n\n## Core Concept\n\n' + generateContent(10000, 'x'));
     writeFileSync(join(dir, 'docs', 'prd.md'), '# PRD\n\n## Requirements\n\n' + generateContent(10000, 'y'));
     writeFileSync(join(dir, 'docs', 'gameplan.md'), '# Gameplan\n\n## Phase 1\n\n' + generateContent(10000, 'z'));
     

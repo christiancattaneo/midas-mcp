@@ -17,40 +17,17 @@ The complete methodology that Midas teaches and enforces.
 ### Phase 1: Plan (Pre-Build)
 
 ```
-💡 IDEA → 🔍 RESEARCH → 🧠 BRAINLIFT → 📋 PRD → 🗺️ GAMEPLAN → ⚡ BUILD
+💡 IDEA → 🔍 RESEARCH → 📋 PRD → 🗺️ GAMEPLAN → ⚡ BUILD
 ```
 
 | Step | What It Is | Time |
 |------|------------|------|
 | 💡 Idea | The spark — what and why | 5 min |
 | 🔍 Research | Landscape scan — what exists | 30-60 min |
-| 🧠 Brainlift | Your edge — what AI doesn't know | 15-30 min |
 | 📋 PRD | Requirements — what exactly to build | 30-60 min |
 | 🗺️ Gameplan | Strategy — how to build it | 15-30 min |
 
-**Total: 2-3 hours** → Saves 20-40 hours of confused building
-
-#### Brainlift Template
-
-```markdown
-# Brainlift
-
-## Contrarian Insights
-- [What do YOU know that contradicts conventional wisdom?]
-- [What have you learned from experience that AI can't know?]
-
-## Domain Knowledge
-- [Industry-specific context]
-- [User behavior patterns you've observed]
-
-## Hard-Won Lessons
-- [What NOT to do based on past experience]
-- [Hidden gotchas in this space]
-
-## Current Context
-- [Recent market changes]
-- [Technology updates post-training-cutoff]
-```
+**Total: 1.5-2.5 hours** → Saves 20-40 hours of confused building
 
 #### PRD Template
 

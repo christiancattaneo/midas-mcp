@@ -20,12 +20,6 @@ Whatever you're building, someone has probably solved 80% of it already. Librari
 
 *Skip this and you'll build from scratch what exists in a npm package.*
 
-### BRAINLIFT
-**Why document your edge?**
-AI has read the entire internet. You have something it doesn't: your specific context, your domain expertise, your edge cases. The brainlift captures what makes YOUR project different from the generic solution.
-
-*Skip this and the AI will give you generic Stack Overflow answers.*
-
 ### PRD
 **Why define requirements formally?**
 "I'll know it when I see it" is the enemy of shipping. A PRD creates a contract with yourself: these features, these constraints, this scope. It's the difference between "done" and "endless tweaking."
@@ -148,7 +142,7 @@ Unbounded work never ships. Defining the next iteration's scope—hypothesis, su
 
 ### LOOP
 **Why return to PLAN with context?**
-Each cycle teaches you something. Carrying that context forward means version 2 builds on version 1's lessons. The brainlift grows. The PRD evolves. The gameplan improves.
+Each cycle teaches you something. Carrying that context forward means version 2 builds on version 1's lessons. The PRD evolves. The gameplan improves.
 
 *Skip this and every version starts from zero knowledge.*
 

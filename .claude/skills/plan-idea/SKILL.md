@@ -24,10 +24,10 @@ Most projects fail from solving the wrong problem. 10 minutes clarifying saves d
 
 ## Output
 
-Create or update `docs/brainlift.md` with:
+Create or update `docs/prd.md` with an initial section capturing the idea:
 
 ```markdown
-# Brainlift
+# PRD
 
 ## Problem
 [One paragraph describing the pain point]
@@ -37,14 +37,11 @@ Create or update `docs/brainlift.md` with:
 
 ## Why Now
 [What changed that makes this timely]
-
-## Unique Context
-[What you know that others don't - your edge]
 ```
 
 ## Next Step
 
-Once `docs/brainlift.md` exists with these sections, advance to PLAN:RESEARCH.
+Once the idea is captured, advance to PLAN:RESEARCH.
 
 ---
 

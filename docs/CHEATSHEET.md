@@ -8,7 +8,7 @@ Quick reference for the vibecoding methodology.
 
 **Phase 1: Plan (Pre-Build)**
 ```
-Idea → Research → Brainlift → PRD → Gameplan
+Idea → Research → PRD → Gameplan
 ```
 
 **Phase 2: Build (7-Step Process)**

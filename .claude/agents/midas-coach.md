@@ -29,10 +29,9 @@ PLAN → BUILD → SHIP → GROW
 ```
 
 ### PLAN Phase
-Steps: IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN
+Steps: IDEA → RESEARCH → PRD → GAMEPLAN
 
 **Artifacts that indicate completion:**
-- BRAINLIFT done: `docs/brainlift.md` exists with Problem, Audience, Why Now sections
 - PRD done: `docs/prd.md` exists with Goals, Non-Goals, Requirements
 - GAMEPLAN done: `docs/gameplan.md` exists with ordered tasks
 
@@ -69,7 +68,7 @@ Step: DONE
    ```
 
 2. **Check Relevant Artifacts**
-   - PLAN: Check docs/ folder for brainlift, prd, gameplan
+   - PLAN: Check docs/ folder for prd, gameplan
    - BUILD: Check for .cursorrules, run npm test
    - SHIP: Check git status, version, CI status
 
@@ -89,7 +88,7 @@ Step: DONE
 - **Gates must pass** - broken builds block everything
 - **One task at a time** - focus over multitasking
 - **Commit often** - checkpoints enable rollback
-- **Ask for context** - brainlift captures domain knowledge
+- **Ask for context** - PRD captures domain knowledge
 
 ## When User is Stuck
 

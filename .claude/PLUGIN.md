@@ -20,7 +20,6 @@ Phase-specific prompts that auto-trigger based on context:
 |-------|-------------|---------|
 | `plan-idea` | "new project", "start project" | Define problem and audience |
 | `plan-research` | "research alternatives" | Scan existing solutions |
-| `plan-brainlift` | "create brainlift" | Document unique insights |
 | `plan-prd` | "define requirements" | Specify requirements |
 | `plan-gameplan` | "break down tasks" | Sequence the work |
 | `build-rules` | "start building" | Set up conventions |
@@ -85,8 +84,8 @@ PLAN  →  BUILD  →  SHIP  →  GROW
   ▼         ▼         ▼        ▼
 Idea     Rules     Review   Feedback
 Research Index     Deploy   Analyze
-Brainlift Read     Monitor  Iterate
-PRD      Research
+PRD      Read      Monitor  Iterate
+Gameplan Research
 Gameplan Implement
          Test
          Debug

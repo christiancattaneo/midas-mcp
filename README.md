@@ -101,7 +101,7 @@ Midas tracks your current phase and guides you through:
 
 **Phase 1: Plan (Pre-Build)**
 ```
-💡 Idea → 🔍 Research → 🧠 Brainlift → 📋 PRD → 🗺️ Gameplan
+💡 Idea → 🔍 Research → 📋 PRD → 🗺️ Gameplan
 ```
 
 **Phase 2: Build (7-Step Process)**
@@ -118,7 +118,7 @@ Midas tracks your current phase and guides you through:
 | `midas_get_phase` | Get current phase and recommended next steps |
 | `midas_set_phase` | Move to a specific phase |
 | `midas_audit` | Score project against 12 ingredients |
-| `midas_check_docs` | Verify brainlift/prd/gameplan completeness |
+| `midas_check_docs` | Verify prd/gameplan completeness |
 | `midas_oneshot` | Apply the Oneshot Paradigm for error recovery |
 | `midas_tornado` | Trigger Research + Logs + Tests cycle |
 | `midas_horizon` | Expand horizontal context for better output |
@@ -179,7 +179,7 @@ Wrong output? Widen your horizontal context.
 User: "I want to build a task management app"
 
 Midas: Initiates Plan phase, creates docs folder,
-       guides through Brainlift → PRD → Gameplan
+       guides through PRD → Gameplan
 ```
 
 ### When Stuck on a Bug

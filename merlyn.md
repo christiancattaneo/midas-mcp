@@ -130,12 +130,11 @@ Based on my research and analysis of your current PLAN phase, here's my assessme
 
 Your current PLAN phase:
 ```
-IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN
+IDEA → RESEARCH → PRD → GAMEPLAN
 ```
 
 **What's good:**
 - IDEA first (problem definition) is correct
-- BRAINLIFT captures domain expertise AI lacks
 - GAMEPLAN sequences work with dependencies
 - Strong "why" rationale for each step
 
@@ -146,9 +145,9 @@ IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN
 Most agentic AI frameworks use **Plan → Act → Observe → Reflect** loops. Your current flow is linear with no built-in verification:
 
 ```
-Current:  IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN  (one-way)
+Current:  IDEA → RESEARCH → PRD → GAMEPLAN  (one-way)
 
-Better:   IDEA → VALIDATE → RESEARCH → VALIDATE → BRAINLIFT → 
+Better:   IDEA → VALIDATE → RESEARCH → VALIDATE → 
           PRD → STAKEHOLDER_CHECK → GAMEPLAN → FEASIBILITY_CHECK
 ```
 
@@ -163,21 +162,7 @@ Your current flow doesn't have explicit risk identification before committing to
 - Business risks (market timing, competition)
 - Integration risks (APIs, third-party services)
 
-### 3. PRD Position May Be Wrong
-
-**Current order:** BRAINLIFT → PRD → GAMEPLAN
-
-**Research suggests:** PRD should come *before* deep domain documentation because:
-- PRD defines *what* to build (goals, constraints, scope)
-- BRAINLIFT then captures *how your context* affects that scope
-- Otherwise you risk documenting irrelevant domain knowledge
-
-**Alternative sequence:**
-```
-IDEA → RESEARCH → PRD → BRAINLIFT → GAMEPLAN
-```
-
-### 4. Missing Spike/Prototype Step
+### 3. Missing Spike/Prototype Step
 
 Modern agile and AI-assisted development recommends **prototyping unknowns** during planning:
 
@@ -196,7 +181,6 @@ PLAN Phase (v2):
   IDEA      → Define problem, audience, why now
   RESEARCH  → Scan landscape, competitors, existing solutions  
   PRD       → Goals, non-goals, scope, success criteria
-  BRAINLIFT → Your unique context, domain knowledge, constraints
   RISKS     → Technical/business/integration risks + mitigations
   GAMEPLAN  → Sequenced tasks, dependencies, estimates
   [SPIKE]   → Optional: prototype high-risk unknowns
@@ -210,8 +194,7 @@ Add lightweight verification between phases:
 |------------|----------------------|
 | IDEA → RESEARCH | "Is the problem worth solving?" |
 | RESEARCH → PRD | "Do we understand the landscape enough to scope?" |
-| PRD → BRAINLIFT | "Are requirements clear and bounded?" |
-| BRAINLIFT → RISKS | "Have we captured our unique constraints?" |
+| PRD → RISKS | "Are requirements clear and bounded?" |
 | RISKS → GAMEPLAN | "Are risks understood and mitigated?" |
 | GAMEPLAN → BUILD | "Is this plan feasible and sequenced correctly?" |
 
@@ -272,7 +255,7 @@ interface StepExecution {
 | Change | Impact | Effort |
 |--------|--------|--------|
 | Add RISKS step between PRD and GAMEPLAN | High - prevents mid-build surprises | Low |
-| Swap PRD ↔ BRAINLIFT order | Medium - better scoping | Low |
+| Simplify PLAN phase | Medium - better scoping | Low |
 | Add verification gates between steps | High - catches bad assumptions | Medium |
 | Add optional SPIKE step | Medium - de-risks unknowns | Low |
 | Embed TDD cycle in IMPLEMENT | High - catches bugs earlier | Already have it |
@@ -291,7 +274,7 @@ This is a profound question about the **meta-layer** of development. Let me anal
 |-------|--------------|-----|
 | **Phase/Step** | Tactical position (BUILD→IMPLEMENT) | Tells you WHERE, not WHY |
 | **Gameplan** | Task checklist | Convergent, not divergent |
-| **Brainlift** | Domain knowledge dump | Static, captured once |
+| **PRD** | Requirements definition | Evolves with scope |
 | **Analyzer** | "What's next?" | Reactive, not visionary |
 
 **The missing layer**: A **vision keeper** that asks "Is this still the most transformative path?"
@@ -391,7 +374,7 @@ Respond with: CONTINUE, PIVOT, or SIMPLIFY with reasoning.
 
 Start minimal:
 
-1. Add `docs/vision.md` as a first-class planning doc (like brainlift)
+1. Add `docs/vision.md` as a first-class planning doc
 2. Add one Oracle prompt in `src/prompts/oracle.ts`
 3. Show vision summary in TUI info screen
 4. Add `[o]` key to trigger Oracle reflection

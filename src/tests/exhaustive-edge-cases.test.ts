@@ -845,7 +845,7 @@ describe('Docs Discovery Edge Cases', () => {
 
     it('should handle whitespace-only doc', async () => {
       mkdirSync(join(testDir, 'docs'));
-      writeFileSync(join(testDir, 'docs', 'brainlift.md'), '   \n\n\t   \n   ');
+      writeFileSync(join(testDir, 'docs', 'prd.md'), '   \n\n\t   \n   ');
       
       const result = await discoverDocs(testDir);
       assert.ok(result !== undefined);
