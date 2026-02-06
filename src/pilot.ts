@@ -23,7 +23,7 @@ import {
   type PendingCommand 
 } from './cloud.js';
 import { loadTracker, getSmartPromptSuggestion, getGatesStatus } from './tracker.js';
-import { loadState, PHASE_INFO } from './state/phase.js';
+import { loadState, setPhase, PHASE_INFO } from './state/phase.js';
 import { getGameplanProgress } from './gameplan-tracker.js';
 import { analyzeProjectStreaming, type ProjectAnalysis, type AnalysisProgress } from './analyzer.js';
 
@@ -643,6 +643,35 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
     clearInterval(progressInterval);
   } catch (err) {
     clearInterval(progressInterval);
+  }
+  
+  // Auto-advance: if AI detected a different phase, update the state file
+  // This ensures the state file matches reality instead of staying stale
+  if (analysis?.currentPhase) {
+    const currentState = loadState(projectPath);
+    const aiPhase = analysis.currentPhase;
+    const statePhase = currentState.current;
+    
+    // Only advance forward, never go backward
+    const phaseOrder = ['IDLE', 'PLAN', 'BUILD', 'SHIP', 'GROW'];
+    const aiIdx = phaseOrder.indexOf(aiPhase.phase);
+    const stateIdx = phaseOrder.indexOf(statePhase.phase);
+    
+    if (aiIdx > stateIdx) {
+      // AI detected we're further along - update state
+      setPhase(projectPath, aiPhase);
+    } else if (aiIdx === stateIdx && aiPhase.phase !== 'IDLE' && 'step' in aiPhase && 'step' in statePhase) {
+      // Same phase but different step - check if AI step is further
+      const phaseInfo = PHASE_INFO[aiPhase.phase];
+      if (phaseInfo) {
+        const steps = Object.keys(phaseInfo.steps);
+        const aiStepIdx = steps.indexOf(aiPhase.step);
+        const stateStepIdx = steps.indexOf(statePhase.step);
+        if (aiStepIdx > stateStepIdx) {
+          setPhase(projectPath, aiPhase);
+        }
+      }
+    }
   }
   
   // Load supplementary state
