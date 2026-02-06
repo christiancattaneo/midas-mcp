@@ -396,16 +396,16 @@ describe('Tracker Module', () => {
       assert.ok(result.artifacts.includes('.cursorrules'));
     });
 
-    it('detects brainlift.md creation after analysis', () => {
+    it('detects prd.md creation after analysis', () => {
       markAnalysisComplete(testDir);
       
       mkdirSync(join(testDir, 'docs'), { recursive: true });
-      writeFileSync(join(testDir, 'docs', 'brainlift.md'), '# Brainlift');
+      writeFileSync(join(testDir, 'docs', 'prd.md'), '# PRD');
       
       const result = checkKeyArtifactChanges(testDir);
       
       assert.strictEqual(result.changed, true);
-      assert.ok(result.artifacts.includes('docs/brainlift.md'));
+      assert.ok(result.artifacts.includes('docs/prd.md'));
     });
 
     it('returns false when no key artifacts changed', () => {

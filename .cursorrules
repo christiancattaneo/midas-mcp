@@ -138,7 +138,7 @@ if (!response.ok) {
 ### Phase State Machine
 The development lifecycle has 4 phases, each with steps:
 
-1. **OLAN** (Planning): IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN
+1. **OLAN** (Planning): IDEA → RESEARCH → PRD → GAMEPLAN
 2. **BUILD** (Development): RULES → INDEX → READ → RESEARCH → IMPLEMENT → TEST → DEBUG
 3. **SHIP** (Deployment): REVIEW → DEPLOY → MONITOR
 4. **GROW** (Iteration): FEEDBACK → ANALYZE → ITERATE
