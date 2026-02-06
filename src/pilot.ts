@@ -29,7 +29,7 @@ import { analyzeProjectStreaming, type ProjectAnalysis, type AnalysisProgress } 
 
 // QR code removed - dashboard handles remote control now
 
-// ANSI colors (module-level for use in TUI rendering)
+// ANSI colors and TUI constants (module-level)
 const reset = '\x1b[0m';
 const bold = '\x1b[1m';
 const dim = '\x1b[2m';
@@ -40,6 +40,10 @@ const cyan = '\x1b[36m';
 const magenta = '\x1b[35m';
 const white = '\x1b[37m';
 const red = '\x1b[31m';
+const gold = yellow; // yellow serves as gold
+
+const TUI_W = 58;
+const TUI_HLINE = '═'.repeat(TUI_W - 2);
 
 // ============================================================================
 // TYPES
@@ -555,15 +559,17 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
   // Clear screen and hide cursor
   process.stdout.write('\x1b[2J\x1b[H\x1b[?25l');
   
-  console.log('\n  ╔══════════════════════════════════════════════════════════╗');
-  console.log('  ║                   MIDAS WATCH MODE                       ║');
-  console.log('  ╚══════════════════════════════════════════════════════════╝\n');
-  
   // =========================================================================
-  // STEP 1: Full AI Analysis with TUI-style colorful progress
+  // STEP 1: Full AI Analysis with TUI box
   // =========================================================================
   
-  // ANSI colors defined at module level
+  // TUI row helper
+  const tuiRow = (content: string) => {
+    const stripped = content.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+    const pad = Math.max(0, TUI_W - 4 - stripped.length);
+    return `  ${cyan}║${reset} ${content}${' '.repeat(pad)} ${cyan}║${reset}`;
+  };
+  const tuiEmpty = () => `  ${cyan}║${reset}${' '.repeat(TUI_W - 2)}${cyan}║${reset}`;
   
   const spinners = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
   const stages = ['gathering', 'connecting', 'thinking', 'streaming', 'parsing'];
@@ -578,57 +584,51 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
   let currentProgress: AnalysisProgress | null = null;
   let analysisStartTime = Date.now();
   
-  // Render the colorful analysis box
+  // Render analysis progress in aesthetic TUI box
   const renderAnalysisUI = () => {
     const elapsed = `${((Date.now() - analysisStartTime) / 1000).toFixed(1)}s`;
     const spinnerFrame = spinners[Math.floor(Date.now() / 100) % spinners.length];
     const currentIdx = currentProgress ? stages.indexOf(currentProgress.stage) : 0;
     
-    // Stage indicator function
     const stageCheck = (idx: number) => {
       if (idx < currentIdx) return `${green}[✓]${reset}`;
-      if (idx === currentIdx) return `${yellow}[${spinnerFrame}]${reset}`;
+      if (idx === currentIdx) return `${gold}[${spinnerFrame}]${reset}`;
       return `${dim}[ ]${reset}`;
     };
     
-    // Build the display
-    let output = '\x1b[2J\x1b[H'; // Clear screen + home
-    output += '\n  ╔══════════════════════════════════════════════════════════╗\n';
-    output += '  ║                   MIDAS WATCH MODE                       ║\n';
-    output += '  ╚══════════════════════════════════════════════════════════╝\n\n';
+    const lines: string[] = [];
+    lines.push('\x1b[2J\x1b[H'); // Clear + home
+    lines.push(`  ${cyan}╔${TUI_HLINE}╗${reset}`);
+    lines.push(tuiRow(`${bold}${white}MIDAS${reset} ${dim}watch${reset}`));
+    lines.push(`  ${cyan}╠${TUI_HLINE}╣${reset}`);
+    lines.push(tuiRow(`${gold}Analyzing project${reset} ${dim}${elapsed}${reset}`));
+    lines.push(tuiEmpty());
     
-    output += `  ${bold}Analyzing project${reset} ${dim}${elapsed}${reset}\n\n`;
-    
-    // Progress stages with checkmarks
     for (let i = 0; i < stages.length; i++) {
-      output += `  ${stageCheck(i)} ${stageLabels[i]}\n`;
+      lines.push(tuiRow(`${stageCheck(i)} ${stageLabels[i]}`));
     }
-    output += '\n';
+    lines.push(tuiEmpty());
     
-    // Show streaming details
+    // Streaming details
     if (currentProgress?.stage === 'streaming' && currentProgress.tokensReceived) {
-      output += `  ${dim}${currentProgress.tokensReceived} tokens received${reset}\n`;
-      
-      // Try to show partial results
+      lines.push(tuiRow(`${dim}${currentProgress.tokensReceived} tokens received${reset}`));
       if (currentProgress.partialContent) {
         const phaseMatch = currentProgress.partialContent.match(/"phase"\s*:\s*"([^"]+)"/);
         const techMatch = currentProgress.partialContent.match(/"techStack"\s*:\s*\[([^\]]{5,50})/);
-        
-        if (phaseMatch) {
-          output += `  ${green}→${reset} Phase: ${bold}${phaseMatch[1]}${reset}\n`;
-        }
+        if (phaseMatch) lines.push(tuiRow(`${green}→${reset} Phase: ${bold}${phaseMatch[1]}${reset}`));
         if (techMatch) {
           const techs = techMatch[1].replace(/"/g, '').split(',').slice(0, 3).join(', ');
-          output += `  ${green}→${reset} Tech: ${techs}\n`;
+          lines.push(tuiRow(`${green}→${reset} Tech: ${techs}`));
         }
       }
     } else if (currentProgress?.stage === 'thinking') {
-      output += `  ${dim}AI is reasoning about your project...${reset}\n`;
+      lines.push(tuiRow(`${dim}AI is reasoning about your project...${reset}`));
     } else if (currentProgress?.stage === 'gathering') {
-      output += `  ${dim}Reading codebase, docs, journal...${reset}\n`;
+      lines.push(tuiRow(`${dim}Reading codebase, docs, journal...${reset}`));
     }
     
-    process.stdout.write(output);
+    lines.push(`  ${cyan}╚${TUI_HLINE}╝${reset}`);
+    process.stdout.write(lines.join('\n') + '\n');
   };
   
   // Start progress interval for smooth animation
@@ -641,98 +641,30 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
       currentProgress = progress;
     });
     clearInterval(progressInterval);
-    console.log(`\n  ${green}✓${reset} Analysis complete\n`);
   } catch (err) {
     clearInterval(progressInterval);
-    console.log(`\n  ${yellow}⚠${reset} AI analysis failed, using local state\n`);
   }
   
   // Load supplementary state
   const gatesStatus = getGatesStatus(projectPath);
   const gameplan = getGameplanProgress(projectPath);
   
-  // Clear and redraw with colorful project info
-  process.stdout.write('\x1b[2J\x1b[H');
-  
-  console.log('\n  ╔══════════════════════════════════════════════════════════╗');
-  console.log('  ║                   MIDAS WATCH MODE                       ║');
-  console.log('  ╚══════════════════════════════════════════════════════════╝\n');
-  
-  // Display current state with colors
-  const phase = analysis?.currentPhase || loadState(projectPath).current;
-  const phaseName = phase.phase === 'IDLE' ? 'Not started' : PHASE_INFO[phase.phase]?.name || phase.phase;
-  const stepName = 'step' in phase ? phase.step : '';
-  
-  const phaseColors: Record<string, string> = { PLAN: yellow, BUILD: '\x1b[34m', SHIP: green, GROW: magenta };
-  const phaseColor = phaseColors[phase.phase] || '';
-  
-  console.log(`  ${green}✓${reset} Project: ${bold}${projectPath.split('/').pop()}${reset}`);
-  console.log(`  ${green}✓${reset} Phase: ${phaseColor}${bold}${phaseName}${reset}${stepName ? ` ${dim}→${reset} ${stepName}` : ''}`);
-  
-  // Show tech stack
-  if (analysis?.techStack && analysis.techStack.length > 0) {
-    console.log(`  ${green}✓${reset} Stack: ${cyan}${analysis.techStack.slice(0, 4).join(', ')}${reset}`);
-  }
-  
-  // Show gates status
-  if (gatesStatus.allPass) {
-    console.log(`  ${green}✓${reset} Gates: ${green}All passing${reset}`);
-  } else if (gatesStatus.failing.length > 0) {
-    console.log(`  ${yellow}⚠${reset} Gates failing: ${yellow}${gatesStatus.failing.join(', ')}${reset}`);
-  }
-  
-  // Show gameplan progress
-  if (gameplan.documented > 0 || gameplan.actual > 0) {
-    const pct = gameplan.actual;
-    const pctColor = pct >= 75 ? green : pct >= 40 ? yellow : dim;
-    console.log(`  ${green}✓${reset} Progress: ${pctColor}${pct}%${reset} complete`);
-  }
-  
-  // Show AI summary in a box
-  if (analysis?.summary) {
-    console.log('');
-    console.log(`  ${cyan}┌───────────────────────────────────────────────────────┐${reset}`);
-    console.log(`  ${cyan}│${reset}  ${bold}AI ANALYSIS${reset}                                        ${cyan}│${reset}`);
-    console.log(`  ${cyan}└───────────────────────────────────────────────────────┘${reset}`);
-    // Word wrap the summary
-    const summaryWords = analysis.summary.split(' ');
-    let line = '  ';
-    for (const word of summaryWords) {
-      if ((line + word).length > 58) {
-        console.log(`  ${dim}${line.trim()}${reset}`);
-        line = word + ' ';
-      } else {
-        line += word + ' ';
-      }
+  // Word wrap helper
+  const wrapText = (text: string, width: number): string[] => {
+    const words = text.split(' ');
+    const lines: string[] = [];
+    let line = '';
+    for (const w of words) {
+      if ((line + ' ' + w).length > width && line) { lines.push(line); line = w; }
+      else { line = line ? line + ' ' + w : w; }
     }
-    if (line.trim()) console.log(`  ${dim}${line.trim()}${reset}`);
-  }
-  
-  // Show the suggested prompt prominently in gold
-  console.log('');
-  console.log(`  ${yellow}╔═══════════════════════════════════════════════════════╗${reset}`);
-  console.log(`  ${yellow}║${reset}  ${bold}${yellow}SUGGESTED PROMPT${reset} ${dim}(synced to dashboard)${reset}              ${yellow}║${reset}`);
-  console.log(`  ${yellow}╚═══════════════════════════════════════════════════════╝${reset}`);
-  
-  const suggestedPrompt = analysis?.suggestedPrompt || getSmartPromptSuggestion(projectPath).prompt;
-  // Word wrap the prompt
-  const promptWords = suggestedPrompt.split(' ');
-  let promptLine = '';
-  for (const word of promptWords) {
-    if ((promptLine + word).length > 55) {
-      console.log(`  ${promptLine.trim()}`);
-      promptLine = word + ' ';
-    } else {
-      promptLine += word + ' ';
-    }
-  }
-  if (promptLine.trim()) console.log(`  ${promptLine.trim()}`);
-  console.log('');
+    if (line) lines.push(line);
+    return lines.length ? lines : [''];
+  };
   
   // =========================================================================
-  // STEP 2: Sync to cloud (with full AI analysis)
+  // STEP 2: Sync to cloud
   // =========================================================================
-  console.log('  Syncing to dashboard...');
   const syncResult = await syncProject(projectPath, analysis ? {
     summary: analysis.summary,
     suggestedPrompt: analysis.suggestedPrompt,
@@ -741,37 +673,98 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
     confidence: analysis.confidence,
     techStack: analysis.techStack,
   } : undefined);
-  if (syncResult.success) {
-    console.log('  ✓ Synced to dashboard (with AI prompt)');
-  } else {
-    console.log(`  ⚠ Sync skipped: ${syncResult.error}`);
-  }
   
-  // Register session with cloud
-  console.log('  Registering session...');
+  // Register session
   const registered = await registerRemoteSession(session);
-  
   if (!registered) {
-    console.log('\n  ✗ Failed to register session');
-    console.log('    Check your internet connection\n');
-    process.stdout.write('\x1b[?25h'); // Show cursor
+    console.log('\n  ✗ Failed to register session\n');
+    process.stdout.write('\x1b[?25h');
     return;
   }
+  
+  // =========================================================================
+  // RENDER: Full aesthetic TUI box with project info + suggested prompt
+  // =========================================================================
+  const phase = analysis?.currentPhase || loadState(projectPath).current;
+  const phaseName = phase.phase === 'IDLE' ? 'Not started' : PHASE_INFO[phase.phase]?.name || phase.phase;
+  const stepName = 'step' in phase ? phase.step : '';
+  const phaseColors: Record<string, string> = { PLAN: gold, BUILD: blue, SHIP: green, GROW: magenta };
+  const phaseColor = phaseColors[phase.phase] || '';
+  const suggestedPrompt = analysis?.suggestedPrompt || getSmartPromptSuggestion(projectPath).prompt;
+  const I = TUI_W - 4; // inner width
+  
+  process.stdout.write('\x1b[2J\x1b[H');
+  
+  const out: string[] = [];
+  out.push(`  ${cyan}╔${TUI_HLINE}╗${reset}`);
+  out.push(tuiRow(`${bold}${white}MIDAS${reset} ${dim}watch${reset}`));
+  out.push(`  ${cyan}╠${TUI_HLINE}╣${reset}`);
+  
+  // Project info
+  out.push(tuiRow(`${green}✓${reset} ${bold}${projectPath.split('/').pop()}${reset}`));
+  out.push(tuiRow(`${green}✓${reset} ${phaseColor}${bold}${phaseName}${reset}${stepName ? ` ${dim}→${reset} ${stepName}` : ''}`));
+  if (analysis?.techStack && analysis.techStack.length > 0) {
+    out.push(tuiRow(`${green}✓${reset} ${cyan}${analysis.techStack.slice(0, 4).join(', ')}${reset}`));
+  }
+  if (gatesStatus.allPass) {
+    out.push(tuiRow(`${green}✓${reset} ${green}All gates passing${reset}`));
+  } else if (gatesStatus.failing.length > 0) {
+    out.push(tuiRow(`${red}✗${reset} Gates: ${red}${gatesStatus.failing.join(', ')}${reset}`));
+  }
+  if (syncResult.success) {
+    out.push(tuiRow(`${green}✓${reset} ${dim}Synced to dashboard${reset}`));
+  }
+  out.push(tuiEmpty());
+  
+  // AI summary
+  if (analysis?.summary) {
+    out.push(`  ${cyan}╠${TUI_HLINE}╣${reset}`);
+    const summaryLines = wrapText(analysis.summary, I - 2);
+    for (const sl of summaryLines) {
+      out.push(tuiRow(`${dim}${sl}${reset}`));
+    }
+    out.push(tuiEmpty());
+  }
+  
+  // Suggested prompt in gold inner box
+  out.push(`  ${cyan}╠${TUI_HLINE}╣${reset}`);
+  out.push(tuiRow(`${gold}${bold}SUGGESTED PROMPT${reset}`));
+  out.push(tuiEmpty());
+  
+  const promptBoxW = I - 4;
+  const promptLines = wrapText(suggestedPrompt.replace(/\n/g, ' '), promptBoxW - 2);
+  out.push(tuiRow(`  ${gold}┌${'─'.repeat(promptBoxW - 2)}┐${reset}`));
+  for (const pl of promptLines) {
+    const stripped = pl.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+    const padLen = Math.max(0, promptBoxW - 4 - stripped.length);
+    out.push(tuiRow(`  ${gold}│${reset} ${pl}${' '.repeat(padLen)} ${gold}│${reset}`));
+  }
+  out.push(tuiRow(`  ${gold}└${'─'.repeat(promptBoxW - 2)}┘${reset}`));
+  out.push(tuiEmpty());
+  
+  // Status
+  out.push(`  ${cyan}╠${TUI_HLINE}╣${reset}`);
+  out.push(tuiRow(`${green}●${reset} ${green}READY${reset} ${dim}— waiting for commands${reset}`));
+  out.push(tuiRow(`${dim}Dashboard: ${cyan}dashboard.midasmcp.com${reset}`));
+  out.push(tuiRow(`${dim}Ctrl+C to stop${reset}`));
+  out.push(`  ${cyan}╚${TUI_HLINE}╝${reset}`);
+  
+  process.stdout.write(out.join('\n') + '\n');
   
   console.log('  ✓ Session registered\n');
   
   // Render ready state in TUI box
   process.stdout.write('\x1b[2J\x1b[H');
-  const W = 58;
-  const hLine = '═'.repeat(W - 2);
-  console.log(`  ${cyan}╔${hLine}╗${reset}`);
+  // W defined at module level as TUI_W
+  // hLine defined at module level as TUI_HLINE
+  console.log(`  ${cyan}╔${TUI_HLINE}╗${reset}`);
   console.log(`  ${cyan}║${reset} ${bold}${white}MIDAS${reset} ${dim}watch${reset}${' '.repeat(42)}${cyan}║${reset}`);
-  console.log(`  ${cyan}╠${hLine}╣${reset}`);
+  console.log(`  ${cyan}╠${TUI_HLINE}╣${reset}`);
   console.log(`  ${cyan}║${reset} ${green}●${reset} ${green}READY${reset} — waiting for commands${' '.repeat(19)}${cyan}║${reset}`);
-  console.log(`  ${cyan}║${reset}${' '.repeat(W - 2)}${cyan}║${reset}`);
+  console.log(`  ${cyan}║${reset}${' '.repeat(TUI_W - 2)}${cyan}║${reset}`);
   console.log(`  ${cyan}║${reset} ${dim}Dashboard: ${reset}${cyan}dashboard.midasmcp.com${reset}${' '.repeat(12)}${cyan}║${reset}`);
   console.log(`  ${cyan}║${reset} ${dim}Ctrl+C to stop${reset}${' '.repeat(40)}${cyan}║${reset}`);
-  console.log(`  ${cyan}╚${hLine}╝${reset}`);
+  console.log(`  ${cyan}╚${TUI_HLINE}╝${reset}`);
   
   let running = true;
   
@@ -872,16 +865,14 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
  * Render execution progress in a TUI box
  */
 function renderExecutionBox(prompt: string, status: 'starting' | 'running' | 'done' | 'failed', output: string): void {
-  const W = 58;
-  const I = W - 4;
-  const hLine = '═'.repeat(W - 2);
+  const I = TUI_W - 4;
   
   const row = (content: string) => {
     const stripped = content.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
     const pad = Math.max(0, I - stripped.length);
     return `  ${cyan}║${reset} ${content}${' '.repeat(pad)} ${cyan}║${reset}`;
   };
-  const emptyRow = () => `  ${cyan}║${reset}${' '.repeat(W - 2)}${cyan}║${reset}`;
+  const emptyRow = () => `  ${cyan}║${reset}${' '.repeat(TUI_W - 2)}${cyan}║${reset}`;
   
   // Word wrap helper
   const wrap = (text: string, width: number): string[] => {
@@ -900,9 +891,9 @@ function renderExecutionBox(prompt: string, status: 'starting' | 'running' | 'do
   
   // Clear and draw
   lines.push('\x1b[2J\x1b[H');
-  lines.push(`  ${cyan}╔${hLine}╗${reset}`);
+  lines.push(`  ${cyan}╔${TUI_HLINE}╗${reset}`);
   lines.push(row(`${bold}${white}MIDAS${reset} ${dim}watch${reset}`));
-  lines.push(`  ${cyan}╠${hLine}╣${reset}`);
+  lines.push(`  ${cyan}╠${TUI_HLINE}╣${reset}`);
   
   // Status
   const statusIcon = status === 'running' ? `${blue}▸${reset}` : status === 'done' ? `${green}✓${reset}` : status === 'failed' ? `${red}✗${reset}` : `${yellow}…${reset}`;
@@ -921,7 +912,7 @@ function renderExecutionBox(prompt: string, status: 'starting' | 'running' | 'do
   
   // Output in inner box
   if (output) {
-    lines.push(`  ${cyan}╠${hLine}╣${reset}`);
+    lines.push(`  ${cyan}╠${TUI_HLINE}╣${reset}`);
     lines.push(row(`${dim}Output:${reset}`));
     
     // Show last ~15 lines of output
@@ -937,7 +928,7 @@ function renderExecutionBox(prompt: string, status: 'starting' | 'running' | 'do
   }
   
   lines.push(emptyRow());
-  lines.push(`  ${cyan}╚${hLine}╝${reset}`);
+  lines.push(`  ${cyan}╚${TUI_HLINE}╝${reset}`);
   
   process.stdout.write(lines.join('\n') + '\n');
 }
