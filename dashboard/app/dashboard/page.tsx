@@ -8,7 +8,7 @@ import { ThemeToggle } from "@/components/ThemeToggle"
 // Phase configuration
 const PHASE_STEPS: Record<string, string[]> = {
   IDLE: [],
-  PLAN: ['IDEA', 'RESEARCH', 'BRAINLIFT', 'PRD', 'GAMEPLAN'],
+  PLAN: ['IDEA', 'RESEARCH', 'PRD', 'GAMEPLAN'],
   BUILD: ['RULES', 'INDEX', 'READ', 'RESEARCH', 'IMPLEMENT', 'TEST', 'DEBUG'],
   SHIP: ['REVIEW', 'DEPLOY', 'MONITOR'],
   GROW: ['DONE'],

@@ -94,7 +94,7 @@ export async function preflightCheck(input: PreflightCheckInput): Promise<Prefli
     
     const aiNote = result.aiFiltered ? ' (AI-filtered)' : '';
     const message = result.checks.length === 0
-      ? 'No preflight checks detected. Add more details to your brainlift/PRD to get personalized requirements.'
+      ? 'No preflight checks detected. Add more details to your PRD to get personalized requirements.'
       : `Found ${result.summary.total} requirements${aiNote}: ${result.summary.critical} critical, ${result.summary.aiAssisted} AI-assisted, ${result.summary.manual} manual.`;
     
     return {

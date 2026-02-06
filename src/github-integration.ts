@@ -160,7 +160,7 @@ Review criteria:`;
   const phasePrompts: Record<string, string> = {
     PLAN: `
 - Does this PR add/update planning documents?
-- Is the brainlift, PRD, or gameplan being properly structured?
+- Is the PRD or gameplan being properly structured?
 - Are requirements clearly defined?
 - Check for scope creep against the PRD.`,
 

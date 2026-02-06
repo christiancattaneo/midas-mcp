@@ -81,8 +81,6 @@ import {
   showExample,
   showExampleSchema,
   // Document validation
-  validateBrainlift,
-  validateBrainliftSchema,
   validatePRD,
   validatePRDSchema,
   validateGameplan,
@@ -201,7 +199,7 @@ export function createServer(): McpServer {
 
   server.tool(
     'midas_check_docs',
-    'Verify planning docs (brainlift, prd, gameplan) exist and are complete',
+    'Verify planning docs (prd, gameplan) exist and are complete',
     checkDocsSchema.shape,
     wrapTool('midas_check_docs', checkDocs)
   );
@@ -460,19 +458,12 @@ export function createServer(): McpServer {
   // Example documents for coaching
   server.tool(
     'midas_show_example',
-    'Show example document for a planning step (brainlift, prd, gameplan). Helps users understand what good artifacts look like.',
+    'Show example document for a planning step (prd, gameplan). Helps users understand what good artifacts look like.',
     showExampleSchema.shape,
     wrapTool('midas_show_example', showExample)
   );
 
   // Document validation - quality gates for planning docs
-  server.tool(
-    'midas_validate_brainlift',
-    'Validate brainlift.md has required sections: problem, audience, unique context.',
-    validateBrainliftSchema.shape,
-    wrapTool('midas_validate_brainlift', validateBrainlift)
-  );
-
   server.tool(
     'midas_validate_prd',
     'Validate prd.md has required sections: goals, non-goals, requirements.',

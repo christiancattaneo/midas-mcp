@@ -16,7 +16,6 @@ interface DocStatus {
 }
 
 interface CheckDocsResult {
-  brainlift: DocStatus;
   prd: DocStatus;
   gameplan: DocStatus;
   ready: boolean;
@@ -69,11 +68,6 @@ export function checkDocs(input: CheckDocsInput): CheckDocsResult {
   const projectPath = input.projectPath || process.cwd();
   const docsPath = join(projectPath, 'docs');
 
-  const brainlift = checkDocComplete(
-    join(docsPath, 'brainlift.md'),
-    ['contrarian', 'domain', 'lessons']
-  );
-
   const prd = checkDocComplete(
     join(docsPath, 'prd.md'),
     ['overview', 'goals', 'non-goals']
@@ -84,19 +78,17 @@ export function checkDocs(input: CheckDocsInput): CheckDocsResult {
     ['tech stack', 'architecture', 'phase']
   );
 
-  const ready = brainlift.complete && prd.complete && gameplan.complete;
+  const ready = prd.complete && gameplan.complete;
 
   // Update state docs tracking
   const state = loadState(projectPath);
   state.docs = {
-    brainlift: brainlift.complete,
     prd: prd.complete,
     gameplan: gameplan.complete,
   };
   saveState(projectPath, state);
 
   return {
-    brainlift,
     prd,
     gameplan,
     ready,

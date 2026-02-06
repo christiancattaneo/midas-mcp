@@ -371,14 +371,14 @@ function calculateProgress(phase: Phase): number {
   const phaseOrder = ['IDLE', 'PLAN', 'BUILD', 'SHIP', 'GROW'];
   const stepCounts: Record<string, number> = {
     IDLE: 1,
-    PLAN: 5,  // IDEA, RESEARCH, BRAINLIFT, PRD, GAMEPLAN
+    PLAN: 4,  // IDEA, RESEARCH, PRD, GAMEPLAN
     BUILD: 7, // RULES, INDEX, READ, RESEARCH, IMPLEMENT, TEST, DEBUG
     SHIP: 3,  // REVIEW, DEPLOY, MONITOR
     GROW: 3,  // FEEDBACK, ANALYZE, ITERATE
   };
   
   const phaseSteps: Record<string, string[]> = {
-    PLAN: ['IDEA', 'RESEARCH', 'BRAINLIFT', 'PRD', 'GAMEPLAN'],
+    PLAN: ['IDEA', 'RESEARCH', 'PRD', 'GAMEPLAN'],
     BUILD: ['RULES', 'INDEX', 'READ', 'RESEARCH', 'IMPLEMENT', 'TEST', 'DEBUG'],
     SHIP: ['REVIEW', 'DEPLOY', 'MONITOR'],
     GROW: ['FEEDBACK', 'ANALYZE', 'ITERATE'],
@@ -400,7 +400,7 @@ function calculateProgress(phase: Phase): number {
     completedSteps += stepIdx;
   }
   
-  const totalSteps = 5 + 7 + 3 + 3; // PLAN + BUILD + SHIP + GROW
+  const totalSteps = 4 + 7 + 3 + 3; // PLAN + BUILD + SHIP + GROW
   return Math.round((completedSteps / totalSteps) * 100);
 }
 

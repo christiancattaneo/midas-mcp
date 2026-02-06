@@ -317,7 +317,7 @@ export interface DeterministicProgress {
  * Calculate progress deterministically from artifacts, not AI assessment.
  * 
  * Formula:
- * - PLAN phase: planning docs progress (brainlift, prd, gameplan)
+ * - PLAN phase: planning docs progress (prd, gameplan)
  * - BUILD phase: gameplan task completion
  * - SHIP phase: gates + preflight checks
  * - GROW phase: deployment + monitoring artifacts
@@ -329,7 +329,6 @@ export function calculateDeterministicProgress(projectPath: string): Determinist
   
   // Discover artifacts
   const docsResult = discoverDocsSync(safePath);
-  const hasBrainlift = !!docsResult.brainlift;
   const hasPrd = !!docsResult.prd;
   const hasGameplan = !!docsResult.gameplan;
   const hasCursorrules = existsSync(join(safePath, '.cursorrules'));
@@ -346,9 +345,8 @@ export function calculateDeterministicProgress(projectPath: string): Determinist
   
   // Planning docs score (0-25)
   let planningScore = 0;
-  if (hasBrainlift) planningScore += 6;
-  if (hasPrd) planningScore += 6;
-  if (hasGameplan) planningScore += 8;
+  if (hasPrd) planningScore += 10;
+  if (hasGameplan) planningScore += 10;
   if (hasCursorrules) planningScore += 5;
   
   // Calculate based on phase
@@ -437,14 +435,12 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
   
   // Discover and classify planning docs (intelligent detection)
   const docsResult = discoverDocsSync(safePath);
-  const hasbrainlift = !!docsResult.brainlift;
   const hasPrd = !!docsResult.prd;
   const hasGameplan = !!docsResult.gameplan;
   
   // Check for .cursorrules (RULES step completion)
   const hasCursorrules = existsSync(join(safePath, '.cursorrules'));
   
-  const brainliftContent = docsResult.brainlift?.content || '';
   const prdContent = docsResult.prd?.content || '';
   const gameplanContent = docsResult.gameplan?.content || '';
   
@@ -545,12 +541,11 @@ export async function analyzeProject(projectPath: string): Promise<ProjectAnalys
 ## The 4 Development Phases:
 
 ### PLAN (Planning Phase)
-Steps: IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN
+Steps: IDEA → RESEARCH → PRD → GAMEPLAN
 Purpose: Understand the problem before writing code.
 WHY: Code without context is just syntax. The AI doesn't know your domain, constraints, or users. You do.
 - IDEA: Capture the core concept and motivation (WHY: Most projects fail from solving the wrong problem)
 - RESEARCH: Study existing solutions, dependencies, constraints (WHY: Someone has solved 80% of this already)
-- BRAINLIFT: Extract key decisions and mental models (WHY: AI read the internet. You have specific context it doesn't)
 - PRD: Define requirements, scope, success criteria (WHY: "I'll know it when I see it" means you'll never finish)
 - GAMEPLAN: Break into ordered implementation tasks (WHY: Sequence work so you're never blocked waiting for yourself)
 
@@ -642,12 +637,9 @@ ${activityContext}
 ${fileList}
 
 ## Planning Docs:
-- brainlift.md: ${hasbrainlift ? 'exists' : 'missing'}
 - prd.md: ${hasPrd ? 'exists' : 'missing'}
 - gameplan.md: ${hasGameplan ? 'exists' : 'missing'}
 - .cursorrules: ${hasCursorrules ? 'exists (RULES step complete)' : 'missing'}
-
-${brainliftContent ? `## brainlift.md (full):\n${brainliftContent}` : ''}
 
 ${prdContent ? `## prd.md (full):\n${prdContent}` : ''}
 
@@ -816,14 +808,12 @@ export async function analyzeProjectStreaming(
   
   // Discover and classify planning docs (intelligent detection)
   const docsResult = discoverDocsSync(safePath);
-  const hasbrainlift = !!docsResult.brainlift;
   const hasPrd = !!docsResult.prd;
   const hasGameplan = !!docsResult.gameplan;
   
   // Check for .cursorrules (RULES step completion)
   const hasCursorrules = existsSync(join(safePath, '.cursorrules'));
   
-  const brainliftContent = docsResult.brainlift?.content || '';
   const prdContent = docsResult.prd?.content || '';
   const gameplanContent = docsResult.gameplan?.content || '';
   
@@ -887,11 +877,9 @@ export async function analyzeProjectStreaming(
     safePath,
     fileList,
     files,
-    hasbrainlift,
     hasPrd,
     hasGameplan,
     hasCursorrules,
-    brainliftContent,
     prdContent,
     gameplanContent,
     hasDockerfile,
@@ -1014,12 +1002,11 @@ function buildSystemPrompt(): string {
 ## The 4 Development Phases:
 
 ### PLAN (Planning Phase)
-Steps: IDEA → RESEARCH → BRAINLIFT → PRD → GAMEPLAN
+Steps: IDEA → RESEARCH → PRD → GAMEPLAN
 Purpose: Understand the problem before writing code.
 WHY: Code without context is just syntax. The AI doesn't know your domain, constraints, or users. You do.
 - IDEA: Capture the core concept and motivation (WHY: Most projects fail from solving the wrong problem)
 - RESEARCH: Study existing solutions, dependencies, constraints (WHY: Someone has solved 80% of this already)
-- BRAINLIFT: Extract key decisions and mental models (WHY: AI read the internet. You have specific context it doesn't)
 - PRD: Define requirements, scope, success criteria (WHY: "I'll know it when I see it" means you'll never finish)
 - GAMEPLAN: Break into ordered implementation tasks (WHY: Sequence work so you're never blocked waiting for yourself)
 
@@ -1080,11 +1067,9 @@ function buildUserPrompt(ctx: {
   safePath: string;
   fileList: string;
   files: string[];
-  hasbrainlift: boolean;
   hasPrd: boolean;
   hasGameplan: boolean;
   hasCursorrules: boolean;
-  brainliftContent: string;
   prdContent: string;
   gameplanContent: string;
   hasDockerfile: boolean;
@@ -1111,12 +1096,10 @@ function buildUserPrompt(ctx: {
 ${ctx.fileList.slice(0, 3000)}
 
 ## Planning Docs:
-- brainlift.md: ${ctx.hasbrainlift ? 'exists' : 'missing'}
 - prd.md: ${ctx.hasPrd ? 'exists' : 'missing'}
 - gameplan.md: ${ctx.hasGameplan ? 'exists' : 'missing'}
 - .cursorrules: ${ctx.hasCursorrules ? 'exists (RULES step complete - skip to INDEX)' : 'missing'}
 
-${ctx.brainliftContent ? `## Brainlift Content:\n${ctx.brainliftContent.slice(0, 2000)}\n` : ''}
 ${ctx.prdContent ? `## PRD Content:\n${ctx.prdContent.slice(0, 2000)}\n` : ''}
 ${ctx.gameplanContent ? `## Gameplan Content:\n${ctx.gameplanContent.slice(0, 2000)}\n` : ''}
 

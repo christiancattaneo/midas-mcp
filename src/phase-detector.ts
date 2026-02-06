@@ -9,7 +9,6 @@
  * PLAN phase:
  *   - IDEA: No planning docs exist
  *   - RESEARCH: Only partial ideas documented
- *   - BRAINLIFT: brainlift.md missing or incomplete
  *   - PRD: prd.md missing or incomplete  
  *   - GAMEPLAN: gameplan.md missing or incomplete
  * 
@@ -53,7 +52,6 @@ export function detectPhaseFromArtifacts(projectPath: string): DetectionResult {
   
   // Check planning docs
   const docs = discoverDocsSync(safePath);
-  const hasBrainlift = !!docs.brainlift;
   const hasPrd = !!docs.prd;
   const hasGameplan = !!docs.gameplan;
   const hasCursorrules = existsSync(join(safePath, '.cursorrules'));
@@ -158,19 +156,11 @@ export function detectPhaseFromArtifacts(projectPath: string): DetectionResult {
   }
   
   // PLAN phase - determine which step based on docs
-  if (!hasBrainlift) {
-    if (!docs.brainlift && !docs.prd && !docs.gameplan) {
-      return {
-        phase: { phase: 'PLAN', step: 'IDEA' as PlanStep },
-        confidence: 90,
-        reason: 'No planning docs exist',
-        artifacts: [],
-      };
-    }
+  if (!hasPrd && !hasGameplan) {
     return {
-      phase: { phase: 'PLAN', step: 'BRAINLIFT' as PlanStep },
-      confidence: 80,
-      reason: 'brainlift.md missing',
+      phase: { phase: 'PLAN', step: 'IDEA' as PlanStep },
+      confidence: 90,
+      reason: 'No planning docs exist',
       artifacts: [],
     };
   }
@@ -180,7 +170,7 @@ export function detectPhaseFromArtifacts(projectPath: string): DetectionResult {
       phase: { phase: 'PLAN', step: 'PRD' as PlanStep },
       confidence: 80,
       reason: 'prd.md missing',
-      artifacts: ['brainlift.md'],
+      artifacts: [],
     };
   }
   
@@ -189,7 +179,7 @@ export function detectPhaseFromArtifacts(projectPath: string): DetectionResult {
       phase: { phase: 'PLAN', step: 'GAMEPLAN' as PlanStep },
       confidence: 80,
       reason: 'gameplan.md missing',
-      artifacts: ['brainlift.md', 'prd.md'],
+      artifacts: ['prd.md'],
     };
   }
   
@@ -198,7 +188,7 @@ export function detectPhaseFromArtifacts(projectPath: string): DetectionResult {
     phase: { phase: 'BUILD', step: 'RULES' as BuildStep },
     confidence: 85,
     reason: 'All planning docs complete, ready to start building',
-    artifacts: ['brainlift.md', 'prd.md', 'gameplan.md'],
+    artifacts: ['prd.md', 'gameplan.md'],
   };
 }
 

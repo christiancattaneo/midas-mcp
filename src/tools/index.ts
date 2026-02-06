@@ -117,8 +117,6 @@ export {
 
 // Document validation - quality gates for planning docs
 export {
-  validateBrainlift,
-  validateBrainliftSchema,
   validatePRD,
   validatePRDSchema,
   validateGameplan,

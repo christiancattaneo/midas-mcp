@@ -388,7 +388,6 @@ describe('Missing Fields (Schema Evolution)', () => {
         assert.ok(state.current, 'current should exist');
         assert.ok(state.docs, 'docs should exist');
         assert.ok(Array.isArray(state.history), 'history should be array');
-        assert.ok(typeof state.docs.brainlift === 'boolean', 'docs.brainlift should be boolean');
         assert.ok(typeof state.docs.prd === 'boolean', 'docs.prd should be boolean');
         assert.ok(typeof state.docs.gameplan === 'boolean', 'docs.gameplan should be boolean');
       });
@@ -950,7 +949,7 @@ describe('Recovery Scenarios', () => {
     // Start with valid state
     const initial = getDefaultState();
     initial.current = { phase: 'BUILD', step: 'IMPLEMENT' };
-    initial.docs = { brainlift: true, prd: true, gameplan: false };
+    initial.docs = { prd: true, gameplan: false };
     saveState(testDir, initial);
     
     // Corrupt the file

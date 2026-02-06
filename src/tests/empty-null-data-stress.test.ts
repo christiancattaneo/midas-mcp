@@ -95,7 +95,6 @@ describe('Completely Empty Projects', () => {
     const result = discoverDocsSync(dir);
     
     assert.ok(result !== null, 'Should return result object');
-    assert.ok(result.brainlift === null || result.brainlift === undefined, 'Should have no brainlift');
     assert.ok(result.prd === null || result.prd === undefined, 'Should have no prd');
     assert.ok(result.gameplan === null || result.gameplan === undefined, 'Should have no gameplan');
   });
@@ -612,13 +611,13 @@ describe('Empty Arrays and Objects', () => {
     const dir = createTestDir('empty-docs-obj');
     mkdirSync(join(dir, '.midas'));
     const state = getDefaultState();
-    state.docs = { brainlift: false, prd: false, gameplan: false };
+    state.docs = { prd: false, gameplan: false };
     writeFileSync(join(dir, '.midas', 'state.json'), JSON.stringify(state));
     
     const loaded = loadState(dir);
     
     assert.ok(loaded.docs !== undefined);
-    assert.strictEqual(loaded.docs.brainlift, false);
+    assert.strictEqual(loaded.docs.prd, false);
   });
 
   it('should handle package.json with empty arrays', async () => {

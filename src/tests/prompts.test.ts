@@ -34,12 +34,11 @@ describe('Prompt Generation System', () => {
       assert.strictEqual(result.prompt.includes('similar solutions'), true);
     });
 
-    it('BRAINLIFT step captures unique insights', () => {
-      setPhase(testDir, { phase: 'PLAN', step: 'BRAINLIFT' });
+    it('PRD step focuses on requirements', () => {
+      setPhase(testDir, { phase: 'PLAN', step: 'PRD' });
       const result = suggestPrompt({ projectPath: testDir });
       
-      assert.strictEqual(result.prompt.includes('unique insights'), true);
-      assert.strictEqual(result.prompt.includes('conventional wisdom'), true);
+      assert.ok(result.prompt.length > 0);
     });
 
     it('PRD step defines goals and non-goals', () => {

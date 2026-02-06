@@ -1,7 +1,7 @@
 /**
  * Intelligent documentation discovery and classification.
  * 
- * Instead of looking for specific filenames (brainlift.md, prd.md, gameplan.md),
+ * Instead of looking for specific filenames (prd.md, gameplan.md),
  * this module:
  * 1. Discovers ALL documentation files in the project
  * 2. Reads them in full
@@ -16,7 +16,7 @@ import { chat } from './providers.js';
 import { logger } from './logger.js';
 
 // Documentation categories we're looking for
-export type DocCategory = 'brainlift' | 'prd' | 'gameplan' | 'readme' | 'other';
+export type DocCategory = 'prd' | 'gameplan' | 'readme' | 'other';
 
 export interface DiscoveredDoc {
   path: string;           // Relative path from project root
@@ -32,20 +32,18 @@ export interface DocsDiscoveryResult {
   allDocs: DiscoveredDoc[];
   
   // Classified docs (may be null if not found)
-  brainlift: DiscoveredDoc | null;  // Domain knowledge, unique insights
   prd: DiscoveredDoc | null;        // Requirements, specs, user stories
   gameplan: DiscoveredDoc | null;   // Implementation plan, roadmap
   readme: DiscoveredDoc | null;     // Project overview
   
   // Summary
-  hasPlanningDocs: boolean;         // Has at least brainlift OR prd
-  hasAllPlanningDocs: boolean;      // Has brainlift AND prd AND gameplan
+  hasPlanningDocs: boolean;         // Has at least prd
+  hasAllPlanningDocs: boolean;      // Has prd AND gameplan
   totalDocsFound: number;
   totalBytesRead: number;
   
   // For display
   planningStatus: {
-    brainlift: 'found' | 'missing';
     prd: 'found' | 'missing';
     gameplan: 'found' | 'missing';
   };
@@ -59,7 +57,7 @@ const DOC_EXTENSIONS = new Set([
 // Patterns that indicate documentation files
 const DOC_PATTERNS = [
   /readme/i, /spec/i, /requirement/i, /prd/i, /design/i, /architecture/i,
-  /plan/i, /roadmap/i, /vision/i, /brainlift/i, /gameplan/i, /todo/i,
+  /plan/i, /roadmap/i, /vision/i, /gameplan/i, /todo/i,
   /changelog/i, /contributing/i, /guide/i, /overview/i, /summary/i,
   /proposal/i, /rfc/i, /adr/i, /decision/i
 ];
@@ -167,7 +165,6 @@ function getFilenameRelevance(filename: string): number {
   let score = 0;
   
   // High-value names
-  if (lower.includes('brainlift')) score += 10;
   if (lower.includes('prd')) score += 10;
   if (lower.includes('gameplan')) score += 10;
   if (lower.includes('readme')) score += 8;
@@ -190,7 +187,6 @@ export async function classifyDocs(docs: DiscoveredDoc[]): Promise<DocsDiscovery
   if (docs.length === 0) {
     return {
       allDocs: [],
-      brainlift: null,
       prd: null,
       gameplan: null,
       readme: null,
@@ -199,7 +195,6 @@ export async function classifyDocs(docs: DiscoveredDoc[]): Promise<DocsDiscovery
       totalDocsFound: 0,
       totalBytesRead: 0,
       planningStatus: {
-        brainlift: 'missing',
         prd: 'missing',
         gameplan: 'missing',
       },
@@ -209,9 +204,8 @@ export async function classifyDocs(docs: DiscoveredDoc[]): Promise<DocsDiscovery
   // First, try heuristic classification for obvious cases
   const heuristicResult = classifyByHeuristics(docs);
   
-  // If we found all three with high confidence, skip AI
-  if (heuristicResult.brainlift?.confidence === 100 &&
-      heuristicResult.prd?.confidence === 100 &&
+  // If we found all with high confidence, skip AI
+  if (heuristicResult.prd?.confidence === 100 &&
       heuristicResult.gameplan?.confidence === 100) {
     return buildResult(docs, heuristicResult);
   }
@@ -227,7 +221,6 @@ export async function classifyDocs(docs: DiscoveredDoc[]): Promise<DocsDiscovery
 }
 
 interface ClassificationResult {
-  brainlift: DiscoveredDoc | null;
   prd: DiscoveredDoc | null;
   gameplan: DiscoveredDoc | null;
   readme: DiscoveredDoc | null;
@@ -235,7 +228,6 @@ interface ClassificationResult {
 
 function classifyByHeuristics(docs: DiscoveredDoc[]): ClassificationResult {
   const result: ClassificationResult = {
-    brainlift: null,
     prd: null,
     gameplan: null,
     readme: null,
@@ -243,17 +235,9 @@ function classifyByHeuristics(docs: DiscoveredDoc[]): ClassificationResult {
   
   for (const doc of docs) {
     const lower = doc.filename.toLowerCase();
-    const pathLower = doc.path.toLowerCase();
     
     // Exact matches get 100% confidence
-    if (lower === 'brainlift.md' || pathLower.includes('brainlift')) {
-      if (!result.brainlift || doc.confidence === undefined || doc.confidence < 100) {
-        doc.category = 'brainlift';
-        doc.confidence = 100;
-        doc.summary = 'Domain knowledge and unique insights';
-        result.brainlift = doc;
-      }
-    } else if (lower === 'prd.md' || lower === 'requirements.md' || lower === 'spec.md') {
+    if (lower === 'prd.md' || lower === 'requirements.md' || lower === 'spec.md') {
       if (!result.prd || (result.prd.confidence ?? 0) < 100) {
         doc.category = 'prd';
         doc.confidence = lower === 'prd.md' ? 100 : 80;
@@ -293,11 +277,9 @@ async function classifyWithAI(
   
   const prompt = `Analyze these project documentation files and classify which ones serve as:
 
-1. BRAINLIFT: Domain knowledge, unique insights, "what YOU know that AI doesn't", mental models, key decisions. Think "second brain" - knowledge transfer from human to AI.
+1. PRD: Product Requirements Document - goals, non-goals, user stories, specs, success criteria, features, constraints.
 
-2. PRD: Product Requirements Document - goals, non-goals, user stories, specs, success criteria, features, constraints.
-
-3. GAMEPLAN: Implementation plan, roadmap, tech stack decisions, task breakdown, phases, milestones.
+2. GAMEPLAN: Implementation plan, roadmap, tech stack decisions, task breakdown, phases, milestones.
 
 Files to analyze:
 
@@ -305,7 +287,6 @@ ${docSummaries}
 
 Respond in JSON:
 {
-  "brainlift": { "index": <number or null>, "confidence": <0-100>, "reason": "..." },
   "prd": { "index": <number or null>, "confidence": <0-100>, "reason": "..." },
   "gameplan": { "index": <number or null>, "confidence": <0-100>, "reason": "..." }
 }
@@ -333,16 +314,6 @@ Rules:
   
   // Build result from AI classification
   const result: ClassificationResult = { ...heuristicResult };
-  
-  if (classification.brainlift?.index !== null && classification.brainlift?.index !== undefined) {
-    const doc = docs[classification.brainlift.index];
-    if (doc && (!result.brainlift || classification.brainlift.confidence > (result.brainlift.confidence ?? 0))) {
-      doc.category = 'brainlift';
-      doc.confidence = classification.brainlift.confidence;
-      doc.summary = classification.brainlift.reason;
-      result.brainlift = doc;
-    }
-  }
   
   if (classification.prd?.index !== null && classification.prd?.index !== undefined) {
     const doc = docs[classification.prd.index];
@@ -372,16 +343,14 @@ function buildResult(docs: DiscoveredDoc[], classification: ClassificationResult
   
   return {
     allDocs: docs,
-    brainlift: classification.brainlift,
     prd: classification.prd,
     gameplan: classification.gameplan,
     readme: classification.readme,
-    hasPlanningDocs: !!(classification.brainlift || classification.prd),
-    hasAllPlanningDocs: !!(classification.brainlift && classification.prd && classification.gameplan),
+    hasPlanningDocs: !!classification.prd,
+    hasAllPlanningDocs: !!(classification.prd && classification.gameplan),
     totalDocsFound: docs.length,
     totalBytesRead,
     planningStatus: {
-      brainlift: classification.brainlift ? 'found' : 'missing',
       prd: classification.prd ? 'found' : 'missing',
       gameplan: classification.gameplan ? 'found' : 'missing',
     },
@@ -413,10 +382,6 @@ export async function discoverAndClassifyDocs(projectPath: string): Promise<Docs
 export function getPlanningContext(result: DocsDiscoveryResult): string {
   const sections: string[] = [];
   
-  if (result.brainlift) {
-    sections.push(`## Brainlift (Domain Knowledge)\nSource: ${result.brainlift.path}\n\n${result.brainlift.content}`);
-  }
-  
   if (result.prd) {
     sections.push(`## PRD (Requirements)\nSource: ${result.prd.path}\n\n${result.prd.content}`);
   }
@@ -425,8 +390,8 @@ export function getPlanningContext(result: DocsDiscoveryResult): string {
     sections.push(`## Gameplan (Implementation Plan)\nSource: ${result.gameplan.path}\n\n${result.gameplan.content}`);
   }
   
-  if (result.readme && !result.brainlift && !result.prd) {
-    // Only include README if we don't have brainlift or prd
+  if (result.readme && !result.prd) {
+    // Only include README if we don't have prd
     sections.push(`## README\nSource: ${result.readme.path}\n\n${result.readme.content}`);
   }
   

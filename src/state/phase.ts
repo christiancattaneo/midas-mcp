@@ -10,7 +10,6 @@ import {
 export type PlanStep = 
   | 'IDEA'
   | 'RESEARCH'
-  | 'BRAINLIFT'
   | 'PRD'
   | 'GAMEPLAN';
 
@@ -60,7 +59,6 @@ export interface PhaseState extends VersionedState {
   history: HistoryEntry[];  // Now with unique IDs for merge safety
   startedAt: string;
   docs: {
-    brainlift: boolean;
     prd: boolean;
     gameplan: boolean;
   };
@@ -81,7 +79,6 @@ export function getDefaultState(): PhaseState {
     history: [],
     startedAt: new Date().toISOString(),
     docs: {
-      brainlift: false,
       prd: false,
       gameplan: false,
     },
@@ -136,7 +133,6 @@ function sanitizeState(raw: unknown): PhaseState {
   if (state.docs && typeof state.docs === 'object' && !Array.isArray(state.docs)) {
     const d = state.docs as Record<string, unknown>;
     docs = {
-      brainlift: typeof d.brainlift === 'boolean' ? d.brainlift : defaults.docs.brainlift,
       prd: typeof d.prd === 'boolean' ? d.prd : defaults.docs.prd,
       gameplan: typeof d.gameplan === 'boolean' ? d.gameplan : defaults.docs.gameplan,
     };
@@ -226,7 +222,6 @@ export const PHASE_INFO = {
     steps: {
       IDEA: { name: 'Idea', action: 'Define the core idea', prompt: 'What problem? Who for? Why now?', why: 'Most projects fail from solving the wrong problem. 10 min clarifying saves days of building wrong.' },
       RESEARCH: { name: 'Research', action: 'Scan the landscape', prompt: 'What exists? What works? What fails?', why: 'Someone has solved 80% of this. Libraries, patterns, anti-patterns exist. Don\'t reinvent wheels.' },
-      BRAINLIFT: { name: 'Brainlift', action: 'Document your edge', prompt: 'What do YOU know that AI doesn\'t?', why: 'AI read the internet. You have specific context it doesn\'t. Capture what makes YOUR project different.' },
       PRD: { name: 'PRD', action: 'Define requirements', prompt: 'Goals, non-goals, user stories, specs', why: '"I\'ll know it when I see it" means you\'ll never finish. A PRD defines the finish line.' },
       GAMEPLAN: { name: 'Gameplan', action: 'Plan the build', prompt: 'Tech stack, phases, tasks, risks', why: 'Some things depend on other things. Sequence work so you\'re never blocked waiting for yourself.' },
     },
@@ -312,7 +307,6 @@ export function getNextPhase(current: Phase): Phase {
   const allSteps: Array<{ phase: Phase['phase']; step: string }> = [
     { phase: 'PLAN', step: 'IDEA' },
     { phase: 'PLAN', step: 'RESEARCH' },
-    { phase: 'PLAN', step: 'BRAINLIFT' },
     { phase: 'PLAN', step: 'PRD' },
     { phase: 'PLAN', step: 'GAMEPLAN' },
     { phase: 'BUILD', step: 'RULES' },
@@ -355,7 +349,6 @@ export function getPrevPhase(current: Phase): Phase {
   const allSteps: Array<{ phase: Phase['phase']; step: string }> = [
     { phase: 'PLAN', step: 'IDEA' },
     { phase: 'PLAN', step: 'RESEARCH' },
-    { phase: 'PLAN', step: 'BRAINLIFT' },
     { phase: 'PLAN', step: 'PRD' },
     { phase: 'PLAN', step: 'GAMEPLAN' },
     { phase: 'BUILD', step: 'RULES' },

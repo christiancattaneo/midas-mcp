@@ -807,13 +807,13 @@ describe('Round-Trip Consistency', () => {
     
     const original = getDefaultState();
     original.history.push(createHistoryEntry({ phase: 'BUILD', step: 'IMPLEMENT' }));
-    original.docs.brainlift = true;
+    original.docs.prd = true;
     
     saveState(dir, original);
     const loaded = loadState(dir);
     
     assert.strictEqual(loaded.current.phase, original.current.phase);
-    assert.strictEqual(loaded.docs.brainlift, true);
+    assert.strictEqual(loaded.docs.prd, true);
     assert.ok(loaded.history.length >= 1);
   });
 

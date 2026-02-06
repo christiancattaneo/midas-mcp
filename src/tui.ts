@@ -1256,7 +1256,7 @@ export async function runInteractive(): Promise<void> {
     }
     
     // Check if key artifacts changed - auto-reanalyze if so
-    // This ensures users don't get stuck when creating .cursorrules, brainlift.md, etc.
+    // This ensures users don't get stuck when creating .cursorrules, prd.md, etc.
     if (!tuiState.isAnalyzing && tuiState.analysis) {
       const artifactCheck = checkKeyArtifactChanges(projectPath);
       if (artifactCheck.shouldAutoReanalyze) {
@@ -1570,7 +1570,7 @@ export async function runInteractive(): Promise<void> {
     if (key === 'e') {
       // Show example for current step
       const phase = tuiState.analysis?.currentPhase || loadState(projectPath).current;
-      const step = 'step' in phase ? phase.step : 'BRAINLIFT';
+      const step = 'step' in phase ? phase.step : 'PRD';
       const example = showExample({ step, projectPath });
       
       // Copy example summary to clipboard, show message
@@ -1712,7 +1712,7 @@ export async function runInteractive(): Promise<void> {
         tuiState.preflightIndex = 0;
         
         if (tuiState.preflightChecks.checks.length === 0) {
-          tuiState.message = `${green}OK${reset} No preflight checks apply yet. Add more details to brainlift/PRD.`;
+          tuiState.message = `${green}OK${reset} No preflight checks apply yet. Add more details to your PRD.`;
           render();
         } else {
           const pending = tuiState.preflightChecks.summary.pending;

@@ -70,10 +70,6 @@ export function suggestPrompt(input: SuggestPromptInput): PromptSuggestion {
         prompt: 'Research the landscape for [your idea]. What similar solutions exist? What works about them? What gaps exist?',
         explanation: 'Understand the competitive landscape before building.',
       },
-      BRAINLIFT: {
-        prompt: 'Help me document my unique insights for this project. I know that [your domain knowledge]. The conventional wisdom says [X] but I believe [Y] because [reason].',
-        explanation: 'Capture your contrarian insights that AI cannot know.',
-      },
       PRD: {
         prompt: 'Based on our research, help me write a PRD. Goals: [list]. Non-goals: [list]. Key user stories: [list].',
         explanation: 'Define exactly what to build (and what NOT to build).',

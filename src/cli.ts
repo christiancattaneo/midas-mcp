@@ -84,7 +84,7 @@ ${bold}Automation:${reset}
   midas pr <url>           Review a GitHub PR with Midas methodology
 
 ${bold}The Four Phases:${reset}
-  ${yellow}PLAN${reset}         Plan before building (Idea → Research → Brainlift → PRD → Gameplan)
+  ${yellow}PLAN${reset}         Plan before building (Idea → Research → PRD → Gameplan)
   ${blue}BUILD${reset}        Execute with the 7-step process
   ${green}SHIP${reset}         Deploy to production (Review → Deploy → Monitor)
   ${cyan}GROW${reset}         Iterate and improve (Feedback → Analyze → Iterate)
@@ -110,7 +110,7 @@ export function showStatus(): void {
   const phaseConfig: Record<string, { color: string; steps: string[]; labels?: Record<string, string> }> = {
     PLAN: {
       color: yellow,
-      steps: ['IDEA', 'RESEARCH', 'BRAINLIFT', 'PRD', 'GAMEPLAN'],
+      steps: ['IDEA', 'RESEARCH', 'PRD', 'GAMEPLAN'],
     },
     BUILD: {
       color: blue,
@@ -171,11 +171,10 @@ export function runInit(projectName: string): void {
   console.log('');
   console.log(`  ${bold}${projectName}${reset} is ready for planning.\n`);
   console.log('  Created:');
-  console.log(`    ${dim}docs/brainlift.md${reset}  - Your unique insights`);
   console.log(`    ${dim}docs/prd.md${reset}        - Requirements`);
   console.log(`    ${dim}docs/gameplan.md${reset}   - Build plan`);
   console.log('');
-  console.log(`  ${bold}Next:${reset} Fill out ${cyan}docs/brainlift.md${reset}`);
+  console.log(`  ${bold}Next:${reset} Fill out ${cyan}docs/prd.md${reset}`);
   console.log(`        Then run ${cyan}npx midas-mcp status${reset}\n`);
 }
 
@@ -194,8 +193,7 @@ export function runFirstTimeSetup(): void {
   console.log(`${bold}THE GOLDEN CODE LIFECYCLE (60 seconds)${reset}`);
   console.log('');
   console.log(`  ${yellow}1. PLAN${reset}  ${dim}Before coding, understand what you're building.${reset}`);
-  console.log(`           Write a ${bold}Brainlift${reset} (your unique insights),`);
-  console.log(`           ${bold}PRD${reset} (requirements), and ${bold}Gameplan${reset} (tasks).`);
+  console.log(`           Write a ${bold}PRD${reset} (requirements) and ${bold}Gameplan${reset} (tasks).`);
   console.log('');
   console.log(`  ${blue}2. BUILD${reset} ${dim}Code methodically with verification.${reset}`);
   console.log(`           Rules → Index → Read → Research → Implement → Test → Debug`);
@@ -221,7 +219,7 @@ export function runFirstTimeSetup(): void {
   console.log(`${bold}QUICK START${reset}`);
   console.log('');
   console.log(`  1. Run ${cyan}npx midas-mcp init MyProject${reset}`);
-  console.log(`  2. Fill out ${cyan}docs/brainlift.md${reset} with your unique insights`);
+  console.log(`  2. Fill out ${cyan}docs/prd.md${reset} with your requirements`);
   console.log(`  3. Run ${cyan}npx midas-mcp${reset} to start the interactive coach`);
   console.log('');
   
@@ -371,7 +369,6 @@ export function runDocsCheck(): void {
   console.log('');
 
   const docs = [
-    { name: 'brainlift.md', status: result.brainlift },
     { name: 'prd.md', status: result.prd },
     { name: 'gameplan.md', status: result.gameplan },
   ];

@@ -66,7 +66,6 @@ describe('MCP Tools', () => {
   describe('checkDocs', () => {
     it('reports missing docs', () => {
       const result = checkDocs({ projectPath: testDir });
-      assert.strictEqual(result.brainlift.exists, false);
       assert.strictEqual(result.prd.exists, false);
       assert.strictEqual(result.gameplan.exists, false);
       assert.strictEqual(result.ready, false);
@@ -76,14 +75,14 @@ describe('MCP Tools', () => {
       // Create docs with unfilled placeholders
       mkdirSync(join(testDir, 'docs'), { recursive: true });
       writeFileSync(
-        join(testDir, 'docs', 'brainlift.md'),
-        '# Brainlift\n## Contrarian\n[Fill this in]\n## Domain\nSome content\n## Lessons\nMore content'
+        join(testDir, 'docs', 'prd.md'),
+        '# PRD\n## Goals\n[Fill this in]\n## Requirements\nSome content'
       );
       
       const result = checkDocs({ projectPath: testDir });
-      assert.strictEqual(result.brainlift.exists, true);
-      assert.strictEqual(result.brainlift.complete, false);
-      assert.strictEqual(result.brainlift.issues.length > 0, true);
+      assert.strictEqual(result.prd.exists, true);
+      assert.strictEqual(result.prd.complete, false);
+      assert.strictEqual(result.prd.issues.length > 0, true);
     });
   });
 

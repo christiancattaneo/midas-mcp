@@ -323,7 +323,7 @@ describe('Missing/Malformed Step Values', () => {
 
   it('should handle all valid PLAN steps', () => {
     const dir = createTestDir('steps-plan-valid');
-    const validSteps: PlanStep[] = ['IDEA', 'RESEARCH', 'BRAINLIFT', 'PRD', 'GAMEPLAN'];
+    const validSteps: PlanStep[] = ['IDEA', 'RESEARCH', 'PRD', 'GAMEPLAN'];
     
     for (const step of validSteps) {
       writeRawState(dir, JSON.stringify({ current: { phase: 'PLAN', step } }));
@@ -680,12 +680,11 @@ describe('Docs Flags', () => {
 
   it('should handle partial docs object', () => {
     const dir = createTestDir('docs-partial');
-    writeRawState(dir, JSON.stringify({ current: { phase: 'IDLE' }, docs: { brainlift: true } }));
+    writeRawState(dir, JSON.stringify({ current: { phase: 'IDLE' }, docs: { prd: true } }));
     
     const state = loadState(dir);
     
-    assert.strictEqual(state.docs.brainlift, true);
-    assert.ok(state.docs.prd !== undefined);
+    assert.strictEqual(state.docs.prd, true);
     assert.ok(state.docs.gameplan !== undefined);
   });
 
@@ -693,7 +692,7 @@ describe('Docs Flags', () => {
     const dir = createTestDir('docs-invalid');
     writeRawState(dir, JSON.stringify({ 
       current: { phase: 'IDLE' }, 
-      docs: { brainlift: 'yes', prd: 1, gameplan: null } 
+      docs: { prd: 1, gameplan: null } 
     }));
     
     const state = loadState(dir);
@@ -706,12 +705,12 @@ describe('Docs Flags', () => {
     const dir = createTestDir('docs-extra');
     writeRawState(dir, JSON.stringify({ 
       current: { phase: 'IDLE' }, 
-      docs: { brainlift: true, prd: false, gameplan: true, extra: 'field' } 
+      docs: { prd: false, gameplan: true, extra: 'field' } 
     }));
     
     const state = loadState(dir);
     
-    assert.strictEqual(state.docs.brainlift, true);
+    assert.strictEqual(state.docs.prd, false);
     assert.strictEqual(state.docs.gameplan, true);
   });
 });

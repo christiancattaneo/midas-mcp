@@ -302,7 +302,7 @@ const PREFLIGHT_CHECKS: Record<string, PreflightCheckDefinition> = {
     headline: 'You need a Privacy Policy',
     explanation: 'You collect user data. Users need to know what you collect, why, and how to delete it.',
     priority: 'critical',
-    promptTemplate: `Read docs/brainlift.md and docs/prd.md to understand this project. Then create a privacy policy.
+    promptTemplate: `Read docs/prd.md to understand this project. Then create a privacy policy.
 
 First, identify from the docs:
 - What user data is collected
@@ -329,7 +329,7 @@ Add at top: "DRAFT - Review with a lawyer before publishing"`,
     headline: 'You need Terms of Service',
     explanation: 'Any public product needs terms defining the rules of use and liability limits.',
     priority: 'high',
-    promptTemplate: `Read docs/brainlift.md and docs/prd.md to understand this project. Then create terms of service.
+    promptTemplate: `Read docs/prd.md to understand this project. Then create terms of service.
 
 Create docs/terms-of-service.md with sections:
 - Acceptance of terms
@@ -356,7 +356,7 @@ Add at the top: "DRAFT - Review with a lawyer before publishing"`,
     priority: 'high',
     promptTemplate: `Create an AI transparency disclosure for this project.
 
-Based on the brainlift, this project uses AI to: {{aiUsage}}
+Based on the PRD, this project uses AI to: {{aiUsage}}
 
 Create a user-friendly disclosure explaining:
 - What AI does in this product
@@ -717,7 +717,7 @@ Create a security checklist: docs/security-checklist.md`,
     explanation: 'Handling patient health information in the US requires HIPAA compliance. Violations can cost $100-50K per record.',
     priority: 'critical',
     alsoNeeded: ['Legal review of BAA', 'Security audit', 'Employee HIPAA training'],
-    promptTemplate: `Read docs/brainlift.md and docs/prd.md. This is a healthcare application that may need HIPAA compliance.
+    promptTemplate: `Read docs/prd.md. This is a healthcare application that may need HIPAA compliance.
 
 Create docs/hipaa-checklist.md covering:
 1. PHI (Protected Health Information) inventory - what health data do we handle?
@@ -739,7 +739,7 @@ Add warning: "This checklist requires review by a HIPAA compliance officer or he
     explanation: 'Student education records in US schools are protected by FERPA. Violations can result in loss of federal funding.',
     priority: 'critical',
     alsoNeeded: ['School admin approval', 'Parent consent process', 'Annual notification'],
-    promptTemplate: `Read docs/brainlift.md and docs/prd.md. This is an education application that may need FERPA compliance.
+    promptTemplate: `Read docs/prd.md. This is an education application that may need FERPA compliance.
 
 Create docs/ferpa-checklist.md covering:
 1. Education records inventory - what student records do we access/store?
@@ -761,7 +761,7 @@ Add warning: "This checklist requires review by school legal counsel"`,
     explanation: 'The EU AI Act regulates AI systems by risk level. High-risk AI (health, education, employment) has strict requirements.',
     priority: 'high',
     alsoNeeded: ['Risk classification assessment', 'Technical documentation', 'EU representative if non-EU company'],
-    promptTemplate: `Read docs/brainlift.md and docs/prd.md. This AI system may be subject to the EU AI Act.
+    promptTemplate: `Read docs/prd.md. This AI system may be subject to the EU AI Act.
 
 Create docs/eu-ai-act-assessment.md covering:
 1. AI use case classification - what does the AI decide or recommend?
@@ -812,7 +812,7 @@ Add the sbom.json generation to CI/CD pipeline.`,
     explanation: 'If you store data in specific regions, you need to document where data lives. GDPR, data sovereignty laws, and enterprise contracts often require this.',
     priority: 'high',
     alsoNeeded: ['Legal review of data transfer agreements', 'Cloud provider region verification'],
-    promptTemplate: `Read docs/brainlift.md and docs/prd.md. Create a data residency documentation.
+    promptTemplate: `Read docs/prd.md. Create a data residency documentation.
 
 Create docs/data-residency.md covering:
 1. Where is user data stored? (AWS region, GCP zone, etc.)
@@ -832,7 +832,7 @@ Add warning: "Verify regions with your cloud provider dashboard"`,
 // ============================================================================
 
 /**
- * Infer project profile from brainlift, PRD, and package.json
+ * Infer project profile from PRD and package.json
  */
 export function inferProjectProfile(projectPath: string): ProjectProfile {
   const safePath = sanitizePath(projectPath);
@@ -972,7 +972,6 @@ function fillPromptTemplate(template: string, profile: ProjectProfile, projectPa
   
   // Use intelligent docs discovery
   const docsResult = discoverDocsSync(safePath);
-  const brainliftContent = docsResult.brainlift?.content || '';
   const prdContent = docsResult.prd?.content || '';
   
   // Build replacements
@@ -987,8 +986,8 @@ function fillPromptTemplate(template: string, profile: ProjectProfile, projectPa
       : 'general users',
     '{{businessModel}}': profile.businessModel,
     '{{productType}}': profile.usesAI ? 'AI-powered application' : 'web application',
-    '{{keyFeatures}}': brainliftContent.slice(0, 200) || 'See brainlift for details',
-    '{{aiUsage}}': profile.usesAI ? 'AI features (see brainlift for specifics)' : 'No AI',
+    '{{keyFeatures}}': prdContent.slice(0, 200) || 'See PRD for details',
+    '{{aiUsage}}': profile.usesAI ? 'AI features (see PRD for specifics)' : 'No AI',
     '{{processingPurposes}}': 'account management, service delivery, analytics',
     '{{thirdParties}}': profile.hasPayments ? 'Stripe for payments, analytics provider' : 'analytics provider',
     '{{subscriptionType}}': profile.hasSubscriptions ? 'recurring subscription' : 'one-time purchase',

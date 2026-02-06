@@ -9,16 +9,15 @@ const __dirname = dirname(__filename);
 // Map steps to their example documents
 const STEP_EXAMPLES: Record<string, string> = {
   // PLAN phase steps
-  BRAINLIFT: 'brainlift-example.md',
   PRD: 'prd-example.md',
   GAMEPLAN: 'gameplan-example.md',
   // Other steps use nearest relevant example
-  IDEA: 'brainlift-example.md',
-  RESEARCH: 'brainlift-example.md',
+  IDEA: 'prd-example.md',
+  RESEARCH: 'prd-example.md',
 };
 
 export const showExampleSchema = z.object({
-  step: z.string().optional().describe('Step to show example for: BRAINLIFT, PRD, or GAMEPLAN'),
+  step: z.string().optional().describe('Step to show example for: PRD or GAMEPLAN'),
   projectPath: z.string().optional().describe('Path to project root'),
 });
 
@@ -35,10 +34,10 @@ export interface ShowExampleResult {
  * Get the example document for a given step
  */
 export function showExample(input: ShowExampleInput): ShowExampleResult {
-  const step = (input.step || 'BRAINLIFT').toUpperCase();
+  const step = (input.step || 'PRD').toUpperCase();
   
   // Find the example file for this step
-  const exampleFileName = STEP_EXAMPLES[step] || 'brainlift-example.md';
+  const exampleFileName = STEP_EXAMPLES[step] || 'prd-example.md';
   
   // Look for example in docs/examples/
   const docsPath = join(__dirname, '..', 'docs', 'examples', exampleFileName);

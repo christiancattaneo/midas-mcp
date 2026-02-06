@@ -17,7 +17,7 @@ import { sanitizePath, limitLength, LIMITS, validateEnum } from '../security.js'
 import { writeCursorRules, detectTechStack } from '../techstack.js';
 
 // Valid step values for each phase
-const PLAN_STEPS = ['IDEA', 'RESEARCH', 'BRAINLIFT', 'PRD', 'GAMEPLAN'] as const;
+const PLAN_STEPS = ['IDEA', 'RESEARCH', 'PRD', 'GAMEPLAN'] as const;
 const BUILD_STEPS = ['RULES', 'INDEX', 'READ', 'RESEARCH', 'IMPLEMENT', 'TEST', 'DEBUG'] as const;
 const SHIP_STEPS = ['REVIEW', 'DEPLOY', 'MONITOR'] as const;
 const GROW_STEPS = ['DONE'] as const;  // Single graduation step
@@ -44,26 +44,6 @@ export function startProject(input: StartProjectInput): {
   if (!existsSync(docsPath)) {
     mkdirSync(docsPath, { recursive: true });
   }
-
-  // Create brainlift template
-  const brainliftContent = `# Brainlift: ${projectName}
-
-## Contrarian Insights
-- [What do YOU know that contradicts conventional wisdom?]
-- [What have you learned from experience that AI can't know?]
-
-## Domain Knowledge
-- [Industry-specific context]
-- [User behavior patterns you've observed]
-
-## Hard-Won Lessons
-- [What NOT to do based on past experience]
-- [Hidden gotchas in this space]
-
-## Current Context
-- [Recent market changes]
-- [Technology updates post-training-cutoff]
-`;
 
   // Create PRD template
   const prdContent = `# PRD: ${projectName}
@@ -110,13 +90,9 @@ export function startProject(input: StartProjectInput): {
 `;
 
   // Write templates if they don't exist
-  const brainliftPath = join(docsPath, 'brainlift.md');
   const prdPath = join(docsPath, 'prd.md');
   const gameplanPath = join(docsPath, 'gameplan.md');
 
-  if (!existsSync(brainliftPath)) {
-    writeFileSync(brainliftPath, brainliftContent);
-  }
   if (!existsSync(prdPath)) {
     writeFileSync(prdPath, prdContent);
   }
@@ -132,7 +108,6 @@ export function startProject(input: StartProjectInput): {
 
   // Generate .cursorrules if requested
   const nextSteps = [
-    'Fill out docs/brainlift.md with your unique insights',
     'Define requirements in docs/prd.md',
     'Plan the build in docs/gameplan.md',
     'Use midas_get_phase to see current progress',

@@ -631,7 +631,6 @@ export function hasFilesChangedSinceAnalysis(projectPath: string): boolean {
  * Check if key artifacts have changed since last analysis.
  * Key artifacts are files that should trigger auto-reanalysis:
  * - .cursorrules (rules step completion)
- * - docs/brainlift.md (brainlift step completion)
  * - docs/prd.md (prd step completion)
  * - docs/gameplan.md (gameplan step completion)
  */
@@ -646,7 +645,6 @@ export function checkKeyArtifactChanges(projectPath: string): {
   // Key artifacts that trigger auto-reanalysis when created/modified
   const keyArtifacts = [
     '.cursorrules',
-    'docs/brainlift.md',
     'docs/prd.md', 
     'docs/gameplan.md',
   ];
@@ -772,7 +770,6 @@ function getPhaseExplanation(phase: string, step: string): string {
     PLAN: {
       IDEA: 'Define the core problem, who it affects, and why now is the right time to solve it.',
       RESEARCH: 'Study what exists. What works? What fails? Where are the gaps?',
-      BRAINLIFT: 'Document your unique insights - what do you know that others don\'t?',
       PRD: 'Write clear requirements. Vague requirements lead to vague implementations.',
       GAMEPLAN: 'Break the build into ordered tasks. Each task should be completable in one session.',
     },
@@ -913,7 +910,6 @@ function getPhaseBasedPrompt(phase: Phase, task: TaskFocus | null): string {
     const stepPrompts: Record<string, string> = {
       IDEA: 'Define the core idea: What problem? Who for? Why now?',
       RESEARCH: 'Research the landscape: What exists? What works? What fails?',
-      BRAINLIFT: 'Document your unique insights in docs/brainlift.md',
       PRD: 'Write requirements in docs/prd.md',
       GAMEPLAN: 'Plan the build in docs/gameplan.md',
     };
@@ -994,11 +990,6 @@ export function maybeAutoAdvance(projectPath: string): { advanced: boolean; from
   // Check for artifact-based advancement in PLAN phase
   if (currentPhase.phase === 'PLAN') {
     const docsResult = discoverDocsSync(safePath);
-    
-    // PLAN:BRAINLIFT → PLAN:PRD when brainlift.md exists
-    if (currentPhase.step === 'BRAINLIFT' && docsResult.brainlift) {
-      return doAdvance('brainlift.md created');
-    }
     
     // PLAN:PRD → PLAN:GAMEPLAN when prd.md exists
     if (currentPhase.step === 'PRD' && docsResult.prd) {
@@ -1139,7 +1130,7 @@ function updatePhaseFromToolCalls(tracker: TrackerState): void {
   
   const toolPhaseMap: Record<string, Phase> = {
     'midas_start_project': { phase: 'PLAN', step: 'IDEA' },
-    'midas_check_docs': { phase: 'PLAN', step: 'BRAINLIFT' },
+    'midas_check_docs': { phase: 'PLAN', step: 'PRD' },
     'midas_tornado': { phase: 'BUILD', step: 'DEBUG' },
     'midas_oneshot': { phase: 'BUILD', step: 'DEBUG' },
     'midas_horizon': { phase: 'BUILD', step: 'IMPLEMENT' },
@@ -1167,14 +1158,12 @@ function inferPhaseFromSignals(tracker: TrackerState): void {
       return;
     }
     // Determine which planning step based on what's missing
-    if (!docsResult.brainlift) {
-      tracker.inferredPhase = { phase: 'PLAN', step: 'BRAINLIFT' };
-    } else if (!docsResult.prd) {
+    if (!docsResult.prd) {
       tracker.inferredPhase = { phase: 'PLAN', step: 'PRD' };
     } else if (!docsResult.gameplan) {
       tracker.inferredPhase = { phase: 'PLAN', step: 'GAMEPLAN' };
     } else {
-      tracker.inferredPhase = { phase: 'PLAN', step: 'BRAINLIFT' };
+      tracker.inferredPhase = { phase: 'PLAN', step: 'PRD' };
     }
     tracker.confidence = 70;
     return;

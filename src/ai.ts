@@ -149,7 +149,6 @@ Tech stack: ${context.techStack.join(', ')}
 Consider:
 - IDEA: Is there a clear project purpose?
 - RESEARCH: Are there docs about alternatives?
-- BRAINLIFT: Is there a brainlift.md with insights?
 - PRD: Is there a prd.md with requirements?
 - GAMEPLAN: Is there a gameplan.md with plan?
 - BUILD steps: Is there working code with tests?

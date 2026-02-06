@@ -79,7 +79,6 @@ describe('Edge Cases and Error Handling', () => {
     it('handles non-existent docs directory', () => {
       const result = checkDocs({ projectPath: testDir });
       
-      assert.strictEqual(result.brainlift.exists, false);
       assert.strictEqual(result.prd.exists, false);
       assert.strictEqual(result.gameplan.exists, false);
       assert.strictEqual(result.ready, false);
@@ -102,11 +101,11 @@ describe('Edge Cases and Error Handling', () => {
 
     it('handles empty docs files', () => {
       mkdirSync(join(testDir, 'docs'), { recursive: true });
-      writeFileSync(join(testDir, 'docs', 'brainlift.md'), '');
+      writeFileSync(join(testDir, 'docs', 'prd.md'), '');
       
       const result = checkDocs({ projectPath: testDir });
-      assert.strictEqual(result.brainlift.exists, true);
-      assert.strictEqual(result.brainlift.complete, false);
+      assert.strictEqual(result.prd.exists, true);
+      assert.strictEqual(result.prd.complete, false);
     });
 
     it('handles journal with no entries', () => {
@@ -162,10 +161,10 @@ describe('Edge Cases and Error Handling', () => {
     it('handles rapid phase changes', () => {
       setPhase(testDir, { phase: 'PLAN', step: 'IDEA' });
       setPhase(testDir, { phase: 'PLAN', step: 'RESEARCH' });
-      setPhase(testDir, { phase: 'PLAN', step: 'BRAINLIFT' });
+      setPhase(testDir, { phase: 'PLAN', step: 'PRD' });
       
       const state = loadState(testDir);
-      assert.strictEqual((state.current as { step: string }).step, 'BRAINLIFT');
+      assert.strictEqual((state.current as { step: string }).step, 'PRD');
       assert.strictEqual(state.history.length, 3);
     });
 

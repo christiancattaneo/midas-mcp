@@ -1,12 +1,12 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
-import { getProjectById, getLatestGates, getGameplanTasks, getUserByGithubId } from "@/lib/db"
+import { getProjectById, getLatestGates, getUserByGithubId } from "@/lib/db"
 import Link from "next/link"
 import { CommandCenter } from "@/components/CommandCenter"
 
 const PHASE_STEPS: Record<string, string[]> = {
   IDLE: [],
-  PLAN: ['IDEA', 'RESEARCH', 'BRAINLIFT', 'PRD', 'GAMEPLAN'],
+  PLAN: ['IDEA', 'RESEARCH', 'PRD', 'GAMEPLAN'],
   BUILD: ['RULES', 'INDEX', 'READ', 'RESEARCH', 'IMPLEMENT', 'TEST', 'DEBUG'],
   SHIP: ['REVIEW', 'DEPLOY', 'MONITOR'],
   GROW: ['DONE'],
@@ -30,7 +30,6 @@ export default async function ProjectDetail({
   if (!project) redirect("/dashboard")
 
   const gates = await getLatestGates(projectId, dbUrl, dbToken)
-  const gameplanTasks = await getGameplanTasks(projectId, dbUrl, dbToken)
 
   const currentSteps = PHASE_STEPS[project.current_phase] || []
   const currentStepIndex = currentSteps.indexOf(project.current_step)
@@ -38,13 +37,10 @@ export default async function ProjectDetail({
     ? Math.round(((currentStepIndex + 1) / currentSteps.length) * 100)
     : 0
 
-  const completedTasks = gameplanTasks.filter(t => t.completed).length
-  const totalTasks = gameplanTasks.length
-
   return (
     <main className="min-h-screen p-4 md:p-6">
       <div className="max-w-3xl mx-auto">
-        {/* Header - minimal */}
+        {/* Header */}
         <header className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <Link
@@ -58,7 +54,7 @@ export default async function ProjectDetail({
           </div>
         </header>
 
-        {/* Phase + Progress - single compact line */}
+        {/* Phase + Progress */}
         <div className="flex items-center gap-4 mb-6 font-mono text-sm">
           <span className={`px-2 py-1 rounded text-xs font-bold ${
             project.current_phase === 'BUILD' ? 'bg-blue-500/20 text-blue-400' :
@@ -75,7 +71,6 @@ export default async function ProjectDetail({
           </div>
           <span className="text-dim">{progress}%</span>
 
-          {/* Gates - inline */}
           {gates && (
             <div className="flex items-center gap-2">
               <span className={gates.compiles ? 'text-matrix' : 'text-red-400'} title="Compiles">
@@ -91,38 +86,13 @@ export default async function ProjectDetail({
           )}
         </div>
 
-        {/* COMMAND CENTER - the main event */}
+        {/* COMMAND CENTER */}
         <CommandCenter
           projectId={project.id}
           projectName={project.name}
           phase={project.current_phase}
           step={project.current_step}
         />
-
-        {/* Gameplan - compact, below the fold */}
-        {totalTasks > 0 && (
-          <div className="mt-8 border border-white/10 rounded-lg">
-            <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-              <span className="text-xs font-mono text-dim">GAMEPLAN</span>
-              <span className="text-xs font-mono text-dim">{completedTasks}/{totalTasks}</span>
-            </div>
-            <div className="max-h-[300px] overflow-y-auto">
-              {gameplanTasks.map((task, idx) => (
-                <div
-                  key={task.id}
-                  className={`px-4 py-2 border-b border-white/5 flex items-center gap-3 text-sm font-mono ${
-                    task.completed ? 'text-dim line-through' : ''
-                  }`}
-                >
-                  <span className={task.completed ? 'text-matrix' : 'text-dim'}>
-                    {task.completed ? '✓' : String(idx + 1).padStart(2, '0')}
-                  </span>
-                  <span className="flex-1">{task.task_text}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Footer hint */}
         <p className="mt-6 text-center text-xs font-mono text-dim">

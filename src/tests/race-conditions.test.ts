@@ -246,7 +246,7 @@ describe('Interleaved Read-Modify-Write', () => {
     const phases: Parameters<typeof setPhase>[1][] = [
       { phase: 'PLAN', step: 'IDEA' },
       { phase: 'PLAN', step: 'RESEARCH' },
-      { phase: 'PLAN', step: 'BRAINLIFT' },
+      { phase: 'PLAN', step: 'PRD' },
       { phase: 'PLAN', step: 'PRD' },
       { phase: 'PLAN', step: 'GAMEPLAN' },
     ];
