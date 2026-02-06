@@ -7,14 +7,6 @@ import { CommandCenter } from "@/components/CommandCenter"
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-const PHASE_STEPS: Record<string, string[]> = {
-  IDLE: [],
-  PLAN: ['IDEA', 'RESEARCH', 'PRD', 'GAMEPLAN'],
-  BUILD: ['RULES', 'INDEX', 'READ', 'RESEARCH', 'IMPLEMENT', 'TEST', 'DEBUG'],
-  SHIP: ['REVIEW', 'DEPLOY', 'MONITOR'],
-  GROW: ['DONE'],
-}
-
 export default async function ProjectDetail({
   params,
 }: {
@@ -34,11 +26,8 @@ export default async function ProjectDetail({
 
   const gates = await getLatestGates(projectId, dbUrl, dbToken)
 
-  const currentSteps = PHASE_STEPS[project.current_phase] || []
-  const currentStepIndex = currentSteps.indexOf(project.current_step)
-  const progress = currentSteps.length > 0
-    ? Math.round(((currentStepIndex + 1) / currentSteps.length) * 100)
-    : 0
+  // GROW = 100%, otherwise use stored progress from sync
+  const progress = project.current_phase === 'GROW' ? 100 : (project.progress || 0)
 
   return (
     <main className="min-h-screen p-4 md:p-6">

@@ -46,8 +46,8 @@ function PhaseBadge({ phase }: { phase: string }) {
 }
 
 function PhaseProgressBar({ phase, step, storedProgress }: { phase: string; step: string; storedProgress: number }) {
-  // Use the progress value synced from midas (overall lifecycle progress)
-  const progress = storedProgress || 0
+  // GROW = 100%, otherwise use synced progress
+  const progress = phase === 'GROW' ? 100 : (storedProgress || 0)
 
   return (
     <div className="w-full">

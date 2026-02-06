@@ -385,6 +385,7 @@ function calculateProgress(phase: Phase): number {
   };
   
   if (phase.phase === 'IDLE') return 0;
+  if (phase.phase === 'GROW') return 100;
   
   const phaseIdx = phaseOrder.indexOf(phase.phase);
   let completedSteps = 0;
