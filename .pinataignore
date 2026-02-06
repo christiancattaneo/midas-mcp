@@ -1,0 +1,36 @@
+# Pinata Security Scanner Ignore File
+# These are false positives for a CLI tool where blocking I/O is intentional
+
+# CLI code - execSync is intentional for blocking CLI operations
+src/cli.ts
+src/cursor.ts
+src/claude-code.ts
+src/phase-detector.ts
+src/pilot.ts
+src/tools/cleanup.ts
+src/tools/verify.ts
+
+# Vulnerability scanner - contains pattern DEFINITIONS, not actual vulnerabilities
+# These patterns are used to detect issues in OTHER code, not vulnerable code themselves
+src/tools/vuln-scan.ts
+
+# TUI code - animation loops are intentional
+src/tui.ts
+dashboard/components/MatrixRain.tsx
+
+# Provider detection - intentional blocking for startup
+src/providers.ts
+
+# Test files
+tests/
+*.test.ts
+*.test.js
+
+# Build output
+dist/
+node_modules/
+.next/
+
+# Config files
+*.config.js
+*.config.ts

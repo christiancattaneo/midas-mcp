@@ -1,5 +1,5 @@
 {
-  "$schema": "https://claude.ai/schemas/settings.json",
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "description": "Midas Golden Code methodology settings",
   
   "permissions": {
@@ -24,18 +24,5 @@
       "dist/**",
       ".git/**"
     ]
-  },
-  
-  "skills": {
-    "directories": [".claude/skills"],
-    "autoTrigger": true
-  },
-  
-  "agents": {
-    "directories": [".claude/agents"]
-  },
-  
-  "hooks": {
-    "configFile": ".claude/hooks/hooks.json"
   }
 }

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { createPilotSession, getActivePilotSession, getUserByGithubId } from "@/lib/db"
 
+const GITHUB_API_TIMEOUT_MS = 10000 // 10 second timeout for GitHub API
+
 /**
  * POST /api/pilot-session
  * 
@@ -27,6 +29,7 @@ export async function POST(request: Request) {
         'Authorization': `Bearer ${github_access_token}`,
         'Accept': 'application/vnd.github+json',
       },
+      signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
     })
     
     if (!githubResponse.ok) {

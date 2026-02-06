@@ -22,10 +22,12 @@ import {
   syncProject,
   type PendingCommand 
 } from './cloud.js';
+import { loadTracker, getSmartPromptSuggestion, getGatesStatus } from './tracker.js';
+import { loadState, PHASE_INFO } from './state/phase.js';
+import { getGameplanProgress } from './gameplan-tracker.js';
+import { analyzeProjectStreaming, type ProjectAnalysis, type AnalysisProgress } from './analyzer.js';
 
-// QR code library (dynamic import for ESM compatibility)
-type QRCodeModule = { generate: (text: string, opts: { small: boolean }, cb: (qr: string) => void) => void };
-let qrcode: QRCodeModule | null = null;
+// QR code removed - dashboard handles remote control now
 
 // ============================================================================
 // TYPES
@@ -139,7 +141,6 @@ export async function executeClaudeCode(
     const args: string[] = [
       '-p', prompt,
       '--output-format', cfg.outputFormat,
-      '--max-turns', String(cfg.maxTurns),
     ];
     
     // Add allowed tools
@@ -147,18 +148,10 @@ export async function executeClaudeCode(
       args.push('--allowedTools', cfg.allowedTools.join(','));
     }
     
-    // Use structured output schema for deterministic parsing
-    if (cfg.useStructuredOutput) {
-      args.push('--json-schema', JSON.stringify(PILOT_RESULT_SCHEMA));
-    }
-    
     // Add Midas context to system prompt
     args.push(
       '--append-system-prompt',
-      `You are being executed by Midas Pilot automation.
-Complete the task efficiently and report results in the structured format.
-If you encounter errors, include them in the errors array.
-When done, provide a clear summary and suggest the next action.`
+      `You are being executed by Midas Pilot automation. Complete the task efficiently.`
     );
     
     let output = '';
@@ -342,47 +335,61 @@ export function getPilotStatus(): PilotStatus {
  * Execute a pending command from the cloud
  */
 async function executeCommand(command: PendingCommand): Promise<void> {
-  // Get project details
-  const project = await getProjectById(command.project_id);
-  if (!project) {
-    console.log(`  ✗ Project not found: ${command.project_id}`);
-    return;
+  try {
+    // Get project details
+    const project = await getProjectById(command.project_id);
+    if (!project) {
+      console.log(`  ✗ Project not found: ${command.project_id}`);
+      return;
+    }
+    
+    console.log(`    Project: ${project.name}`);
+    console.log(`    Path: ${project.local_path}\n`);
+    
+    // Mark as running
+    await markCommandRunning(command.id);
+    
+    // Execute
+    const result = await executeClaudeCode(command.prompt, {
+      projectPath: project.local_path,
+      maxTurns: command.max_turns,
+    });
+    
+    // Update status
+    await markCommandCompleted(command.id, {
+      success: result.success,
+      output: result.output,
+      exitCode: result.exitCode,
+      durationMs: result.duration,
+      sessionId: result.sessionId,
+    });
+    
+    if (result.success) {
+      console.log(`  ✓ Command #${command.id} completed`);
+      console.log(`    Duration: ${(result.duration / 1000).toFixed(1)}s`);
+    } else {
+      console.log(`  ✗ Command #${command.id} failed`);
+      console.log(`    Exit code: ${result.exitCode}`);
+    }
+    
+    console.log('\n  Waiting for next command...');
+  } catch (error) {
+    console.error(`  ✗ Error executing command #${command.id}:`, error);
+    try {
+      await markCommandCompleted(command.id, {
+        success: false,
+        output: error instanceof Error ? error.message : String(error),
+        exitCode: -1,
+        durationMs: 0,
+      });
+    } catch {
+      // Ignore cleanup errors
+    }
   }
-  
-  console.log(`    Project: ${project.name}`);
-  console.log(`    Path: ${project.local_path}\n`);
-  
-  // Mark as running
-  await markCommandRunning(command.id);
-  
-  // Execute
-  const result = await executeClaudeCode(command.prompt, {
-    projectPath: project.local_path,
-    maxTurns: command.max_turns,
-  });
-  
-  // Update status
-  await markCommandCompleted(command.id, {
-    success: result.success,
-    output: result.output,
-    exitCode: result.exitCode,
-    durationMs: result.duration,
-    sessionId: result.sessionId,
-  });
-  
-  if (result.success) {
-    console.log(`  ✓ Command #${command.id} completed`);
-    console.log(`    Duration: ${(result.duration / 1000).toFixed(1)}s`);
-  } else {
-    console.log(`  ✗ Command #${command.id} failed`);
-    console.log(`    Exit code: ${result.exitCode}`);
-  }
-  
-  console.log('\n  Waiting for next command...');
 }
 
 // ============================================================================
-// REMOTE MODE (QR code for phone control)
+// WATCH MODE - sync and watch for dashboard commands
 // ============================================================================
 
 const DASHBOARD_URL = process.env.MIDAS_DASHBOARD_URL || 'https://dashboard.midasmcp.com';
@@ -471,33 +478,7 @@ async function updateRemoteSession(
   }
 }
 
-/**
- * Display QR code for remote connection
- */
-async function displayQRCode(url: string): Promise<void> {
-  // Load qrcode-terminal dynamically
-  if (!qrcode) {
-    try {
-      const mod = await import('qrcode-terminal');
-      // Handle both ESM default export and CommonJS module.exports
-      qrcode = (mod.default || mod) as QRCodeModule;
-    } catch {
-      console.log(`\n  QR code library not available.`);
-      console.log(`  Open this URL on your phone:\n`);
-      console.log(`  ${url}\n`);
-      return;
-    }
-  }
-  
-  return new Promise((resolve) => {
-    qrcode!.generate(url, { small: true }, (qr: string) => {
-      const indented = qr.split('\n').map(line => '  ' + line).join('\n');
-      console.log(indented);
-      console.log(`\n  ${url}\n`);
-      resolve();
-    });
-  });
-}
+// QR code display removed - dashboard handles remote control
 
 /**
  * Run Pilot in remote mode - shows QR code for phone control
@@ -530,18 +511,228 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
   const session = generateRemoteSession();
   const connectionUrl = `${DASHBOARD_URL}/pilot/${session.sessionId}?token=${session.sessionToken}`;
   
-  // Clear screen and hide cursor to prevent TUI interference
-  process.stdout.write('\x1b[2J\x1b[H\x1b[?25l'); // Clear + home + hide cursor
+  const projectPath = process.cwd();
+  
+  // =========================================================================
+  // STEP 0: Kill any existing pilot processes
+  // =========================================================================
+  try {
+    // Find and kill other midas pilot processes (but not this one)
+    const myPid = process.pid;
+    const { execSync } = await import('child_process');
+    const pids = execSync('pgrep -f "midas.*pilot" 2>/dev/null || true', { encoding: 'utf-8' })
+      .trim()
+      .split('\n')
+      .filter(p => p && parseInt(p) !== myPid);
+    
+    for (const pid of pids) {
+      try {
+        process.kill(parseInt(pid), 'SIGTERM');
+      } catch { /* already dead */ }
+    }
+    if (pids.length > 0) {
+      console.log(`  Killed ${pids.length} existing pilot process(es)`);
+    }
+  } catch { /* ignore errors */ }
+  
+  // Clear screen and hide cursor
+  process.stdout.write('\x1b[2J\x1b[H\x1b[?25l');
   
   console.log('\n  ╔══════════════════════════════════════════════════════════╗');
-  console.log('  ║              MIDAS PILOT - REMOTE MODE                   ║');
+  console.log('  ║                   MIDAS WATCH MODE                       ║');
   console.log('  ╚══════════════════════════════════════════════════════════╝\n');
   
-  // Auto-sync on startup so dashboard has latest state
-  console.log('  Syncing project state...');
-  const syncResult = await syncProject(process.cwd());
+  // =========================================================================
+  // STEP 1: Full AI Analysis with TUI-style colorful progress
+  // =========================================================================
+  
+  // ANSI colors
+  const reset = '\x1b[0m';
+  const bold = '\x1b[1m';
+  const dim = '\x1b[2m';
+  const green = '\x1b[32m';
+  const yellow = '\x1b[33m';
+  const cyan = '\x1b[36m';
+  const magenta = '\x1b[35m';
+  
+  const spinners = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+  const stages = ['gathering', 'connecting', 'thinking', 'streaming', 'parsing'];
+  const stageLabels = [
+    'Read files and context',
+    'Connect to AI', 
+    'Extended thinking',
+    'Receive response',
+    'Parse results',
+  ];
+  
+  let currentProgress: AnalysisProgress | null = null;
+  let analysisStartTime = Date.now();
+  
+  // Render the colorful analysis box
+  const renderAnalysisUI = () => {
+    const elapsed = `${((Date.now() - analysisStartTime) / 1000).toFixed(1)}s`;
+    const spinnerFrame = spinners[Math.floor(Date.now() / 100) % spinners.length];
+    const currentIdx = currentProgress ? stages.indexOf(currentProgress.stage) : 0;
+    
+    // Stage indicator function
+    const stageCheck = (idx: number) => {
+      if (idx < currentIdx) return `${green}[✓]${reset}`;
+      if (idx === currentIdx) return `${yellow}[${spinnerFrame}]${reset}`;
+      return `${dim}[ ]${reset}`;
+    };
+    
+    // Build the display
+    let output = '\x1b[2J\x1b[H'; // Clear screen + home
+    output += '\n  ╔══════════════════════════════════════════════════════════╗\n';
+    output += '  ║                   MIDAS WATCH MODE                       ║\n';
+    output += '  ╚══════════════════════════════════════════════════════════╝\n\n';
+    
+    output += `  ${bold}Analyzing project${reset} ${dim}${elapsed}${reset}\n\n`;
+    
+    // Progress stages with checkmarks
+    for (let i = 0; i < stages.length; i++) {
+      output += `  ${stageCheck(i)} ${stageLabels[i]}\n`;
+    }
+    output += '\n';
+    
+    // Show streaming details
+    if (currentProgress?.stage === 'streaming' && currentProgress.tokensReceived) {
+      output += `  ${dim}${currentProgress.tokensReceived} tokens received${reset}\n`;
+      
+      // Try to show partial results
+      if (currentProgress.partialContent) {
+        const phaseMatch = currentProgress.partialContent.match(/"phase"\s*:\s*"([^"]+)"/);
+        const techMatch = currentProgress.partialContent.match(/"techStack"\s*:\s*\[([^\]]{5,50})/);
+        
+        if (phaseMatch) {
+          output += `  ${green}→${reset} Phase: ${bold}${phaseMatch[1]}${reset}\n`;
+        }
+        if (techMatch) {
+          const techs = techMatch[1].replace(/"/g, '').split(',').slice(0, 3).join(', ');
+          output += `  ${green}→${reset} Tech: ${techs}\n`;
+        }
+      }
+    } else if (currentProgress?.stage === 'thinking') {
+      output += `  ${dim}AI is reasoning about your project...${reset}\n`;
+    } else if (currentProgress?.stage === 'gathering') {
+      output += `  ${dim}Reading codebase, docs, journal...${reset}\n`;
+    }
+    
+    process.stdout.write(output);
+  };
+  
+  // Start progress interval for smooth animation
+  const progressInterval = setInterval(renderAnalysisUI, 100);
+  renderAnalysisUI(); // Initial render
+  
+  let analysis: ProjectAnalysis | null = null;
+  try {
+    analysis = await analyzeProjectStreaming(projectPath, (progress) => {
+      currentProgress = progress;
+    });
+    clearInterval(progressInterval);
+    console.log(`\n  ${green}✓${reset} Analysis complete\n`);
+  } catch (err) {
+    clearInterval(progressInterval);
+    console.log(`\n  ${yellow}⚠${reset} AI analysis failed, using local state\n`);
+  }
+  
+  // Load supplementary state
+  const gatesStatus = getGatesStatus(projectPath);
+  const gameplan = getGameplanProgress(projectPath);
+  
+  // Clear and redraw with colorful project info
+  process.stdout.write('\x1b[2J\x1b[H');
+  
+  console.log('\n  ╔══════════════════════════════════════════════════════════╗');
+  console.log('  ║                   MIDAS WATCH MODE                       ║');
+  console.log('  ╚══════════════════════════════════════════════════════════╝\n');
+  
+  // Display current state with colors
+  const phase = analysis?.currentPhase || loadState(projectPath).current;
+  const phaseName = phase.phase === 'IDLE' ? 'Not started' : PHASE_INFO[phase.phase]?.name || phase.phase;
+  const stepName = 'step' in phase ? phase.step : '';
+  
+  const phaseColors: Record<string, string> = { PLAN: yellow, BUILD: '\x1b[34m', SHIP: green, GROW: magenta };
+  const phaseColor = phaseColors[phase.phase] || '';
+  
+  console.log(`  ${green}✓${reset} Project: ${bold}${projectPath.split('/').pop()}${reset}`);
+  console.log(`  ${green}✓${reset} Phase: ${phaseColor}${bold}${phaseName}${reset}${stepName ? ` ${dim}→${reset} ${stepName}` : ''}`);
+  
+  // Show tech stack
+  if (analysis?.techStack && analysis.techStack.length > 0) {
+    console.log(`  ${green}✓${reset} Stack: ${cyan}${analysis.techStack.slice(0, 4).join(', ')}${reset}`);
+  }
+  
+  // Show gates status
+  if (gatesStatus.allPass) {
+    console.log(`  ${green}✓${reset} Gates: ${green}All passing${reset}`);
+  } else if (gatesStatus.failing.length > 0) {
+    console.log(`  ${yellow}⚠${reset} Gates failing: ${yellow}${gatesStatus.failing.join(', ')}${reset}`);
+  }
+  
+  // Show gameplan progress
+  if (gameplan.documented > 0 || gameplan.actual > 0) {
+    const pct = gameplan.actual;
+    const pctColor = pct >= 75 ? green : pct >= 40 ? yellow : dim;
+    console.log(`  ${green}✓${reset} Progress: ${pctColor}${pct}%${reset} complete`);
+  }
+  
+  // Show AI summary in a box
+  if (analysis?.summary) {
+    console.log('');
+    console.log(`  ${cyan}┌───────────────────────────────────────────────────────┐${reset}`);
+    console.log(`  ${cyan}│${reset}  ${bold}AI ANALYSIS${reset}                                        ${cyan}│${reset}`);
+    console.log(`  ${cyan}└───────────────────────────────────────────────────────┘${reset}`);
+    // Word wrap the summary
+    const summaryWords = analysis.summary.split(' ');
+    let line = '  ';
+    for (const word of summaryWords) {
+      if ((line + word).length > 58) {
+        console.log(`  ${dim}${line.trim()}${reset}`);
+        line = word + ' ';
+      } else {
+        line += word + ' ';
+      }
+    }
+    if (line.trim()) console.log(`  ${dim}${line.trim()}${reset}`);
+  }
+  
+  // Show the suggested prompt prominently in gold
+  console.log('');
+  console.log(`  ${yellow}╔═══════════════════════════════════════════════════════╗${reset}`);
+  console.log(`  ${yellow}║${reset}  ${bold}${yellow}SUGGESTED PROMPT${reset} ${dim}(synced to dashboard)${reset}              ${yellow}║${reset}`);
+  console.log(`  ${yellow}╚═══════════════════════════════════════════════════════╝${reset}`);
+  
+  const suggestedPrompt = analysis?.suggestedPrompt || getSmartPromptSuggestion(projectPath).prompt;
+  // Word wrap the prompt
+  const promptWords = suggestedPrompt.split(' ');
+  let promptLine = '';
+  for (const word of promptWords) {
+    if ((promptLine + word).length > 55) {
+      console.log(`  ${promptLine.trim()}`);
+      promptLine = word + ' ';
+    } else {
+      promptLine += word + ' ';
+    }
+  }
+  if (promptLine.trim()) console.log(`  ${promptLine.trim()}`);
+  console.log('');
+  
+  // =========================================================================
+  // STEP 2: Sync to cloud (with full AI analysis)
+  // =========================================================================
+  console.log('  Syncing to dashboard...');
+  const syncResult = await syncProject(projectPath, analysis ? {
+    summary: analysis.summary,
+    suggestedPrompt: analysis.suggestedPrompt,
+    whatsNext: analysis.whatsNext,
+    whatsDone: analysis.whatsDone,
+    confidence: analysis.confidence,
+    techStack: analysis.techStack,
+  } : undefined);
   if (syncResult.success) {
-    console.log('  ✓ Synced to dashboard');
+    console.log('  ✓ Synced to dashboard (with AI prompt)');
   } else {
     console.log(`  ⚠ Sync skipped: ${syncResult.error}`);
   }
@@ -558,36 +749,46 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
   }
   
   console.log('  ✓ Session registered\n');
-  console.log('  ╭─────────────────────────────────────────────────────────╮');
-  console.log('  │  📱 SCAN WITH YOUR PHONE                                │');
-  console.log('  ╰─────────────────────────────────────────────────────────╯\n');
-  
-  await displayQRCode(connectionUrl);
-  
-  console.log('');
-  console.log(`  URL: ${connectionUrl}`);
-  console.log('');
   console.log('  ─────────────────────────────────────────────────────────');
   console.log('');
-  console.log('  ⚡ Keep this terminal open - commands execute here');
+  console.log(`  ${green}⚡ WATCHER READY${reset}`);
+  console.log('');
+  console.log('  Open dashboard to send commands:');
+  console.log(`  ${cyan}${DASHBOARD_URL}/dashboard${reset}`);
+  console.log('');
   console.log('  ⏰ Session expires in 60 minutes');
   console.log('  🛑 Press Ctrl+C to stop');
   console.log('');
   console.log('  ─────────────────────────────────────────────────────────');
   console.log('');
-  console.log('  Waiting for commands from your phone...');
+  console.log('  Waiting for commands...');
   console.log('');
   
   let running = true;
   
-  // Handle graceful shutdown
-  process.on('SIGINT', async () => {
-    process.stdout.write('\x1b[?25h'); // Restore cursor
-    console.log('\n\n  Closing session...');
-    await updateRemoteSession(session.sessionId, { status: 'disconnected' });
-    console.log('  Pilot stopped.\n');
+  // Handle graceful shutdown - cleanup on any termination signal
+  const cleanup = async (signal: string) => {
+    if (!running) return; // Prevent double cleanup
     running = false;
+    process.stdout.write('\x1b[?25h'); // Restore cursor
+    console.log(`\n\n  Closing session (${signal})...`);
+    try {
+      await updateRemoteSession(session.sessionId, { status: 'disconnected' });
+      console.log('  Pilot stopped.\n');
+    } catch {
+      console.log('  Pilot stopped (offline).\n');
+    }
     process.exit(0);
+  };
+  
+  process.on('SIGINT', () => cleanup('SIGINT'));
+  process.on('SIGTERM', () => cleanup('SIGTERM'));
+  process.on('SIGHUP', () => cleanup('SIGHUP'));
+  
+  // Also handle uncaught errors to cleanup session
+  process.on('uncaughtException', async (err) => {
+    console.error('\n  Unexpected error:', err.message);
+    await cleanup('error');
   });
   
   // Update status to connected
@@ -600,7 +801,7 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
     try {
       // Check if session expired
       if (new Date() > session.expiresAt) {
-        console.log('\n  Session expired. Start a new one with: midas pilot --remote\n');
+        console.log('\n  Session expired. Restart with: midas watch\n');
         break;
       }
       
@@ -645,39 +846,59 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
  * Execute command with real-time session updates
  */
 async function executeCommandWithUpdates(command: PendingCommand, sessionId: string): Promise<void> {
-  const project = await getProjectById(command.project_id);
-  if (!project) {
-    console.log(`  ✗ Project not found: ${command.project_id}`);
-    return;
-  }
-  
-  console.log(`    Project: ${project.name}`);
-  
-  await markCommandRunning(command.id);
-  
-  const result = await executeClaudeCode(command.prompt, {
-    projectPath: project.local_path,
-    maxTurns: command.max_turns,
-  });
-  
-  // Update session with output
-  await updateRemoteSession(sessionId, {
-    last_output: result.output.slice(-5000), // Last 5KB
-    output_lines: result.output.split('\n').length,
-  });
-  
-  await markCommandCompleted(command.id, {
-    success: result.success,
-    output: result.output,
-    exitCode: result.exitCode,
-    durationMs: result.duration,
-    sessionId: result.sessionId,
-  });
-  
-  if (result.success) {
-    console.log(`  ✓ Complete (${(result.duration / 1000).toFixed(1)}s)\n`);
-  } else {
-    console.log(`  ✗ Failed (exit ${result.exitCode})\n`);
+  try {
+    const project = await getProjectById(command.project_id);
+    if (!project) {
+      console.log(`  ✗ Project not found: ${command.project_id}`);
+      return;
+    }
+    
+    console.log(`    Project: ${project.name}`);
+    
+    await markCommandRunning(command.id);
+    
+    const result = await executeClaudeCode(command.prompt, {
+      projectPath: project.local_path,
+      maxTurns: command.max_turns,
+    });
+    
+    // Update session with output
+    await updateRemoteSession(sessionId, {
+      last_output: result.output.slice(-5000), // Last 5KB
+      output_lines: result.output.split('\n').length,
+    });
+    
+    await markCommandCompleted(command.id, {
+      success: result.success,
+      output: result.output,
+      exitCode: result.exitCode,
+      durationMs: result.duration,
+      sessionId: result.sessionId,
+    });
+    
+    if (result.success) {
+      console.log(`  ✓ Complete (${(result.duration / 1000).toFixed(1)}s)\n`);
+    } else {
+      console.log(`  ✗ Failed (exit ${result.exitCode})`);
+      // Show error details for debugging
+      if (result.output) {
+        const errorLines = result.output.split('\n').slice(-5).join('\n');
+        console.log(`    Last output: ${errorLines.slice(0, 200)}`);
+      }
+      console.log('');
+    }
+  } catch (error) {
+    console.error(`  ✗ Error executing command #${command.id}:`, error);
+    try {
+      await markCommandCompleted(command.id, {
+        success: false,
+        output: error instanceof Error ? error.message : String(error),
+        exitCode: -1,
+        durationMs: 0,
+      });
+    } catch {
+      // Ignore cleanup errors
+    }
   }
 }
 

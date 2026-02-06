@@ -93,7 +93,7 @@ export default async function Dashboard() {
             >
               MIDAS
             </h1>
-            <span className="text-dim font-mono text-sm hidden sm:inline">// COMMAND CENTER</span>
+            <span className="text-dim font-mono text-sm hidden sm:inline">// DASHBOARD</span>
           </div>
           
           <div className="flex items-center gap-4">
@@ -126,76 +126,22 @@ export default async function Dashboard() {
           </div>
         </header>
         
-        {/* Pilot Control Panel */}
-        <div className="card mb-10 border-gold/30">
-          <div className="flex items-center justify-between mb-4">
+        {/* Watcher Status - only show when connected */}
+        {activePilot && (
+          <div className="card mb-10 border-matrix/30">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 flex items-center justify-center bg-gold/20 border border-gold/50 text-xl">
-                ⚡
-              </div>
-              <div>
-                <h2 className="font-mono font-bold">PILOT CONTROL</h2>
-                <p className="text-xs text-dim font-mono">
-                  {activePilot ? 'CONNECTED' : 'NOT CONNECTED'}
-                </p>
-              </div>
-            </div>
-            {activePilot && (
-              <Link 
-                href={`/pilot/${activePilot.id}?token=${activePilot.session_token}`}
-                className="btn-primary py-2 px-4 text-sm font-mono"
-              >
-                OPEN REMOTE →
-              </Link>
-            )}
-          </div>
-          
-          {activePilot ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 p-3 bg-matrix/10 border border-matrix/30">
-                <div className="w-2 h-2 rounded-full bg-matrix animate-pulse"></div>
-                <div className="flex-1">
-                  <p className="text-sm font-mono text-matrix">
-                    {activePilot.status === 'running' ? 'EXECUTING...' : 'READY FOR COMMANDS'}
-                  </p>
-                  {activePilot.current_task && (
-                    <p className="text-xs text-dim mt-1 truncate">{activePilot.current_task}</p>
-                  )}
-                </div>
-                <span className="text-xs text-dim font-mono">
-                  {new Date(activePilot.last_heartbeat || activePilot.created_at).toLocaleTimeString()}
+              <div className={`w-3 h-3 rounded-full ${activePilot.status === 'running' ? 'bg-blue-400 animate-pulse' : 'bg-matrix'}`} />
+              <h2 className="font-mono font-bold text-matrix">
+                {activePilot.status === 'running' ? 'EXECUTING' : 'WATCHER READY'}
+              </h2>
+              {activePilot.current_task && (
+                <span className="text-xs text-dim font-mono truncate max-w-[300px]">
+                  — {activePilot.current_task}
                 </span>
-              </div>
-              {activePilot.expires_at && (
-                <p className="text-xs text-dim font-mono">
-                  Session expires: {new Date(activePilot.expires_at).toLocaleString()}
-                </p>
               )}
             </div>
-          ) : (
-            <div className="space-y-4">
-              <p className="text-sm text-dim">
-                Start the Pilot to control Claude Code from this dashboard or your phone.
-              </p>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="p-4 bg-black/30 border border-white/10">
-                  <p className="text-xs text-dim font-mono mb-2">// ONE COMMAND START</p>
-                  <code className="block text-sm">
-                    <span className="text-gold">$</span> npx midas-mcp start
-                  </code>
-                  <p className="text-xs text-dim mt-2">Login + sync + pilot in one command</p>
-                </div>
-                <div className="p-4 bg-black/30 border border-white/10">
-                  <p className="text-xs text-dim font-mono mb-2">// MANUAL START</p>
-                  <code className="block text-sm">
-                    <span className="text-gold">$</span> npx midas-mcp pilot --watch
-                  </code>
-                  <p className="text-xs text-dim mt-2">Shows QR code for phone control</p>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
         
         {/* Stats Row */}
         <div className="grid grid-cols-3 gap-4 mb-10">
@@ -207,10 +153,13 @@ export default async function Dashboard() {
             <div className="stat-value">{activeProjects}</div>
             <div className="stat-label">ACTIVE</div>
           </div>
-          <div className="card text-center py-6">
-            <div className="stat-value">{buildPhaseProjects}</div>
+          <Link href="/dashboard/metrics" className="card text-center py-6 group hover:border-gold/50 transition-colors">
+            <div className="stat-value group-hover:text-gold transition-colors">{buildPhaseProjects}</div>
             <div className="stat-label">BUILDING</div>
-          </div>
+            <div className="text-xs text-dim mt-2 group-hover:text-gold transition-colors">
+              📊 View Metrics →
+            </div>
+          </Link>
         </div>
         
         {/* Projects Section */}

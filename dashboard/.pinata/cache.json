@@ -1,10 +1,29 @@
 {
-  "timestamp": "2026-02-03T08:38:46.495Z",
+  "timestamp": "2026-02-06T03:32:34.078Z",
   "targetDirectory": "/Users/christiancattaneo/Projects/midas-mcp/dashboard",
   "score": 100,
   "grade": "A",
-  "totalGaps": 0,
-  "gaps": [],
+  "totalGaps": 1,
+  "gaps": [
+    {
+      "categoryId": "cpu-spin",
+      "categoryName": "CPU Spin and Busy Waiting",
+      "domain": "performance",
+      "level": "unit",
+      "priority": "P0",
+      "severity": "high",
+      "confidence": "high",
+      "filePath": "/Users/christiancattaneo/Projects/midas-mcp/dashboard/components/MatrixRain.tsx",
+      "lineStart": 66,
+      "lineEnd": 66,
+      "columnStart": 21,
+      "columnEnd": 42,
+      "codeSnippet": "    65| \n>   66|     const interval = setInterval(draw, 50)\n    67| ",
+      "patternId": "ts-setinterval-fast",
+      "patternType": "regex",
+      "priorityScore": 9
+    }
+  ],
   "categoriesScanned": [
     "auth-failures",
     "blocking-io",
@@ -24,6 +43,7 @@
     "network-partition",
     "network-timeout",
     "path-traversal",
+    "prompt-injection",
     "race-condition",
     "retry-storm",
     "ssrf",

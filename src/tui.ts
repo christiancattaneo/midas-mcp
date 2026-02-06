@@ -691,14 +691,28 @@ function drawUI(state: TUIState, projectPath: string): string {
   lines.push(row(`${dim}${progress.label}${reset}`));
   lines.push(emptyRow());
   
-  // During BUILD/SHIP: Show next gameplan task hint
+  // During BUILD/SHIP: Show gameplan task completion with colored progress bar
   if (a.currentPhase.phase === 'BUILD' || a.currentPhase.phase === 'SHIP') {
     const gameplan = getGameplanProgress(projectPath);
-    if (gameplan.nextSuggested) {
-      const nextHint = `Next: ${gameplan.nextSuggested.slice(0, 45)}${gameplan.nextSuggested.length > 45 ? '...' : ''}`;
-      lines.push(row(`${dim}${nextHint}${reset}`));
-      lines.push(emptyRow());
+    if (gameplan.documented > 0 || gameplan.actual > 0) {
+      // Use actual implementation progress (more accurate than just checkboxes)
+      const taskPct = gameplan.actual;
+      const taskBarWidth = 20;
+      const taskFilled = Math.round((taskPct / 100) * taskBarWidth);
+      const taskEmpty = taskBarWidth - taskFilled;
+      const taskBar = `${green}${'█'.repeat(taskFilled)}${reset}${dim}${'░'.repeat(taskEmpty)}${reset}`;
+      const taskPctColor = taskPct >= 75 ? green : taskPct >= 40 ? yellow : red;
+      
+      // Show next task if available
+      const nextHint = gameplan.nextSuggested 
+        ? `  ${dim}→ ${gameplan.nextSuggested.slice(0, 25)}${gameplan.nextSuggested.length > 25 ? '...' : ''}${reset}`
+        : '';
+      
+      lines.push(row(`${bold}${cyan}TODO:${reset} [${taskBar}] ${taskPctColor}${taskPct}%${reset}${nextHint}`));
+    } else {
+      lines.push(row(`${dim}TODO: No tasks yet (add: - [ ] Task to gameplan.md)${reset}`));
     }
+    lines.push(emptyRow());
   }
 
   lines.push(`${cyan}╠${hLine}╣${reset}`);

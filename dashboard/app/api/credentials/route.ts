@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { getOrCreateUser, updateUserDatabase, getUserByGithubId } from "@/lib/db"
 import { createUserDatabase, initializeUserSchema } from "@/lib/turso-provisioning"
 
+const GITHUB_API_TIMEOUT_MS = 10000 // 10 second timeout for GitHub API
+
 /**
  * GET /api/credentials?github_user_id=123&github_access_token=xxx
  * 
@@ -25,6 +27,7 @@ export async function GET(request: Request) {
       'Authorization': `Bearer ${githubAccessToken}`,
       'Accept': 'application/vnd.github+json',
     },
+    signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
   })
   
   if (!githubResponse.ok) {

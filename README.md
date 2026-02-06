@@ -7,6 +7,37 @@
 
 An MCP server that brings the Golden Code methodology into Cursor as an interactive coach. Guides users through the two-phase process, provides expert prompts, and audits projects against the 12 ingredients of production readiness.
 
+## Requirements
+
+Midas uses a **hybrid architecture** for optimal performance:
+
+| Component | Purpose | Setup |
+|-----------|---------|-------|
+| **Claude Code** | Executes prompts, makes code changes | `curl -fsSL https://claude.ai/install.sh \| bash` then `claude` to auth |
+| **Anthropic API Key** | Fast project analysis, smart suggestions | Add to `~/.midas/config.json` (optional but recommended) |
+
+### Quick Setup
+
+```bash
+# 1. Install Claude Code (required for auto-mode)
+curl -fsSL https://claude.ai/install.sh | bash
+
+# 2. Authenticate Claude Code (opens browser)
+claude
+
+# 3. Run Midas
+npx midas-mcp run
+```
+
+Midas will guide you through any remaining setup (GitHub login, API key).
+
+### Why Both?
+
+- **Claude Code** = "The Hands" - actually modifies files, runs commands, iterates on errors
+- **Anthropic API** = "The Brain" - fast analysis (~$0.003/analysis), generates smart suggestions
+
+Without Claude Code, Midas can only analyze. With Claude Code, Midas can execute prompts and grind through your gameplan in auto-mode.
+
 ## Quick Start
 
 Run Midas instantly (no install required):
@@ -16,6 +47,18 @@ npx --yes midas-mcp@latest
 ```
 
 This launches the interactive TUI coach. Press `?` for help, `p` to copy the recommended prompt.
+
+### One Command to Rule Them All
+
+```bash
+npx midas-mcp run
+```
+
+This does everything:
+1. Checks Claude Code installation and auth
+2. Logs you into GitHub (for cloud dashboard)
+3. Syncs your project to the dashboard
+4. Starts watch mode for remote/auto execution
 
 ## Installation (Optional)
 

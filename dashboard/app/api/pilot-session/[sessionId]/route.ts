@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { getPilotSession, getPilotSessionByToken, updatePilotSession } from "@/lib/db"
 
+const GITHUB_API_TIMEOUT_MS = 10000 // 10 second timeout for GitHub API
+
 /**
  * GET /api/pilot-session/[sessionId]?token=xxx
  * 
@@ -74,6 +76,7 @@ export async function PATCH(
       'Authorization': `Bearer ${token}`,
       'Accept': 'application/vnd.github+json',
     },
+    signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
   })
   
   if (!githubResponse.ok) {

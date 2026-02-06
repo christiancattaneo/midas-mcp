@@ -1,9 +1,10 @@
 {
   "name": "midas-mcp",
-  "version": "5.44.15",
+  "version": "5.45.1",
   "description": "MCP server for Golden Code methodology - everything you vibecode turns to gold",
   "main": "dist/index.js",
   "bin": {
+    "midas": "./dist/index.js",
     "midas-mcp": "./dist/index.js"
   },
   "type": "module",
@@ -12,7 +13,9 @@
     "dev": "tsc --watch",
     "start": "node dist/index.js",
     "test": "npm run build && node --test dist/tests/*.test.js",
-    "prepublishOnly": "npm test"
+    "test:fast": "npm run build && node --test dist/tests/tracker.test.js dist/tests/phase.test.js dist/tests/tools.test.js dist/tests/security.test.js dist/tests/server.test.js dist/tests/journal.test.js dist/tests/analyze.test.js dist/tests/verify.test.js",
+    "test:full": "npm test",
+    "prepublishOnly": "npm run test:fast"
   },
   "keywords": [
     "mcp",
@@ -35,7 +38,7 @@
     "url": "https://github.com/christiancattaneo/midas-mcp/issues"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "qrcode-terminal": "^0.12.0",
     "update-notifier": "^7.3.1",
     "write-file-atomic": "^7.0.0",

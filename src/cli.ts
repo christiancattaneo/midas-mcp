@@ -12,6 +12,14 @@ import { runSync, isCloudConfigured } from './cloud.js';
 import { runPilotCLI } from './pilot.js';
 import { runStatusDisplay, printStatus } from './tui-lite.js';
 import { runPRReview } from './github-integration.js';
+import { 
+  checkSetupStatus, 
+  isClaudeCodeInstalled, 
+  isClaudeCodeAuthenticated,
+  getInstallInstructions,
+  getAuthInstructions,
+  testClaudeCodeConnection
+} from './claude-code.js';
 
 // ANSI colors
 const reset = '\x1b[0m';
@@ -46,34 +54,34 @@ export function showHelp(): void {
 ${bold}${cyan}MIDAS${reset} - Everything you vibecode turns to gold
 
 ${bold}Usage:${reset}
-  npx midas-mcp start        One command to rule them all (login + sync + pilot)
-  npx midas-mcp              Interactive coach (recommended)
-  npx midas-mcp status       Show current phase and progress
-  npx midas-mcp metrics      Show session metrics and statistics
-  npx midas-mcp init <name>  Initialize new project with Plan phase
-  npx midas-mcp init -f      First-time setup with tutorial
-  npx midas-mcp init -e      Analyze existing project and infer phase
-  npx midas-mcp audit        Audit project against 12 ingredients
-  npx midas-mcp docs         Check planning docs completeness
-  npx midas-mcp weekly       Show weekly summary of suggestion patterns
-  npx midas-mcp server       Start MCP server (for Cursor integration)
-  npx midas-mcp help         Show this help
+  midas run                One command to rule them all (setup + login + sync + watch)
+  midas start              Alias for 'run'
+  midas setup              Check Claude Code + Midas setup status
+  midas                    Interactive coach (recommended)
+  midas status             Show current phase and progress
+  midas metrics            Show session metrics and statistics
+  midas init <name>        Initialize new project with Plan phase
+  midas init -f            First-time setup with tutorial
+  midas init -e            Analyze existing project and infer phase
+  midas audit              Audit project against 12 ingredients
+  midas docs               Check planning docs completeness
+  midas weekly             Show weekly summary of suggestion patterns
+  midas server             Start MCP server (for Cursor integration)
+  midas help               Show this help
 
 ${bold}Claude Code Integration:${reset}
-  npx midas-mcp plugin       Install Skills+Hooks for Claude Code
-                             (copies .claude/ folder to your project)
+  midas plugin             Install Skills+Hooks for Claude Code
 
 ${bold}Cloud Dashboard:${reset}
-  npx midas-mcp login        Login with GitHub (for cloud dashboard)
-  npx midas-mcp logout       Logout from GitHub
-  npx midas-mcp sync         Sync project state to cloud dashboard
-  npx midas-mcp whoami       Show current authenticated user
+  midas login              Login with GitHub (for cloud dashboard)
+  midas logout             Logout from GitHub
+  midas sync               Sync project state to cloud dashboard
+  midas whoami             Show current authenticated user
 
-${bold}Automation (Midas Pilot):${reset}
-  npx midas-mcp pilot "prompt"  Execute a prompt via Claude Code CLI
-  npx midas-mcp pilot --watch   Watch mode - poll dashboard for commands
-  npx midas-mcp pr <url>        Review a GitHub PR with Midas methodology
-                                Example: midas pr https://github.com/owner/repo/pull/123
+${bold}Automation:${reset}
+  midas watch              Watch for commands from dashboard and execute
+  midas pilot "prompt"     Execute a single prompt via Claude Code CLI
+  midas pr <url>           Review a GitHub PR with Midas methodology
 
 ${bold}The Four Phases:${reset}
   ${yellow}PLAN${reset}         Plan before building (Idea → Research → Brainlift → PRD → Gameplan)
@@ -555,10 +563,43 @@ async function installClaudePlugin(): Promise<void> {
  */
 async function runStart(): Promise<void> {
   const projectPath = process.cwd();
+  const red = '\x1b[31m';
   
   console.log(`\n${bold}${cyan}MIDAS${reset} - Starting up...\n`);
   
-  // Step 1: Check authentication
+  // Step 0: Check Claude Code installation and auth
+  console.log(`  ${dim}Checking Claude Code...${reset}`);
+  
+  if (!isClaudeCodeInstalled()) {
+    const install = getInstallInstructions();
+    console.log(`\n  ${red}✗${reset} Claude Code is not installed\n`);
+    console.log(`  ${bold}Midas requires Claude Code to execute AI prompts.${reset}`);
+    console.log(`  Claude Code is free and uses your Claude.ai subscription.\n`);
+    console.log(`  ${bold}To install (${install.platform}):${reset}`);
+    console.log(`  ${cyan}${install.command}${reset}\n`);
+    console.log(`  After installing, run ${bold}midas run${reset} again.\n`);
+    console.log(`  ${dim}Learn more: https://docs.anthropic.com/en/docs/claude-code/setup${reset}\n`);
+    return;
+  }
+  
+  console.log(`  ${green}✓${reset} Claude Code installed`);
+  
+  if (!isClaudeCodeAuthenticated()) {
+    const auth = getAuthInstructions();
+    console.log(`  ${yellow}!${reset} Claude Code not authenticated\n`);
+    console.log(`  ${bold}You need to log in to Claude.ai to use Claude Code.${reset}\n`);
+    console.log(`  ${bold}Steps:${reset}`);
+    auth.steps.forEach((step, i) => {
+      console.log(`    ${i + 1}. ${step}`);
+    });
+    console.log(`\n  ${bold}Run this command to authenticate:${reset}`);
+    console.log(`  ${cyan}${auth.command}${reset}\n`);
+    return;
+  }
+  
+  console.log(`  ${green}✓${reset} Claude Code authenticated`);
+  
+  // Step 1: Check Midas authentication (GitHub)
   if (!isAuthenticated()) {
     console.log(`  ${yellow}→${reset} Not logged in. Starting GitHub authentication...`);
     try {
@@ -568,8 +609,8 @@ async function runStart(): Promise<void> {
       console.log(`  ${yellow}!${reset} Login skipped (optional for local use)\n`);
     }
   } else {
-    const auth = loadAuth();
-    console.log(`  ${green}✓${reset} Logged in as @${auth.githubUsername}`);
+    const authData = loadAuth();
+    console.log(`  ${green}✓${reset} Logged in as @${authData.githubUsername}`);
   }
   
   // Step 2: Install Claude plugin if missing
@@ -616,12 +657,126 @@ async function runStart(): Promise<void> {
   await runPilotCLI(['--watch']);
 }
 
+async function runSetup(runConnectionTest = false): Promise<void> {
+  const red = '\x1b[31m';
+  const { hasApiKey } = await import('./config.js');
+  
+  console.log(`\n${bold}${cyan}MIDAS SETUP${reset} - Check your environment\n`);
+  
+  // Explain hybrid architecture
+  console.log(`${dim}Midas uses a hybrid architecture:${reset}`);
+  console.log(`${dim}  • Claude Code (required) = executes prompts, makes code changes${reset}`);
+  console.log(`${dim}  • Anthropic API (optional) = fast analysis, smart suggestions${reset}\n`);
+  
+  // Check Claude Code (The Hands)
+  console.log(`${bold}1. Claude Code${reset} ${dim}(The Hands - executes prompts)${reset}`);
+  const setupStatus = checkSetupStatus();
+  
+  for (const msg of setupStatus.messages) {
+    console.log(`  ${msg}`);
+  }
+  
+  if (setupStatus.actions.length > 0) {
+    console.log(`\n${bold}Required Actions:${reset}`);
+    for (const action of setupStatus.actions) {
+      console.log(`\n  ${bold}${action.label}:${reset}`);
+      console.log(`  ${cyan}${action.command}${reset}`);
+      console.log(`  ${dim}${action.description}${reset}`);
+    }
+  }
+  
+  // Check Anthropic API Key (The Brain)
+  console.log(`\n${bold}2. Anthropic API Key${reset} ${dim}(The Brain - smart analysis)${reset}`);
+  if (hasApiKey()) {
+    console.log(`  ${green}✓${reset} API key configured`);
+    console.log(`  ${dim}  Smart suggestions enabled (~$0.003/analysis)${reset}`);
+  } else {
+    console.log(`  ${yellow}!${reset} No API key (optional but recommended)`);
+    console.log(`  ${dim}  Without it, Midas uses simpler local analysis${reset}`);
+    console.log(`  ${dim}  To add: Run ${cyan}midas${reset}${dim} → press ${cyan}k${reset}${dim} → enter key${reset}`);
+    console.log(`  ${dim}  Get key: https://console.anthropic.com/settings/keys${reset}`);
+  }
+  
+  // Check Midas Cloud auth
+  console.log(`\n${bold}3. Midas Cloud${reset} ${dim}(Dashboard + Remote Control)${reset}`);
+  if (isAuthenticated()) {
+    const authData = loadAuth();
+    console.log(`  ${green}✓${reset} Logged in as @${authData.githubUsername}`);
+    
+    if (isCloudConfigured()) {
+      console.log(`  ${green}✓${reset} Cloud sync configured`);
+    } else {
+      console.log(`  ${yellow}!${reset} Cloud sync not configured`);
+    }
+  } else {
+    console.log(`  ${yellow}!${reset} Not logged in (run ${cyan}midas login${reset})`);
+    console.log(`  ${dim}  Enables web dashboard and mobile control${reset}`);
+  }
+  
+  // Connection test (optional - can be slow)
+  if (setupStatus.ready) {
+    if (runConnectionTest) {
+      console.log(`\n${bold}4. Connection Test${reset}`);
+      console.log(`  ${dim}Sending test prompt to Claude Code...${reset}`);
+      
+      const testResult = await testClaudeCodeConnection();
+      
+      if (testResult.success) {
+        console.log(`  ${green}✓${reset} ${testResult.message}`);
+        if (testResult.latencyMs) {
+          console.log(`  ${dim}  Response time: ${testResult.latencyMs}ms${reset}`);
+        }
+      } else {
+        console.log(`  ${red}✗${reset} ${testResult.message}`);
+      }
+    } else if (setupStatus.status.version) {
+      console.log(`\n${bold}4. Version${reset}`);
+      console.log(`  ${green}✓${reset} Claude Code ${setupStatus.status.version.replace('(Claude Code)', '').trim()}`);
+      console.log(`  ${dim}  Run ${cyan}midas setup --test${reset}${dim} for full connection test${reset}`);
+    }
+  }
+  
+  // Final status
+  console.log(`\n${'─'.repeat(50)}`);
+  console.log(`${bold}Summary:${reset}`);
+  
+  const hasApi = hasApiKey();
+  const hasCloud = isAuthenticated();
+  
+  if (setupStatus.ready && hasApi && hasCloud) {
+    console.log(`  ${green}✓${reset} ${bold}Full setup complete!${reset}`);
+    console.log(`  ${dim}  Run ${cyan}midas run${reset}${dim} for auto-mode with dashboard${reset}\n`);
+  } else if (setupStatus.ready && hasApi) {
+    console.log(`  ${green}✓${reset} Local setup complete`);
+    console.log(`  ${yellow}!${reset} Cloud dashboard not configured`);
+    console.log(`  ${dim}  Run ${cyan}midas login${reset}${dim} to enable remote control${reset}\n`);
+  } else if (setupStatus.ready) {
+    console.log(`  ${green}✓${reset} Claude Code ready (can execute prompts)`);
+    console.log(`  ${yellow}!${reset} API key not set (using basic analysis)`);
+    console.log(`  ${dim}  Run ${cyan}midas run${reset}${dim} to start, or add API key for better suggestions${reset}\n`);
+  } else {
+    console.log(`  ${red}✗${reset} Setup incomplete`);
+    console.log(`  ${dim}  Install Claude Code first (see actions above)${reset}\n`);
+  }
+}
+
 export function runCLI(args: string[]): 'interactive' | 'server' | 'handled' | Promise<'handled'> {
   const command = args[0];
 
   switch (command) {
     case 'start':
-      return runStart().then(() => 'handled' as const);
+    case 'run':
+      return runStart().then(() => 'handled' as const).catch(err => {
+        console.error('Start failed:', err.message);
+        return 'handled' as const;
+      });
+    
+    case 'setup':
+    case 'doctor':
+      return runSetup(args.includes('--test')).then(() => 'handled' as const).catch(err => {
+        console.error('Setup failed:', err.message);
+        return 'handled' as const;
+      });
 
     case 'help':
     case '--help':
@@ -632,7 +787,10 @@ export function runCLI(args: string[]): 'interactive' | 'server' | 'handled' | P
     case 'status':
       // New lightweight status display
       if (args.includes('--watch') || args.includes('-w')) {
-        return runStatusDisplay(process.cwd(), true).then(() => 'handled' as const);
+        return runStatusDisplay(process.cwd(), true).then(() => 'handled' as const).catch(err => {
+          console.error('Status display failed:', err.message);
+          return 'handled' as const;
+        });
       }
       printStatus(process.cwd());
       return 'handled';
@@ -685,13 +843,23 @@ export function runCLI(args: string[]): 'interactive' | 'server' | 'handled' | P
       return 'handled';
 
     case 'pilot':
-      return runPilotCLI(args.slice(1)).then(() => 'handled' as const);
+    case 'watch':
+      return runPilotCLI(args.slice(1)).then(() => 'handled' as const).catch(err => {
+        console.error('Pilot failed:', err.message);
+        return 'handled' as const;
+      });
 
     case 'plugin':
-      return installClaudePlugin().then(() => 'handled' as const);
+      return installClaudePlugin().then(() => 'handled' as const).catch(err => {
+        console.error('Plugin install failed:', err.message);
+        return 'handled' as const;
+      });
 
     case 'pr':
-      return runPRReview(args.slice(1)).then(() => 'handled' as const);
+      return runPRReview(args.slice(1)).then(() => 'handled' as const).catch(err => {
+        console.error('PR review failed:', err.message);
+        return 'handled' as const;
+      });
 
     case 'server':
       return 'server'; // Start MCP server

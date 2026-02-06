@@ -81,37 +81,42 @@ export async function startDeviceFlow(): Promise<{
   expiresIn: number;
   interval: number;
 }> {
-  const response = await fetch('https://github.com/login/device/code', {
-    method: 'POST',
-    headers: {
-      'Accept': 'application/json',
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      client_id: GITHUB_CLIENT_ID,
-      scope: 'read:user',
-    }),
-  });
-  
-  if (!response.ok) {
-    throw new Error(`GitHub device flow failed: ${response.status}`);
+  try {
+    const response = await fetch('https://github.com/login/device/code', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        client_id: GITHUB_CLIENT_ID,
+        scope: 'read:user',
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`GitHub device flow failed: ${response.status}`);
+    }
+    
+    const data = await response.json() as {
+      device_code: string;
+      user_code: string;
+      verification_uri: string;
+      expires_in: number;
+      interval: number;
+    };
+    
+    return {
+      deviceCode: data.device_code,
+      userCode: data.user_code,
+      verificationUri: data.verification_uri,
+      expiresIn: data.expires_in,
+      interval: data.interval,
+    };
+  } catch (error) {
+    console.error('Error starting device flow:', error);
+    throw error;
   }
-  
-  const data = await response.json() as {
-    device_code: string;
-    user_code: string;
-    verification_uri: string;
-    expires_in: number;
-    interval: number;
-  };
-  
-  return {
-    deviceCode: data.device_code,
-    userCode: data.user_code,
-    verificationUri: data.verification_uri,
-    expiresIn: data.expires_in,
-    interval: data.interval,
-  };
 }
 
 /**
@@ -187,19 +192,24 @@ export async function getGitHubUser(accessToken: string): Promise<{
   id: number;
   avatar_url: string;
 }> {
-  const response = await fetch('https://api.github.com/user', {
-    headers: {
-      'Accept': 'application/vnd.github+json',
-      'Authorization': `Bearer ${accessToken}`,
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
-  });
-  
-  if (!response.ok) {
-    throw new Error(`Failed to get user info: ${response.status}`);
+  try {
+    const response = await fetch('https://api.github.com/user', {
+      headers: {
+        'Accept': 'application/vnd.github+json',
+        'Authorization': `Bearer ${accessToken}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get user info: ${response.status}`);
+    }
+    
+    return response.json() as Promise<{ login: string; id: number; avatar_url: string }>;
+  } catch (error) {
+    console.error('Error fetching GitHub user:', error);
+    throw error;
   }
-  
-  return response.json() as Promise<{ login: string; id: number; avatar_url: string }>;
 }
 
 /**
@@ -249,32 +259,37 @@ async function fetchDatabaseCredentials(
  * Saves token and user info to ~/.midas/auth.json
  */
 export async function completeAuth(accessToken: string): Promise<AuthState> {
-  const user = await getGitHubUser(accessToken);
-  
-  const auth: AuthState = {
-    githubAccessToken: accessToken,
-    githubUsername: user.login,
-    githubUserId: user.id,
-    githubAvatarUrl: user.avatar_url,
-    authenticatedAt: new Date().toISOString(),
-  };
-  
-  // Fetch personal database credentials
-  console.log('  Provisioning personal database...');
-  const dbCreds = await fetchDatabaseCredentials(user.id, accessToken);
-  
-  if (dbCreds) {
-    auth.dbUrl = dbCreds.dbUrl;
-    auth.dbToken = dbCreds.dbToken;
-    auth.dbName = dbCreds.dbName;
-    auth.dbProvisionedAt = new Date().toISOString();
-    console.log(`  ✓ Database ready: ${dbCreds.dbName}`);
-  } else {
-    console.log('  ⚠ Database provisioning failed - sync will use fallback');
+  try {
+    const user = await getGitHubUser(accessToken);
+    
+    const auth: AuthState = {
+      githubAccessToken: accessToken,
+      githubUsername: user.login,
+      githubUserId: user.id,
+      githubAvatarUrl: user.avatar_url,
+      authenticatedAt: new Date().toISOString(),
+    };
+    
+    // Fetch personal database credentials
+    console.log('  Provisioning personal database...');
+    const dbCreds = await fetchDatabaseCredentials(user.id, accessToken);
+    
+    if (dbCreds) {
+      auth.dbUrl = dbCreds.dbUrl;
+      auth.dbToken = dbCreds.dbToken;
+      auth.dbName = dbCreds.dbName;
+      auth.dbProvisionedAt = new Date().toISOString();
+      console.log(`  ✓ Database ready: ${dbCreds.dbName}`);
+    } else {
+      console.log('  ⚠ Database provisioning failed - sync will use fallback');
+    }
+    
+    saveAuth(auth);
+    return auth;
+  } catch (error) {
+    console.error('Error completing auth:', error);
+    throw error;
   }
-  
-  saveAuth(auth);
-  return auth;
 }
 
 /**
@@ -290,49 +305,54 @@ export function getDatabaseCredentials(): { dbUrl: string; dbToken: string } | n
  * Interactive login flow for CLI
  */
 export async function login(): Promise<AuthState> {
-  console.log('\n  Starting GitHub authentication...\n');
-  
-  const flow = await startDeviceFlow();
-  
-  console.log('  ┌─────────────────────────────────────────────────┐');
-  console.log('  │  GitHub Device Authorization                    │');
-  console.log('  ├─────────────────────────────────────────────────┤');
-  console.log('  │                                                 │');
-  console.log(`  │  1. Copy this code:  ${flow.userCode.padEnd(27)}│`);
-  console.log('  │                                                 │');
-  console.log(`  │  2. Open: ${flow.verificationUri.padEnd(38)}│`);
-  console.log('  │                                                 │');
-  console.log('  │  3. Paste the code and authorize                │');
-  console.log('  │                                                 │');
-  console.log('  └─────────────────────────────────────────────────┘');
-  console.log('\n  Waiting for authorization...');
-  
-  // Try to open browser automatically
   try {
-    const { exec } = await import('child_process');
-    const openCmd = process.platform === 'darwin' ? 'open' :
-                    process.platform === 'win32' ? 'start' : 'xdg-open';
-    exec(`${openCmd} ${flow.verificationUri}`);
-  } catch {
-    // Silent fail - user can manually open URL
-  }
-  
-  let dots = 0;
-  const accessToken = await pollForToken(
-    flow.deviceCode,
-    flow.interval,
-    flow.expiresIn,
-    () => {
-      process.stdout.write(`\r  Waiting for authorization${''.padEnd(dots % 4, '.')}    `);
-      dots++;
+    console.log('\n  Starting GitHub authentication...\n');
+    
+    const flow = await startDeviceFlow();
+    
+    console.log('  ┌─────────────────────────────────────────────────┐');
+    console.log('  │  GitHub Device Authorization                    │');
+    console.log('  ├─────────────────────────────────────────────────┤');
+    console.log('  │                                                 │');
+    console.log(`  │  1. Copy this code:  ${flow.userCode.padEnd(27)}│`);
+    console.log('  │                                                 │');
+    console.log(`  │  2. Open: ${flow.verificationUri.padEnd(38)}│`);
+    console.log('  │                                                 │');
+    console.log('  │  3. Paste the code and authorize                │');
+    console.log('  │                                                 │');
+    console.log('  └─────────────────────────────────────────────────┘');
+    console.log('\n  Waiting for authorization...');
+    
+    // Try to open browser automatically
+    try {
+      const { exec } = await import('child_process');
+      const openCmd = process.platform === 'darwin' ? 'open' :
+                      process.platform === 'win32' ? 'start' : 'xdg-open';
+      exec(`${openCmd} ${flow.verificationUri}`);
+    } catch {
+      // Silent fail - user can manually open URL
     }
-  );
-  
-  const auth = await completeAuth(accessToken);
-  
-  console.log(`\n\n  ✓ Logged in as @${auth.githubUsername}\n`);
-  
-  return auth;
+    
+    let dots = 0;
+    const accessToken = await pollForToken(
+      flow.deviceCode,
+      flow.interval,
+      flow.expiresIn,
+      () => {
+        process.stdout.write(`\r  Waiting for authorization${''.padEnd(dots % 4, '.')}    `);
+        dots++;
+      }
+    );
+    
+    const auth = await completeAuth(accessToken);
+    
+    console.log(`\n\n  ✓ Logged in as @${auth.githubUsername}\n`);
+    
+    return auth;
+  } catch (error) {
+    console.error('\n  ✗ Login failed:', error instanceof Error ? error.message : String(error));
+    throw error;
+  }
 }
 
 /**

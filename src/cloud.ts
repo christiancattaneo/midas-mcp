@@ -11,7 +11,17 @@ import { loadTracker, getSmartPromptSuggestion, type TrackerState } from './trac
 import { parseGameplanTasks, type GameplanTask } from './gameplan-tracker.js';
 import { discoverDocsSync } from './docs-discovery.js';
 import { sanitizePath } from './security.js';
-import { basename } from 'path';
+import { basename, resolve } from 'path';
+
+// Type for AI analysis result (passed from pilot/TUI)
+export interface AnalysisData {
+  summary?: string;
+  suggestedPrompt?: string;
+  whatsNext?: string;
+  whatsDone?: string[];
+  confidence?: number;
+  techStack?: string[];
+}
 
 // Get user's personal database credentials
 // Falls back to env vars for self-hosted setups
@@ -131,8 +141,9 @@ async function executeSQL(
  * Initialize database schema
  */
 export async function initSchema(): Promise<void> {
-  // Projects table
-  await executeSQL(`
+  try {
+    // Projects table
+    await executeSQL(`
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
       github_user_id INTEGER NOT NULL,
@@ -256,13 +267,100 @@ export async function initSchema(): Promise<void> {
       FOREIGN KEY (project_id) REFERENCES projects(id)
     )
   `);
+  
+  // Error memory table (for tracking repeated errors)
+  await executeSQL(`
+    CREATE TABLE IF NOT EXISTS error_memory (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id TEXT NOT NULL,
+      error_id TEXT NOT NULL,
+      error_text TEXT NOT NULL,
+      file_path TEXT,
+      line_number INTEGER,
+      first_seen TEXT NOT NULL,
+      last_seen TEXT NOT NULL,
+      fix_attempts INTEGER DEFAULT 0,
+      fix_history TEXT,
+      resolved INTEGER DEFAULT 0,
+      resolved_at TEXT,
+      FOREIGN KEY (project_id) REFERENCES projects(id),
+      UNIQUE(project_id, error_id)
+    )
+  `);
+  
+  // Session metrics table (for analytics)
+  await executeSQL(`
+    CREATE TABLE IF NOT EXISTS session_metrics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id TEXT NOT NULL,
+      session_date TEXT NOT NULL,
+      total_prompts INTEGER DEFAULT 0,
+      accepted_prompts INTEGER DEFAULT 0,
+      rejected_prompts INTEGER DEFAULT 0,
+      commands_executed INTEGER DEFAULT 0,
+      commands_succeeded INTEGER DEFAULT 0,
+      commands_failed INTEGER DEFAULT 0,
+      tornado_cycles INTEGER DEFAULT 0,
+      time_in_build_ms INTEGER DEFAULT 0,
+      time_stuck_ms INTEGER DEFAULT 0,
+      errors_encountered INTEGER DEFAULT 0,
+      errors_resolved INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (project_id) REFERENCES projects(id),
+      UNIQUE(project_id, session_date)
+    )
+  `);
+  
+  // Add stuck detection columns to projects (using ALTER TABLE with IF NOT EXISTS pattern)
+  try {
+    await executeSQL(`ALTER TABLE projects ADD COLUMN last_progress_at TEXT`);
+  } catch { /* Column may already exist */ }
+  
+  try {
+    await executeSQL(`ALTER TABLE projects ADD COLUMN stuck_since TEXT`);
+  } catch { /* Column may already exist */ }
+  
+  try {
+    await executeSQL(`ALTER TABLE projects ADD COLUMN stuck_on_error TEXT`);
+  } catch { /* Column may already exist */ }
+  
+  try {
+    await executeSQL(`ALTER TABLE projects ADD COLUMN time_in_phase_ms INTEGER DEFAULT 0`);
+  } catch { /* Column may already exist */ }
+  
+  } catch (error) {
+    console.error('Error initializing database schema:', error);
+    throw error;
+  }
+}
+
+/**
+ * Normalize path for consistent projectId generation
+ * - Remove trailing slashes
+ * - Lowercase on macOS (case-insensitive filesystem)
+ * - Resolve to absolute path
+ */
+function normalizePathForId(projectPath: string): string {
+  let normalized = resolve(projectPath);
+  
+  // Remove trailing slash
+  normalized = normalized.replace(/\/+$/, '');
+  
+  // Lowercase on macOS/Windows (case-insensitive filesystems)
+  if (process.platform === 'darwin' || process.platform === 'win32') {
+    normalized = normalized.toLowerCase();
+  }
+  
+  return normalized;
 }
 
 /**
  * Generate a unique project ID
+ * Uses normalized path to ensure consistency across different invocations
  */
 function generateProjectId(userId: number, projectPath: string): string {
-  const pathHash = Buffer.from(projectPath).toString('base64url').slice(0, 12);
+  const normalizedPath = normalizePathForId(projectPath);
+  const pathHash = Buffer.from(normalizedPath).toString('base64url').slice(0, 12);
   return `${userId}-${pathHash}`;
 }
 
@@ -309,7 +407,7 @@ function calculateProgress(phase: Phase): number {
 /**
  * Sync project state to cloud
  */
-export async function syncProject(projectPath: string): Promise<SyncResult> {
+export async function syncProject(projectPath: string, analysisData?: AnalysisData): Promise<SyncResult> {
   const safePath = sanitizePath(projectPath);
   
   // Check authentication
@@ -331,15 +429,16 @@ export async function syncProject(projectPath: string): Promise<SyncResult> {
     const progress = calculateProgress(state.current);
     const now = new Date().toISOString();
     
-    // Upsert project (user's personal database, no need for user ID)
+    // Upsert project by local_path (ensures no duplicates for same project)
+    // First, delete any existing project with same path but different ID (cleanup old duplicates)
     await executeSQL(`
-      INSERT INTO projects (id, name, local_path, current_phase, current_step, progress, last_synced)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        current_phase = excluded.current_phase,
-        current_step = excluded.current_step,
-        progress = excluded.progress,
-        last_synced = excluded.last_synced
+      DELETE FROM projects WHERE local_path = ? AND id != ?
+    `, [safePath, projectId]);
+    
+    // Now upsert the project (use INSERT OR REPLACE to handle both id and local_path conflicts)
+    await executeSQL(`
+      INSERT OR REPLACE INTO projects (id, name, local_path, current_phase, current_step, progress, last_synced, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM projects WHERE id = ?), ?))
     `, [
       projectId,
       projectName,
@@ -348,6 +447,8 @@ export async function syncProject(projectPath: string): Promise<SyncResult> {
       'step' in state.current ? state.current.step : '',
       progress,
       now,
+      projectId, // for subquery
+      now, // fallback for new projects
     ]);
     
     // Sync recent events
@@ -424,8 +525,17 @@ export async function syncProject(projectPath: string): Promise<SyncResult> {
     }
     
     // Sync smart suggestion (for mobile pilot)
+    // Use AI analysis if provided, otherwise fall back to local suggestion
     try {
-      const suggestion = getSmartPromptSuggestion(safePath);
+      const localSuggestion = getSmartPromptSuggestion(safePath);
+      
+      // Prefer AI-generated prompt if available
+      const prompt = analysisData?.suggestedPrompt || localSuggestion.prompt;
+      const reason = analysisData?.whatsNext || localSuggestion.reason;
+      const summary = analysisData?.summary || '';
+      const techStack = analysisData?.techStack?.join(', ') || '';
+      const confidence = analysisData?.confidence || 0;
+      
       await executeSQL(`
         INSERT INTO smart_suggestions (project_id, prompt, reason, priority, context, phase, step, synced_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -439,10 +549,10 @@ export async function syncProject(projectPath: string): Promise<SyncResult> {
           synced_at = excluded.synced_at
       `, [
         projectId,
-        suggestion.prompt,
-        suggestion.reason,
-        suggestion.priority,
-        suggestion.context || null,
+        prompt,
+        reason,
+        analysisData ? 'ai_analyzed' : localSuggestion.priority,
+        JSON.stringify({ summary, techStack, confidence, whatsDone: analysisData?.whatsDone || [] }),
         state.current.phase,
         'step' in state.current ? state.current.step : '',
         now,
@@ -450,6 +560,126 @@ export async function syncProject(projectPath: string): Promise<SyncResult> {
     } catch (err) {
       // Non-fatal: suggestion sync failure shouldn't break overall sync
       console.error('  Warning: Could not sync smart suggestion');
+    }
+    
+    // Sync error memory (for dashboard stuck detection)
+    try {
+      const unresolvedErrors = tracker.errorMemory.filter(e => !e.resolved);
+      
+      for (const error of unresolvedErrors.slice(0, 10)) { // Limit to 10 most recent
+        await executeSQL(`
+          INSERT INTO error_memory (project_id, error_id, error_text, file_path, line_number, first_seen, last_seen, fix_attempts, fix_history, resolved)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(project_id, error_id) DO UPDATE SET
+            error_text = excluded.error_text,
+            last_seen = excluded.last_seen,
+            fix_attempts = excluded.fix_attempts,
+            fix_history = excluded.fix_history,
+            resolved = excluded.resolved
+        `, [
+          projectId,
+          error.id,
+          error.error.slice(0, 1000), // Limit error text length
+          error.file || null,
+          error.line || null,
+          new Date(error.firstSeen).toISOString(),
+          new Date(error.lastSeen).toISOString(),
+          error.fixAttempts.length,
+          JSON.stringify(error.fixAttempts.slice(-5)), // Last 5 fix attempts
+          error.resolved ? 1 : 0,
+        ]);
+      }
+      
+      // Mark resolved errors
+      const resolvedErrorIds = tracker.errorMemory
+        .filter(e => e.resolved)
+        .map(e => e.id);
+      
+      if (resolvedErrorIds.length > 0) {
+        for (const errorId of resolvedErrorIds) {
+          await executeSQL(`
+            UPDATE error_memory SET resolved = 1, resolved_at = ? WHERE project_id = ? AND error_id = ?
+          `, [now, projectId, errorId]);
+        }
+      }
+    } catch (err) {
+      // Non-fatal
+      console.error('  Warning: Could not sync error memory');
+    }
+    
+    // Sync stuck detection (update projects table)
+    try {
+      const lastProgressAt = tracker.lastProgressAt 
+        ? new Date(tracker.lastProgressAt).toISOString() 
+        : null;
+      
+      const phaseEnteredAt = tracker.phaseEnteredAt
+        ? new Date(tracker.phaseEnteredAt).toISOString()
+        : null;
+      
+      // Calculate time in phase
+      const timeInPhaseMs = tracker.phaseEnteredAt
+        ? Date.now() - tracker.phaseEnteredAt
+        : 0;
+      
+      // Determine if stuck (no progress for 2+ hours)
+      const twoHoursMs = 2 * 60 * 60 * 1000;
+      const stuckSince = tracker.lastProgressAt && (Date.now() - tracker.lastProgressAt) > twoHoursMs
+        ? new Date(tracker.lastProgressAt + twoHoursMs).toISOString()
+        : null;
+      
+      // Get the most problematic error (most fix attempts)
+      const stuckOnError = tracker.errorMemory
+        .filter(e => !e.resolved)
+        .sort((a, b) => b.fixAttempts.length - a.fixAttempts.length)[0]?.error?.slice(0, 200) || null;
+      
+      await executeSQL(`
+        UPDATE projects SET 
+          last_progress_at = ?,
+          stuck_since = ?,
+          stuck_on_error = ?,
+          time_in_phase_ms = ?
+        WHERE id = ?
+      `, [lastProgressAt, stuckSince, stuckOnError, timeInPhaseMs, projectId]);
+    } catch (err) {
+      // Non-fatal
+      console.error('  Warning: Could not sync stuck detection');
+    }
+    
+    // Sync daily metrics
+    try {
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      
+      // Count today's activity from tracker
+      const todayStart = new Date(today).getTime();
+      const todayToolCalls = tracker.recentToolCalls.filter(t => t.timestamp >= todayStart).length;
+      const todaySuggestions = tracker.suggestionHistory.filter(s => s.timestamp >= todayStart);
+      const acceptedToday = todaySuggestions.filter(s => s.accepted).length;
+      const rejectedToday = todaySuggestions.filter(s => !s.accepted).length;
+      const errorsToday = tracker.errorMemory.filter(e => e.firstSeen >= todayStart).length;
+      const resolvedToday = tracker.errorMemory.filter(e => e.resolved && e.lastSeen >= todayStart).length;
+      
+      await executeSQL(`
+        INSERT INTO session_metrics (project_id, session_date, total_prompts, accepted_prompts, rejected_prompts, errors_encountered, errors_resolved)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(project_id, session_date) DO UPDATE SET
+          total_prompts = excluded.total_prompts,
+          accepted_prompts = excluded.accepted_prompts,
+          rejected_prompts = excluded.rejected_prompts,
+          errors_encountered = excluded.errors_encountered,
+          errors_resolved = excluded.errors_resolved
+      `, [
+        projectId,
+        today,
+        todaySuggestions.length,
+        acceptedToday,
+        rejectedToday,
+        errorsToday,
+        resolvedToday,
+      ]);
+    } catch (err) {
+      // Non-fatal
+      console.error('  Warning: Could not sync metrics');
     }
     
     return {
@@ -471,23 +701,28 @@ export async function syncProject(projectPath: string): Promise<SyncResult> {
 export async function getProjects(): Promise<CloudProject[]> {
   if (!isAuthenticated()) return [];
   
-  const result = await executeSQL(`
-    SELECT * FROM projects ORDER BY last_synced DESC
-  `);
-  
-  // User's personal DB - columns: id, name, local_path, current_phase, current_step, progress, last_synced, created_at
-  return result.rows.map(row => ({
-    id: row[0] as string,
-    github_user_id: 0, // Not stored in personal DB
-    github_username: '', // Not stored in personal DB
-    name: row[1] as string,
-    local_path: row[2] as string,
-    current_phase: row[3] as string,
-    current_step: row[4] as string,
-    progress: row[5] as number,
-    last_synced: row[6] as string,
-    created_at: row[7] as string,
-  }));
+  try {
+    const result = await executeSQL(`
+      SELECT * FROM projects ORDER BY last_synced DESC
+    `);
+    
+    // User's personal DB - columns: id, name, local_path, current_phase, current_step, progress, last_synced, created_at
+    return result.rows.map(row => ({
+      id: row[0] as string,
+      github_user_id: 0, // Not stored in personal DB
+      github_username: '', // Not stored in personal DB
+      name: row[1] as string,
+      local_path: row[2] as string,
+      current_phase: row[3] as string,
+      current_step: row[4] as string,
+      progress: row[5] as number,
+      last_synced: row[6] as string,
+      created_at: row[7] as string,
+    }));
+  } catch (error) {
+    console.error('Error fetching projects:', error);
+    return [];
+  }
 }
 
 /**
@@ -529,48 +764,58 @@ export async function fetchPendingCommands(): Promise<PendingCommand[]> {
     return [];
   }
   
-  // User's personal DB - no github_user_id column
-  const result = await executeSQL(`
-    SELECT * FROM pending_commands 
-    WHERE status = 'pending'
-    ORDER BY priority DESC, created_at ASC
-    LIMIT 10
-  `);
-  
-  if (result.rows.length > 0) {
-    console.log(`  [debug] Found ${result.rows.length} pending command(s)`);
+  try {
+    // User's personal DB - no github_user_id column
+    const result = await executeSQL(`
+      SELECT * FROM pending_commands 
+      WHERE status = 'pending'
+      ORDER BY priority DESC, created_at ASC
+      LIMIT 10
+    `);
+    
+    if (result.rows.length > 0) {
+      console.log(`  [debug] Found ${result.rows.length} pending command(s)`);
+    }
+    
+    // Columns: id, project_id, command_type, prompt, status, priority, max_turns, created_at, started_at, completed_at, output, error, exit_code, duration_ms, session_id
+    return result.rows.map(row => ({
+      id: row[0] as number,
+      project_id: row[1] as string,
+      github_user_id: 0, // Not in personal DB
+      command_type: row[2] as 'prompt' | 'task' | 'gameplan',
+      prompt: row[3] as string,
+      status: row[4] as 'pending' | 'running' | 'completed' | 'failed' | 'cancelled',
+      priority: row[5] as number,
+      max_turns: row[6] as number,
+      created_at: row[7] as string,
+      started_at: row[8] as string | undefined,
+      completed_at: row[9] as string | undefined,
+      output: row[10] as string | undefined,
+      error: row[11] as string | undefined,
+      exit_code: row[12] as number | undefined,
+      duration_ms: row[13] as number | undefined,
+      session_id: row[14] as string | undefined,
+    }));
+  } catch (error) {
+    console.error('Error fetching pending commands:', error);
+    return [];
   }
-  
-  // Columns: id, project_id, command_type, prompt, status, priority, max_turns, created_at, started_at, completed_at, output, error, exit_code, duration_ms, session_id
-  return result.rows.map(row => ({
-    id: row[0] as number,
-    project_id: row[1] as string,
-    github_user_id: 0, // Not in personal DB
-    command_type: row[2] as 'prompt' | 'task' | 'gameplan',
-    prompt: row[3] as string,
-    status: row[4] as 'pending' | 'running' | 'completed' | 'failed' | 'cancelled',
-    priority: row[5] as number,
-    max_turns: row[6] as number,
-    created_at: row[7] as string,
-    started_at: row[8] as string | undefined,
-    completed_at: row[9] as string | undefined,
-    output: row[10] as string | undefined,
-    error: row[11] as string | undefined,
-    exit_code: row[12] as number | undefined,
-    duration_ms: row[13] as number | undefined,
-    session_id: row[14] as string | undefined,
-  }));
 }
 
 /**
  * Mark a command as running
  */
 export async function markCommandRunning(commandId: number): Promise<void> {
-  await executeSQL(`
-    UPDATE pending_commands 
-    SET status = 'running', started_at = ?
-    WHERE id = ?
-  `, [new Date().toISOString(), commandId]);
+  try {
+    await executeSQL(`
+      UPDATE pending_commands 
+      SET status = 'running', started_at = ?
+      WHERE id = ?
+    `, [new Date().toISOString(), commandId]);
+  } catch (error) {
+    console.error('Error marking command as running:', error);
+    throw error;
+  }
 }
 
 /**
@@ -586,46 +831,56 @@ export async function markCommandCompleted(
     sessionId?: string;
   }
 ): Promise<void> {
-  await executeSQL(`
-    UPDATE pending_commands 
-    SET status = ?, completed_at = ?, output = ?, error = ?, exit_code = ?, duration_ms = ?, session_id = ?
-    WHERE id = ?
-  `, [
-    result.success ? 'completed' : 'failed',
-    new Date().toISOString(),
-    result.success ? result.output : null,
-    result.success ? null : result.output,
-    result.exitCode,
-    result.durationMs,
-    result.sessionId || null,
-    commandId,
-  ]);
+  try {
+    await executeSQL(`
+      UPDATE pending_commands 
+      SET status = ?, completed_at = ?, output = ?, error = ?, exit_code = ?, duration_ms = ?, session_id = ?
+      WHERE id = ?
+    `, [
+      result.success ? 'completed' : 'failed',
+      new Date().toISOString(),
+      result.success ? result.output : null,
+      result.success ? null : result.output,
+      result.exitCode,
+      result.durationMs,
+      result.sessionId || null,
+      commandId,
+    ]);
+  } catch (error) {
+    console.error('Error marking command as completed:', error);
+    throw error;
+  }
 }
 
 /**
  * Get project details by ID (for Pilot to know the path)
  */
 export async function getProjectById(projectId: string): Promise<CloudProject | null> {
-  const result = await executeSQL(`
-    SELECT * FROM projects WHERE id = ?
-  `, [projectId]);
-  
-  if (result.rows.length === 0) return null;
-  
-  // User's personal DB columns: id, name, local_path, current_phase, current_step, progress, last_synced, created_at
-  const row = result.rows[0];
-  return {
-    id: row[0] as string,
-    github_user_id: 0,
-    github_username: '',
-    name: row[1] as string,
-    local_path: row[2] as string,
-    current_phase: row[3] as string,
-    current_step: row[4] as string,
-    progress: row[5] as number,
-    last_synced: row[6] as string,
-    created_at: row[7] as string,
-  };
+  try {
+    const result = await executeSQL(`
+      SELECT * FROM projects WHERE id = ?
+    `, [projectId]);
+    
+    if (result.rows.length === 0) return null;
+    
+    // User's personal DB columns: id, name, local_path, current_phase, current_step, progress, last_synced, created_at
+    const row = result.rows[0];
+    return {
+      id: row[0] as string,
+      github_user_id: 0,
+      github_username: '',
+      name: row[1] as string,
+      local_path: row[2] as string,
+      current_phase: row[3] as string,
+      current_step: row[4] as string,
+      progress: row[5] as number,
+      last_synced: row[6] as string,
+      created_at: row[7] as string,
+    };
+  } catch (error) {
+    console.error('Error fetching project by ID:', error);
+    return null;
+  }
 }
 
 /**
@@ -634,14 +889,18 @@ export async function getProjectById(projectId: string): Promise<CloudProject | 
 export async function runSync(projectPath: string): Promise<void> {
   console.log('\n  Syncing to cloud...\n');
   
-  const result = await syncProject(projectPath);
-  
-  if (result.success) {
-    console.log(`  ✓ Synced successfully`);
-    console.log(`    Project ID: ${result.projectId}`);
-    console.log(`    Synced at: ${result.syncedAt}\n`);
-    console.log(`  View at: https://dashboard.midasmcp.com\n`);
-  } else {
-    console.log(`  ✗ Sync failed: ${result.error}\n`);
+  try {
+    const result = await syncProject(projectPath);
+    
+    if (result.success) {
+      console.log(`  ✓ Synced successfully`);
+      console.log(`    Project ID: ${result.projectId}`);
+      console.log(`    Synced at: ${result.syncedAt}\n`);
+      console.log(`  View at: https://dashboard.midasmcp.com\n`);
+    } else {
+      console.log(`  ✗ Sync failed: ${result.error}\n`);
+    }
+  } catch (error) {
+    console.error('  ✗ Sync error:', error instanceof Error ? error.message : String(error));
   }
 }

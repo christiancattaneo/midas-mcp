@@ -8,6 +8,14 @@
 const TURSO_ORG = 'christiancattaneo'
 const TURSO_GROUP = 'default'
 const TURSO_API_BASE = 'https://api.turso.tech/v1'
+const FETCH_TIMEOUT_MS = 30000 // 30 second timeout for API calls
+
+/**
+ * Create an AbortSignal that times out after the specified milliseconds
+ */
+function createTimeoutSignal(ms: number): AbortSignal {
+  return AbortSignal.timeout(ms)
+}
 
 interface CreateDatabaseResponse {
   database: {
@@ -52,6 +60,7 @@ export async function createUserDatabase(githubUserId: number): Promise<{
           name: dbName,
           group: TURSO_GROUP,
         }),
+        signal: createTimeoutSignal(FETCH_TIMEOUT_MS),
       }
     )
     
@@ -74,6 +83,7 @@ export async function createUserDatabase(githubUserId: number): Promise<{
         headers: {
           'Authorization': `Bearer ${platformToken}`,
         },
+        signal: createTimeoutSignal(FETCH_TIMEOUT_MS),
       }
     )
     
@@ -110,7 +120,7 @@ export async function initializeUserSchema(dbUrl: string, dbToken: string): Prom
     `CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
-      local_path TEXT NOT NULL,
+      local_path TEXT NOT NULL UNIQUE,
       current_phase TEXT DEFAULT 'IDLE',
       current_step TEXT DEFAULT '',
       progress INTEGER DEFAULT 0,
@@ -188,11 +198,49 @@ export async function initializeUserSchema(dbUrl: string, dbToken: string): Prom
             { type: 'close' }
           ]
         }),
+        signal: createTimeoutSignal(FETCH_TIMEOUT_MS),
       })
       
       if (!response.ok) {
         console.error(`Failed to execute schema: ${await response.text()}`)
         return false
+      }
+    }
+    
+    // Migration: Clean up duplicate projects (keep the most recently synced one)
+    // and add unique index if it doesn't exist
+    const migrations = [
+      // First, delete duplicates keeping the most recently synced
+      `DELETE FROM projects 
+       WHERE id NOT IN (
+         SELECT id FROM (
+           SELECT id, local_path, 
+                  ROW_NUMBER() OVER (PARTITION BY local_path ORDER BY last_synced DESC) as rn
+           FROM projects
+         ) WHERE rn = 1
+       )`,
+      // Then add unique index for existing tables (will fail silently if already exists)
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_local_path ON projects(local_path)`,
+    ]
+    
+    for (const sql of migrations) {
+      try {
+        await fetch(`${httpUrl}/v2/pipeline`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${dbToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            requests: [
+              { type: 'execute', stmt: { sql } },
+              { type: 'close' }
+            ]
+          }),
+          signal: createTimeoutSignal(FETCH_TIMEOUT_MS),
+        })
+      } catch {
+        // Migration may fail on fresh databases or if already applied - that's fine
       }
     }
     
