@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
-import { getUserByGithubId, getSmartSuggestion, getActivePilotSession, getRecentCommands, getStuckStatus, getUnresolvedErrors } from "@/lib/db"
+import { getUserByGithubId, getSmartSuggestion, getLatestSmartSuggestion, getActivePilotSession, getRecentCommands, getStuckStatus, getUnresolvedErrors } from "@/lib/db"
 
 /**
  * GET /api/project-status?projectId=xxx
@@ -36,8 +36,11 @@ export async function GET(request: Request) {
       })
     }
     
-    // Get smart suggestion
-    const smartSuggestion = await getSmartSuggestion(projectId, user.db_url, user.db_token)
+    // Get smart suggestion - try exact project ID first, fall back to latest
+    let smartSuggestion = await getSmartSuggestion(projectId, user.db_url, user.db_token)
+    if (!smartSuggestion) {
+      smartSuggestion = await getLatestSmartSuggestion(user.db_url, user.db_token)
+    }
     
     // Get watcher/pilot session status
     const activePilot = await getActivePilotSession(githubId)

@@ -689,6 +689,45 @@ export async function getSmartSuggestion(
   }
 }
 
+/**
+ * Get the most recently synced smart suggestion (any project).
+ * Used as fallback when the exact project ID doesn't match.
+ */
+export async function getLatestSmartSuggestion(
+  dbUrl?: string,
+  dbToken?: string
+): Promise<SmartSuggestion | null> {
+  try {
+    const client = dbUrl && dbToken 
+      ? getUserClient(dbUrl, dbToken)
+      : getMasterClient()
+    
+    const result = await client.execute({
+      sql: `SELECT * FROM smart_suggestions ORDER BY synced_at DESC LIMIT 1`,
+      args: [],
+    })
+    
+    if (result.rows.length === 0) {
+      return null
+    }
+    
+    const row = result.rows[0]
+    return {
+      project_id: row.project_id as string,
+      prompt: row.prompt as string,
+      reason: row.reason as string,
+      priority: row.priority as 'critical' | 'high' | 'normal' | 'low',
+      context: row.context as string | null,
+      phase: row.phase as string,
+      step: row.step as string,
+      synced_at: row.synced_at as string,
+    }
+  } catch (error) {
+    console.error('Error fetching latest smart suggestion:', error)
+    return null
+  }
+}
+
 // ============================================================================
 // ERROR MEMORY
 // ============================================================================
