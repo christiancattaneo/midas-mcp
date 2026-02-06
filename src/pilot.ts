@@ -740,11 +740,10 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
     out.push(tuiRow(`  ${gold}└${'─'.repeat(I - 6)}┘${reset}`));
     out.push(tuiEmpty());
     
-    // Status + controls
+    // Menu bar with keyboard shortcuts
     out.push(`  ${cyan}╠${TUI_HLINE}╣${reset}`);
-    out.push(tuiRow(`${green}●${reset} ${green}READY${reset} ${dim}— accept from dashboard or auto-mode${reset}`));
+    out.push(tuiRow(`${bold}[a]${reset} Accept  ${bold}[s]${reset} Skip  ${bold}[c]${reset} Copy  ${bold}[m]${reset} Auto  ${bold}[q]${reset} Quit`));
     out.push(tuiRow(`${dim}Dashboard: ${cyan}dashboard.midasmcp.com${reset}`));
-    out.push(tuiRow(`${dim}Ctrl+C to stop${reset}`));
     out.push(`  ${cyan}╚${TUI_HLINE}╝${reset}`);
     
     process.stdout.write(out.join('\n') + '\n');
@@ -782,7 +781,112 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
   // Update status to connected
   await updateRemoteSession(session.sessionId, { status: 'connected' });
   
-  // Heartbeat loop
+  // =========================================================================
+  // KEYBOARD INPUT - raw mode for single-key presses
+  // =========================================================================
+  let autoMode = false;
+  let isExecuting = false;
+  
+  // Copy to clipboard helper
+  const copyToClipboard = (text: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const { exec: execCb } = require('child_process') as typeof import('child_process');
+      const proc = execCb('pbcopy', (err: Error | null) => {
+        if (err) reject(err);
+        else resolve();
+      });
+      proc.stdin?.write(text);
+      proc.stdin?.end();
+    });
+  };
+  
+  // Accept the current suggestion - execute directly via Claude Code
+  const acceptSuggestion = async () => {
+    if (isExecuting || !suggestedPrompt) return;
+    isExecuting = true;
+    
+    const prompt = suggestedPrompt;
+    
+    await updateRemoteSession(session.sessionId, {
+      status: 'running',
+      current_task: prompt.slice(0, 100),
+    });
+    
+    renderExecutionBox(prompt, 'starting', '');
+    
+    const result = await executeClaudeCode(prompt, {
+      projectPath,
+    }, (_chunk, fullOutput) => {
+      renderExecutionBox(prompt, 'running', fullOutput);
+      updateRemoteSession(session.sessionId, {
+        last_output: fullOutput.slice(-5000),
+        output_lines: fullOutput.split('\n').length,
+      }).catch(() => {});
+    });
+    
+    renderExecutionBox(prompt, result.success ? 'done' : 'failed', result.output);
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    await updateRemoteSession(session.sessionId, {
+      status: 'idle',
+      current_task: undefined,
+    });
+    isExecuting = false;
+    renderReadyScreen();
+  };
+  
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(true);
+  }
+  process.stdin.resume();
+  process.stdin.setEncoding('utf8');
+  
+  process.stdin.on('data', async (key: string) => {
+    if (isExecuting) return; // Ignore keys during execution
+    
+    if (key === 'q' || key === '\u0003') { // q or Ctrl+C
+      await cleanup('quit');
+      return;
+    }
+    
+    if (key === 'a' || key === '\r' || key === '\n') { // a or Enter = accept
+      await acceptSuggestion();
+      return;
+    }
+    
+    if (key === 'c') { // copy prompt to clipboard
+      if (suggestedPrompt) {
+        try {
+          await copyToClipboard(suggestedPrompt);
+          // Quick flash message
+          process.stdout.write(`\x1b[2J\x1b[H`);
+          renderReadyScreen();
+        } catch { /* ignore */ }
+      }
+      return;
+    }
+    
+    if (key === 's' || key === 'x') { // skip/reject
+      // Re-analyze to get a new suggestion
+      renderReadyScreen();
+      return;
+    }
+    
+    if (key === 'm') { // toggle auto mode
+      autoMode = !autoMode;
+      renderReadyScreen();
+      return;
+    }
+    
+    if (key === 'r') { // re-analyze
+      renderReadyScreen();
+      return;
+    }
+  });
+  
+  // =========================================================================
+  // MAIN LOOP - poll for commands + heartbeat
+  // =========================================================================
   let lastHeartbeat = Date.now();
   
   while (running) {
@@ -799,36 +903,40 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
         lastHeartbeat = Date.now();
       }
       
-      // Poll for commands
-      const commands = await fetchPendingCommands();
-      
-      if (commands.length > 0) {
-        const command = commands[0];
-        
-        // Update session status
-        await updateRemoteSession(session.sessionId, {
-          status: 'running',
-          current_task: command.prompt.slice(0, 100),
-        });
-        
-        // Render execution in a TUI box
-        renderExecutionBox(command.prompt, 'starting', '');
-        
-        // Execute with live TUI output
-        await executeCommandWithUpdates(command, session.sessionId, (output) => {
-          renderExecutionBox(command.prompt, 'running', output);
-        });
-        
-        // Show ready state again with full prompt
-        renderReadyScreen();
-        
-        // Back to idle
-        await updateRemoteSession(session.sessionId, {
-          status: 'idle',
-          current_task: undefined,
-        });
+      // Auto mode: accept suggestion automatically
+      if (autoMode && suggestedPrompt && !isExecuting) {
+        await acceptSuggestion();
       }
-    } catch (err) {
+      
+      // Poll for commands from dashboard
+      if (!isExecuting) {
+        const commands = await fetchPendingCommands();
+        
+        if (commands.length > 0) {
+          const command = commands[0];
+          isExecuting = true;
+          
+          await updateRemoteSession(session.sessionId, {
+            status: 'running',
+            current_task: command.prompt.slice(0, 100),
+          });
+          
+          renderExecutionBox(command.prompt, 'starting', '');
+          
+          await executeCommandWithUpdates(command, session.sessionId, (output) => {
+            renderExecutionBox(command.prompt, 'running', output);
+          });
+          
+          isExecuting = false;
+          renderReadyScreen();
+          
+          await updateRemoteSession(session.sessionId, {
+            status: 'idle',
+            current_task: undefined,
+          });
+        }
+      }
+    } catch {
       // Network error, continue
     }
     
