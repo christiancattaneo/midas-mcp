@@ -25,7 +25,9 @@ interface ActiveCommand {
   status: string
   output: string | null
   error: string | null
+  exit_code: number | null
   started_at: string | null
+  completed_at: string | null
   duration_ms: number | null
 }
 
