@@ -4,6 +4,9 @@ import { getProjectById, getLatestGates, getUserByGithubId } from "@/lib/db"
 import Link from "next/link"
 import { CommandCenter } from "@/components/CommandCenter"
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 const PHASE_STEPS: Record<string, string[]> = {
   IDLE: [],
   PLAN: ['IDEA', 'RESEARCH', 'PRD', 'GAMEPLAN'],

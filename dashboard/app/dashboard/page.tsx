@@ -5,6 +5,10 @@ import Image from "next/image"
 import Link from "next/link"
 import { ThemeToggle } from "@/components/ThemeToggle"
 
+// Never cache this page - always show fresh data
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 // Phase configuration
 const PHASE_STEPS: Record<string, string[]> = {
   IDLE: [],
@@ -41,12 +45,9 @@ function PhaseBadge({ phase }: { phase: string }) {
   )
 }
 
-function PhaseProgressBar({ phase, step }: { phase: string; step: string }) {
-  const steps = PHASE_STEPS[phase] || []
-  const currentIndex = steps.indexOf(step)
-  const progress = steps.length > 0 
-    ? Math.round(((currentIndex + 1) / steps.length) * 100)
-    : 0
+function PhaseProgressBar({ phase, step, storedProgress }: { phase: string; step: string; storedProgress: number }) {
+  // Use the progress value synced from midas (overall lifecycle progress)
+  const progress = storedProgress || 0
 
   return (
     <div className="w-full">
@@ -208,7 +209,8 @@ export default async function Dashboard() {
                   
                   <PhaseProgressBar 
                     phase={project.current_phase} 
-                    step={project.current_step} 
+                    step={project.current_step}
+                    storedProgress={project.progress} 
                   />
                   
                   <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between text-xs font-mono">
