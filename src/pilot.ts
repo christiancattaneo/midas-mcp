@@ -29,6 +29,18 @@ import { analyzeProjectStreaming, type ProjectAnalysis, type AnalysisProgress } 
 
 // QR code removed - dashboard handles remote control now
 
+// ANSI colors (module-level for use in TUI rendering)
+const reset = '\x1b[0m';
+const bold = '\x1b[1m';
+const dim = '\x1b[2m';
+const green = '\x1b[32m';
+const yellow = '\x1b[33m';
+const blue = '\x1b[34m';
+const cyan = '\x1b[36m';
+const magenta = '\x1b[35m';
+const white = '\x1b[37m';
+const red = '\x1b[31m';
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -551,14 +563,7 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
   // STEP 1: Full AI Analysis with TUI-style colorful progress
   // =========================================================================
   
-  // ANSI colors
-  const reset = '\x1b[0m';
-  const bold = '\x1b[1m';
-  const dim = '\x1b[2m';
-  const green = '\x1b[32m';
-  const yellow = '\x1b[33m';
-  const cyan = '\x1b[36m';
-  const magenta = '\x1b[35m';
+  // ANSI colors defined at module level
   
   const spinners = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
   const stages = ['gathering', 'connecting', 'thinking', 'streaming', 'parsing'];
@@ -754,20 +759,19 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
   }
   
   console.log('  ✓ Session registered\n');
-  console.log('  ─────────────────────────────────────────────────────────');
-  console.log('');
-  console.log(`  ${green}⚡ WATCHER READY${reset}`);
-  console.log('');
-  console.log('  Open dashboard to send commands:');
-  console.log(`  ${cyan}${DASHBOARD_URL}/dashboard${reset}`);
-  console.log('');
-  console.log('  ⏰ Session expires in 60 minutes');
-  console.log('  🛑 Press Ctrl+C to stop');
-  console.log('');
-  console.log('  ─────────────────────────────────────────────────────────');
-  console.log('');
-  console.log('  Waiting for commands...');
-  console.log('');
+  
+  // Render ready state in TUI box
+  process.stdout.write('\x1b[2J\x1b[H');
+  const W = 58;
+  const hLine = '═'.repeat(W - 2);
+  console.log(`  ${cyan}╔${hLine}╗${reset}`);
+  console.log(`  ${cyan}║${reset} ${bold}${white}MIDAS${reset} ${dim}watch${reset}${' '.repeat(42)}${cyan}║${reset}`);
+  console.log(`  ${cyan}╠${hLine}╣${reset}`);
+  console.log(`  ${cyan}║${reset} ${green}●${reset} ${green}READY${reset} — waiting for commands${' '.repeat(19)}${cyan}║${reset}`);
+  console.log(`  ${cyan}║${reset}${' '.repeat(W - 2)}${cyan}║${reset}`);
+  console.log(`  ${cyan}║${reset} ${dim}Dashboard: ${reset}${cyan}dashboard.midasmcp.com${reset}${' '.repeat(12)}${cyan}║${reset}`);
+  console.log(`  ${cyan}║${reset} ${dim}Ctrl+C to stop${reset}${' '.repeat(40)}${cyan}║${reset}`);
+  console.log(`  ${cyan}╚${hLine}╝${reset}`);
   
   let running = true;
   
@@ -821,8 +825,6 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
       
       if (commands.length > 0) {
         const command = commands[0];
-        console.log(`  ▸ Received command #${command.id}`);
-        console.log(`    ${command.prompt.slice(0, 60)}...`);
         
         // Update session status
         await updateRemoteSession(session.sessionId, {
@@ -830,8 +832,24 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
           current_task: command.prompt.slice(0, 100),
         });
         
-        // Execute command (reusing existing function)
-        await executeCommandWithUpdates(command, session.sessionId);
+        // Render execution in a TUI box
+        renderExecutionBox(command.prompt, 'starting', '');
+        
+        // Execute with live TUI output
+        await executeCommandWithUpdates(command, session.sessionId, (output) => {
+          renderExecutionBox(command.prompt, 'running', output);
+        });
+        
+        // Show idle state again
+        process.stdout.write('\x1b[2J\x1b[H');
+        console.log(`\n  ${cyan}╔${'═'.repeat(56)}╗${reset}`);
+        console.log(`  ${cyan}║${reset} ${bold}${white}MIDAS${reset} ${dim}watch${reset}${' '.repeat(42)}${cyan}║${reset}`);
+        console.log(`  ${cyan}╠${'═'.repeat(56)}╣${reset}`);
+        console.log(`  ${cyan}║${reset} ${green}●${reset} ${green}READY${reset} — waiting for commands${' '.repeat(19)}${cyan}║${reset}`);
+        console.log(`  ${cyan}║${reset}${' '.repeat(56)}${cyan}║${reset}`);
+        console.log(`  ${cyan}║${reset} ${dim}Dashboard: ${reset}${cyan}dashboard.midasmcp.com${reset}${' '.repeat(12)}${cyan}║${reset}`);
+        console.log(`  ${cyan}║${reset} ${dim}Ctrl+C to stop${reset}${' '.repeat(40)}${cyan}║${reset}`);
+        console.log(`  ${cyan}╚${'═'.repeat(56)}╝${reset}`);
         
         // Back to idle
         await updateRemoteSession(session.sessionId, {
@@ -850,7 +868,81 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
 /**
  * Execute command with real-time session updates
  */
-async function executeCommandWithUpdates(command: PendingCommand, sessionId: string): Promise<void> {
+/**
+ * Render execution progress in a TUI box
+ */
+function renderExecutionBox(prompt: string, status: 'starting' | 'running' | 'done' | 'failed', output: string): void {
+  const W = 58;
+  const I = W - 4;
+  const hLine = '═'.repeat(W - 2);
+  
+  const row = (content: string) => {
+    const stripped = content.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+    const pad = Math.max(0, I - stripped.length);
+    return `  ${cyan}║${reset} ${content}${' '.repeat(pad)} ${cyan}║${reset}`;
+  };
+  const emptyRow = () => `  ${cyan}║${reset}${' '.repeat(W - 2)}${cyan}║${reset}`;
+  
+  // Word wrap helper
+  const wrap = (text: string, width: number): string[] => {
+    const lines: string[] = [];
+    const words = text.split(' ');
+    let line = '';
+    for (const w of words) {
+      if ((line + ' ' + w).length > width && line) { lines.push(line); line = w; }
+      else { line = line ? line + ' ' + w : w; }
+    }
+    if (line) lines.push(line);
+    return lines.length ? lines : [''];
+  };
+  
+  const lines: string[] = [];
+  
+  // Clear and draw
+  lines.push('\x1b[2J\x1b[H');
+  lines.push(`  ${cyan}╔${hLine}╗${reset}`);
+  lines.push(row(`${bold}${white}MIDAS${reset} ${dim}watch${reset}`));
+  lines.push(`  ${cyan}╠${hLine}╣${reset}`);
+  
+  // Status
+  const statusIcon = status === 'running' ? `${blue}▸${reset}` : status === 'done' ? `${green}✓${reset}` : status === 'failed' ? `${red}✗${reset}` : `${yellow}…${reset}`;
+  const statusLabel = status === 'running' ? `${blue}EXECUTING${reset}` : status === 'done' ? `${green}DONE${reset}` : status === 'failed' ? `${red}FAILED${reset}` : `${yellow}STARTING${reset}`;
+  lines.push(row(`${statusIcon} ${statusLabel}`));
+  lines.push(emptyRow());
+  
+  // Prompt (truncated)
+  lines.push(row(`${dim}Prompt:${reset}`));
+  const promptLines = wrap(prompt.replace(/\n/g, ' '), I - 2);
+  for (const pl of promptLines.slice(0, 3)) {
+    lines.push(row(`${yellow}${pl}${reset}`));
+  }
+  if (promptLines.length > 3) lines.push(row(`${dim}...${reset}`));
+  lines.push(emptyRow());
+  
+  // Output in inner box
+  if (output) {
+    lines.push(`  ${cyan}╠${hLine}╣${reset}`);
+    lines.push(row(`${dim}Output:${reset}`));
+    
+    // Show last ~15 lines of output
+    const outputLines = output.split('\n').filter(l => l.trim());
+    const tail = outputLines.slice(-15);
+    for (const ol of tail) {
+      const trimmed = ol.slice(0, I - 2);
+      lines.push(row(`${green}${trimmed}${reset}`));
+    }
+    if (outputLines.length > 15) {
+      lines.push(row(`${dim}(${outputLines.length - 15} lines above)${reset}`));
+    }
+  }
+  
+  lines.push(emptyRow());
+  lines.push(`  ${cyan}╚${hLine}╝${reset}`);
+  
+  process.stdout.write(lines.join('\n') + '\n');
+}
+
+async function executeCommandWithUpdates(command: PendingCommand, sessionId: string, onRender?: (output: string) => void): Promise<void> {
   try {
     const project = await getProjectById(command.project_id);
     if (!project) {
@@ -870,6 +962,9 @@ async function executeCommandWithUpdates(command: PendingCommand, sessionId: str
       projectPath: project.local_path,
       maxTurns: command.max_turns,
     }, (_chunk, fullOutput) => {
+      // Render live TUI output
+      if (onRender) onRender(fullOutput);
+      
       // Throttle cloud updates to avoid rate limiting
       const now = Date.now();
       if (now - lastUpdateTime > OUTPUT_UPDATE_INTERVAL) {
@@ -896,16 +991,19 @@ async function executeCommandWithUpdates(command: PendingCommand, sessionId: str
       sessionId: result.sessionId,
     });
     
-    if (result.success) {
-      console.log(`  ✓ Complete (${(result.duration / 1000).toFixed(1)}s)\n`);
-    } else {
-      console.log(`  ✗ Failed (exit ${result.exitCode})`);
-      if (result.output) {
-        const errorLines = result.output.split('\n').slice(-5).join('\n');
-        console.log(`    Last output: ${errorLines.slice(0, 200)}`);
-      }
-      console.log('');
+    // Render final state
+    if (onRender) {
+      renderExecutionBox(command.prompt, result.success ? 'done' : 'failed', result.output);
     }
+    
+    if (result.success) {
+      console.log(`\n  ${green}✓${reset} Complete (${(result.duration / 1000).toFixed(1)}s)\n`);
+    } else {
+      console.log(`\n  ${red}✗${reset} Failed (exit ${result.exitCode})\n`);
+    }
+    
+    // Pause briefly so user can see result
+    await new Promise(resolve => setTimeout(resolve, 3000));
   } catch (error) {
     console.error(`  ✗ Error executing command #${command.id}:`, error);
     try {
