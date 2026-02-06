@@ -693,78 +693,64 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
   const suggestedPrompt = analysis?.suggestedPrompt || getSmartPromptSuggestion(projectPath).prompt;
   const I = TUI_W - 4; // inner width
   
-  process.stdout.write('\x1b[2J\x1b[H');
-  
-  const out: string[] = [];
-  out.push(`  ${cyan}╔${TUI_HLINE}╗${reset}`);
-  out.push(tuiRow(`${bold}${white}MIDAS${reset} ${dim}watch${reset}`));
-  out.push(`  ${cyan}╠${TUI_HLINE}╣${reset}`);
-  
-  // Project info
-  out.push(tuiRow(`${green}✓${reset} ${bold}${projectPath.split('/').pop()}${reset}`));
-  out.push(tuiRow(`${green}✓${reset} ${phaseColor}${bold}${phaseName}${reset}${stepName ? ` ${dim}→${reset} ${stepName}` : ''}`));
-  if (analysis?.techStack && analysis.techStack.length > 0) {
-    out.push(tuiRow(`${green}✓${reset} ${cyan}${analysis.techStack.slice(0, 4).join(', ')}${reset}`));
-  }
-  if (gatesStatus.allPass) {
-    out.push(tuiRow(`${green}✓${reset} ${green}All gates passing${reset}`));
-  } else if (gatesStatus.failing.length > 0) {
-    out.push(tuiRow(`${red}✗${reset} Gates: ${red}${gatesStatus.failing.join(', ')}${reset}`));
-  }
-  if (syncResult.success) {
-    out.push(tuiRow(`${green}✓${reset} ${dim}Synced to dashboard${reset}`));
-  }
-  out.push(tuiEmpty());
-  
-  // AI summary
-  if (analysis?.summary) {
+  // Build the ready screen renderer (reused after execution too)
+  const renderReadyScreen = () => {
+    process.stdout.write('\x1b[2J\x1b[H');
+    const out: string[] = [];
+    out.push(`  ${cyan}╔${TUI_HLINE}╗${reset}`);
+    out.push(tuiRow(`${bold}${white}MIDAS${reset} ${dim}watch${reset}`));
     out.push(`  ${cyan}╠${TUI_HLINE}╣${reset}`);
-    const summaryLines = wrapText(analysis.summary, I - 2);
-    for (const sl of summaryLines) {
-      out.push(tuiRow(`${dim}${sl}${reset}`));
+    
+    // Project info
+    out.push(tuiRow(`${green}✓${reset} ${bold}${projectPath.split('/').pop()}${reset}`));
+    out.push(tuiRow(`${green}✓${reset} ${phaseColor}${bold}${phaseName}${reset}${stepName ? ` ${dim}→${reset} ${stepName}` : ''}`));
+    if (analysis?.techStack && analysis.techStack.length > 0) {
+      out.push(tuiRow(`${green}✓${reset} ${cyan}${analysis.techStack.slice(0, 4).join(', ')}${reset}`));
+    }
+    if (gatesStatus.allPass) {
+      out.push(tuiRow(`${green}✓${reset} ${green}All gates passing${reset}`));
+    } else if (gatesStatus.failing.length > 0) {
+      out.push(tuiRow(`${red}✗${reset} Gates: ${red}${gatesStatus.failing.join(', ')}${reset}`));
     }
     out.push(tuiEmpty());
-  }
+    
+    // AI summary
+    if (analysis?.summary) {
+      out.push(`  ${cyan}╠${TUI_HLINE}╣${reset}`);
+      const summaryLines = wrapText(analysis.summary, I - 2);
+      for (const sl of summaryLines) {
+        out.push(tuiRow(`${dim}${sl}${reset}`));
+      }
+      out.push(tuiEmpty());
+    }
+    
+    // Suggested prompt in gold inner box
+    out.push(`  ${cyan}╠${TUI_HLINE}╣${reset}`);
+    out.push(tuiRow(`${gold}${bold}SUGGESTED PROMPT${reset}`));
+    out.push(tuiEmpty());
+    
+    const promptBoxInner = I - 8;
+    const promptLines = wrapText(suggestedPrompt.replace(/\n/g, ' '), promptBoxInner);
+    out.push(tuiRow(`  ${gold}┌${'─'.repeat(I - 6)}┐${reset}`));
+    for (const pl of promptLines) {
+      const stripped = pl.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+      const padLen = Math.max(0, promptBoxInner - stripped.length);
+      out.push(tuiRow(`  ${gold}│${reset} ${pl}${' '.repeat(padLen)} ${gold}│${reset}`));
+    }
+    out.push(tuiRow(`  ${gold}└${'─'.repeat(I - 6)}┘${reset}`));
+    out.push(tuiEmpty());
+    
+    // Status + controls
+    out.push(`  ${cyan}╠${TUI_HLINE}╣${reset}`);
+    out.push(tuiRow(`${green}●${reset} ${green}READY${reset} ${dim}— accept from dashboard or auto-mode${reset}`));
+    out.push(tuiRow(`${dim}Dashboard: ${cyan}dashboard.midasmcp.com${reset}`));
+    out.push(tuiRow(`${dim}Ctrl+C to stop${reset}`));
+    out.push(`  ${cyan}╚${TUI_HLINE}╝${reset}`);
+    
+    process.stdout.write(out.join('\n') + '\n');
+  };
   
-  // Suggested prompt in gold inner box
-  out.push(`  ${cyan}╠${TUI_HLINE}╣${reset}`);
-  out.push(tuiRow(`${gold}${bold}SUGGESTED PROMPT${reset}`));
-  out.push(tuiEmpty());
-  
-  const promptBoxW = I - 4;
-  const promptLines = wrapText(suggestedPrompt.replace(/\n/g, ' '), promptBoxW - 2);
-  out.push(tuiRow(`  ${gold}┌${'─'.repeat(promptBoxW - 2)}┐${reset}`));
-  for (const pl of promptLines) {
-    const stripped = pl.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
-    const padLen = Math.max(0, promptBoxW - 4 - stripped.length);
-    out.push(tuiRow(`  ${gold}│${reset} ${pl}${' '.repeat(padLen)} ${gold}│${reset}`));
-  }
-  out.push(tuiRow(`  ${gold}└${'─'.repeat(promptBoxW - 2)}┘${reset}`));
-  out.push(tuiEmpty());
-  
-  // Status
-  out.push(`  ${cyan}╠${TUI_HLINE}╣${reset}`);
-  out.push(tuiRow(`${green}●${reset} ${green}READY${reset} ${dim}— waiting for commands${reset}`));
-  out.push(tuiRow(`${dim}Dashboard: ${cyan}dashboard.midasmcp.com${reset}`));
-  out.push(tuiRow(`${dim}Ctrl+C to stop${reset}`));
-  out.push(`  ${cyan}╚${TUI_HLINE}╝${reset}`);
-  
-  process.stdout.write(out.join('\n') + '\n');
-  
-  console.log('  ✓ Session registered\n');
-  
-  // Render ready state in TUI box
-  process.stdout.write('\x1b[2J\x1b[H');
-  // W defined at module level as TUI_W
-  // hLine defined at module level as TUI_HLINE
-  console.log(`  ${cyan}╔${TUI_HLINE}╗${reset}`);
-  console.log(`  ${cyan}║${reset} ${bold}${white}MIDAS${reset} ${dim}watch${reset}${' '.repeat(42)}${cyan}║${reset}`);
-  console.log(`  ${cyan}╠${TUI_HLINE}╣${reset}`);
-  console.log(`  ${cyan}║${reset} ${green}●${reset} ${green}READY${reset} — waiting for commands${' '.repeat(19)}${cyan}║${reset}`);
-  console.log(`  ${cyan}║${reset}${' '.repeat(TUI_W - 2)}${cyan}║${reset}`);
-  console.log(`  ${cyan}║${reset} ${dim}Dashboard: ${reset}${cyan}dashboard.midasmcp.com${reset}${' '.repeat(12)}${cyan}║${reset}`);
-  console.log(`  ${cyan}║${reset} ${dim}Ctrl+C to stop${reset}${' '.repeat(40)}${cyan}║${reset}`);
-  console.log(`  ${cyan}╚${TUI_HLINE}╝${reset}`);
+  renderReadyScreen();
   
   let running = true;
   
@@ -833,16 +819,8 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
           renderExecutionBox(command.prompt, 'running', output);
         });
         
-        // Show idle state again
-        process.stdout.write('\x1b[2J\x1b[H');
-        console.log(`\n  ${cyan}╔${'═'.repeat(56)}╗${reset}`);
-        console.log(`  ${cyan}║${reset} ${bold}${white}MIDAS${reset} ${dim}watch${reset}${' '.repeat(42)}${cyan}║${reset}`);
-        console.log(`  ${cyan}╠${'═'.repeat(56)}╣${reset}`);
-        console.log(`  ${cyan}║${reset} ${green}●${reset} ${green}READY${reset} — waiting for commands${' '.repeat(19)}${cyan}║${reset}`);
-        console.log(`  ${cyan}║${reset}${' '.repeat(56)}${cyan}║${reset}`);
-        console.log(`  ${cyan}║${reset} ${dim}Dashboard: ${reset}${cyan}dashboard.midasmcp.com${reset}${' '.repeat(12)}${cyan}║${reset}`);
-        console.log(`  ${cyan}║${reset} ${dim}Ctrl+C to stop${reset}${' '.repeat(40)}${cyan}║${reset}`);
-        console.log(`  ${cyan}╚${'═'.repeat(56)}╝${reset}`);
+        // Show ready state again with full prompt
+        renderReadyScreen();
         
         // Back to idle
         await updateRemoteSession(session.sessionId, {
