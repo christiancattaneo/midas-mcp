@@ -132,7 +132,8 @@ const DEFAULT_CONFIG: PilotConfig = {
  */
 export async function executeClaudeCode(
   prompt: string,
-  config: Partial<PilotConfig> = {}
+  config: Partial<PilotConfig> = {},
+  onOutput?: (chunk: string, fullOutput: string) => void
 ): Promise<ExecutionResult> {
   const cfg = { ...DEFAULT_CONFIG, ...config };
   const startTime = Date.now();
@@ -164,11 +165,15 @@ export async function executeClaudeCode(
     });
     
     proc.stdout.on('data', (data: Buffer) => {
-      output += data.toString();
+      const chunk = data.toString();
+      output += chunk;
+      if (onOutput) onOutput(chunk, output);
     });
     
     proc.stderr.on('data', (data: Buffer) => {
-      stderr += data.toString();
+      const chunk = data.toString();
+      stderr += chunk;
+      if (onOutput) onOutput(chunk, output + stderr);
     });
     
     proc.on('error', (err) => {
@@ -857,14 +862,29 @@ async function executeCommandWithUpdates(command: PendingCommand, sessionId: str
     
     await markCommandRunning(command.id);
     
+    // Stream output to cloud every 2 seconds for live dashboard view
+    let lastUpdateTime = 0;
+    const OUTPUT_UPDATE_INTERVAL = 2000; // 2s between cloud updates
+    
     const result = await executeClaudeCode(command.prompt, {
       projectPath: project.local_path,
       maxTurns: command.max_turns,
+    }, (_chunk, fullOutput) => {
+      // Throttle cloud updates to avoid rate limiting
+      const now = Date.now();
+      if (now - lastUpdateTime > OUTPUT_UPDATE_INTERVAL) {
+        lastUpdateTime = now;
+        // Fire-and-forget - don't await to avoid blocking stdout
+        updateRemoteSession(sessionId, {
+          last_output: fullOutput.slice(-5000), // Last 5KB
+          output_lines: fullOutput.split('\n').length,
+        }).catch(() => {});
+      }
     });
     
-    // Update session with output
+    // Final output update
     await updateRemoteSession(sessionId, {
-      last_output: result.output.slice(-5000), // Last 5KB
+      last_output: result.output.slice(-5000),
       output_lines: result.output.split('\n').length,
     });
     
@@ -880,7 +900,6 @@ async function executeCommandWithUpdates(command: PendingCommand, sessionId: str
       console.log(`  ✓ Complete (${(result.duration / 1000).toFixed(1)}s)\n`);
     } else {
       console.log(`  ✗ Failed (exit ${result.exitCode})`);
-      // Show error details for debugging
       if (result.output) {
         const errorLines = result.output.split('\n').slice(-5).join('\n');
         console.log(`    Last output: ${errorLines.slice(0, 200)}`);
