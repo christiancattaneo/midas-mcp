@@ -816,13 +816,14 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
   let autoMode = false;
   let isExecuting = false;
   
-  // Copy to clipboard helper
+  // Copy to clipboard helper (uses spawn already imported at top)
   const copyToClipboard = (text: string): Promise<void> => {
     return new Promise((resolve, reject) => {
-      const { exec: execCb } = require('child_process') as typeof import('child_process');
-      const proc = execCb('pbcopy', (err: Error | null) => {
-        if (err) reject(err);
-        else resolve();
+      const proc = spawn('pbcopy', [], { stdio: ['pipe', 'ignore', 'ignore'] });
+      proc.on('error', reject);
+      proc.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`pbcopy exited with ${code}`));
       });
       proc.stdin?.write(text);
       proc.stdin?.end();
@@ -887,10 +888,10 @@ export async function runRemoteMode(pollInterval = 3000): Promise<void> {
       if (suggestedPrompt) {
         try {
           await copyToClipboard(suggestedPrompt);
-          // Quick flash message
-          process.stdout.write(`\x1b[2J\x1b[H`);
-          renderReadyScreen();
-        } catch { /* ignore */ }
+          process.stdout.write(`\n  ${green}✓${reset} Prompt copied to clipboard!\n`);
+        } catch (err) {
+          process.stdout.write(`\n  ${red}✗${reset} Copy failed: ${err}\n`);
+        }
       }
       return;
     }
