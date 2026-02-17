@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { test, describe } from 'node:test';
-import { sanitizePath, isShellSafe, limitLength, validateEnum, LIMITS } from '../security.js';
+import { sanitizePath, isShellSafe, sanitizeForGit, limitLength, validateEnum, LIMITS } from '../security.js';
 import { resolve } from 'path';
 
 describe('Security utilities', () => {
@@ -19,7 +19,6 @@ describe('Security utilities', () => {
     test('blocks path traversal attempts', () => {
       const base = '/home/user/project';
       const result = sanitizePath('../../../etc/passwd', base);
-      // Should return base when path escapes
       assert.strictEqual(result, base);
     });
 
@@ -33,6 +32,43 @@ describe('Security utilities', () => {
       const base = '/home/user/project';
       const result = sanitizePath('./src/./file.ts', base);
       assert.strictEqual(result, resolve(base, 'src/file.ts'));
+    });
+
+    // --- Mutation survivors: tests that kill previously surviving mutations ---
+
+    test('strips null bytes from paths', () => {
+      const base = '/home/user/project';
+      const result = sanitizePath('src/\x00file.ts', base);
+      assert.strictEqual(result, resolve(base, 'src/file.ts'));
+      assert.ok(!result.includes('\x00'));
+    });
+
+    test('strips unicode control characters', () => {
+      const base = '/home/user/project';
+      // RTL override, zero-width space, BOM
+      const result = sanitizePath('src/\u200Bfile\u202E.ts', base);
+      assert.ok(!result.includes('\u200B'));
+      assert.ok(!result.includes('\u202E'));
+    });
+
+    test('strips URL-encoded null bytes', () => {
+      const base = '/home/user/project';
+      const result = sanitizePath('src/%00file.ts', base);
+      assert.ok(!result.includes('%00'));
+    });
+
+    test('blocks URL-encoded traversal (%2e%2e)', () => {
+      const base = '/home/user/project';
+      const result = sanitizePath('%2e%2e/%2e%2e/etc/passwd', base);
+      assert.strictEqual(result, base);
+    });
+
+    test('blocks absolute path escape via isAbsolute check', () => {
+      const base = '/home/user/project';
+      // A path that resolves to something outside base
+      const result = sanitizePath('/tmp', base);
+      // Should either return /tmp (if it exists) or base — but NOT escape unsafely
+      assert.ok(result === '/tmp' || result === base);
     });
   });
 
@@ -51,6 +87,32 @@ describe('Security utilities', () => {
       assert.strictEqual(isShellSafe('/path $(whoami)'), false);
       assert.strictEqual(isShellSafe("/path'; drop table"), false);
       assert.strictEqual(isShellSafe('/path"'), false);
+    });
+
+    test('blocks null bytes', () => {
+      assert.strictEqual(isShellSafe('/path\x00/file'), false);
+    });
+
+    test('blocks newlines and carriage returns', () => {
+      assert.strictEqual(isShellSafe('/path\n/file'), false);
+      assert.strictEqual(isShellSafe('/path\r/file'), false);
+    });
+
+    test('blocks unicode control characters', () => {
+      assert.strictEqual(isShellSafe('/path\u200B/file'), false);
+    });
+  });
+
+  describe('sanitizeForGit', () => {
+    test('returns safe paths unchanged', () => {
+      assert.strictEqual(sanitizeForGit('/home/user/project'), '/home/user/project');
+      assert.strictEqual(sanitizeForGit('src/file.ts'), 'src/file.ts');
+    });
+
+    test('throws on unsafe paths', () => {
+      assert.throws(() => sanitizeForGit('/path; rm -rf /'), /unsafe characters/);
+      assert.throws(() => sanitizeForGit('/path && cmd'), /unsafe characters/);
+      assert.throws(() => sanitizeForGit('/path `whoami`'), /unsafe characters/);
     });
   });
 

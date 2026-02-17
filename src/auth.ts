@@ -52,7 +52,7 @@ export function loadAuth(): AuthState {
 
 export function saveAuth(auth: AuthState): void {
   ensureConfigDir();
-  writeFileSync(AUTH_FILE, JSON.stringify(auth, null, 2));
+  writeFileSync(AUTH_FILE, JSON.stringify(auth, null, 2), { mode: 0o600 });
 }
 
 export function clearAuth(): void {

@@ -1,0 +1,82 @@
+{
+  "project": "midas-mcp",
+  "language": "TypeScript",
+  "mode": "AUDIT",
+  "verdict": "BLOCKED",
+  "timestamp": "2026-02-17T06:05:00Z",
+  "gates": {
+    "typecheck": {
+      "status": "PASS",
+      "compiledFiles": 112,
+      "errors": 0,
+      "summary": "Clean tsc compile, zero errors"
+    },
+    "slopScan": {
+      "status": "WARN",
+      "issues": 29,
+      "hallucinatedDeps": 0,
+      "phantomImports": 0,
+      "templateArtifacts": 26,
+      "placeholders": 3,
+      "summary": "26 {{template}} placeholders in preflight.ts (intentional templating system). No hallucinated deps or phantom imports. 3 TODO/FIXME references in production code."
+    },
+    "testQuality": {
+      "status": "FAIL",
+      "totalTests": 1785,
+      "totalAssertions": 2736,
+      "avgAssertionsPerTest": 1.53,
+      "testsWithNoAssertions": 38,
+      "tautologicalTests": 2,
+      "hardcodedDates": 4,
+      "sharedState": 1,
+      "summary": "38 tests with zero assertions. Stress tests run without verifying anything. Hardcoded dates will rot."
+    },
+    "mutationKill": {
+      "status": "FAIL",
+      "worker1": { "killRate": "1/15", "percentage": 6.7 },
+      "worker2": { "killRate": "2/15", "percentage": 13.3 },
+      "averaged": 10.0,
+      "survivors": [
+        "sanitizePath null check removal",
+        "isShellSafe logic flip",
+        "stripDangerousChars bypass",
+        "validateEnum always-null",
+        "runGate always-pass",
+        "maybeAutoAdvance disabled",
+        "API key validation removal",
+        "encoding changes (utf-8 → ascii)",
+        "boundary condition off-by-one",
+        "timeout reduction (60s → 1s)",
+        "default provider swap",
+        "output truncation change"
+      ],
+      "summary": "6.7-13.3% kill rate across two independent runs. Security functions completely unprotected. Business logic mutations all survived."
+    },
+    "security": {
+      "status": "FAIL",
+      "critical": 3,
+      "high": 3,
+      "medium": 3,
+      "findings": [
+        "CRITICAL: command injection in scope.ts (execSync with unsanitized projectPath)",
+        "CRITICAL: command injection in scope.ts (git ls-tree with unsanitized commit hash)",
+        "CRITICAL: command injection in pilot.ts (spawn claude with user-controlled prompt)",
+        "HIGH: command injection in pilot.ts (pgrep shell command)",
+        "HIGH: path traversal bypass in security.ts sanitizePath (absolute paths)",
+        "HIGH: MCP tool arguments unvalidated in server.ts wrapTool",
+        "MEDIUM: hardcoded GitHub OAuth client ID in auth.ts",
+        "MEDIUM: child process inherits full env in pilot.ts",
+        "MEDIUM: silent scan failures in vuln-scan.ts"
+      ],
+      "summary": "3 critical command injection vulns. sanitizePath bypassable with absolute paths. MCP tool handlers lack input validation."
+    }
+  },
+  "swarmStats": {
+    "orchestratorModel": "claude-sonnet-4-20250514",
+    "workerModel": "claude-sonnet-4-20250514",
+    "workersSpawned": 5,
+    "workersCompleted": 5,
+    "nestedDepth": 2,
+    "totalRuntime": "~6m"
+  }
+}
